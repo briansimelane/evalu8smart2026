@@ -37,3 +37,4 @@ npm run dev
 ## How can I deploy this project?
 
 You can deploy this Vite project using your preferred hosting provider following standard Vite deployment practices.
+# evalu8smart2026
