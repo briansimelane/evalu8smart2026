@@ -138,3 +138,26 @@ export const TEAM_COLORS = [
   { name: 'Purple', value: '#a855f7' },
   { name: 'Black', value: '#1f2937' }
 ];
+
+export const getTeamColorName = (teamColorHex: string, teamName: string = ''): string => {
+  const hex = (teamColorHex || '').toLowerCase();
+  
+  // Try exact hex match (case-insensitive)
+  const exactMatch = TEAM_COLORS.find(c => c.value.toLowerCase() === hex);
+  if (exactMatch) return exactMatch.name;
+
+  // Backwards compatibility/fallback for known hex mismatches from FacilitatorHub.tsx
+  if (hex === '#0f172a') return 'Black';
+  if (hex === '#10b981') return 'Green';
+
+  // Try matching by team name if it contains one of our known color names
+  const nameLower = teamName.toLowerCase();
+  for (const c of TEAM_COLORS) {
+    if (nameLower.includes(c.name.toLowerCase())) {
+      return c.name;
+    }
+  }
+
+  // Default fallback
+  return 'Green';
+};

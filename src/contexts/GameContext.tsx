@@ -1,11 +1,14 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 import { GameState, Team, RoundData, TeamRoundData, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress } from '@/types/game';
-import { REGIONS, TECHNOLOGIES, TEAM_COLORS, COMBINATIONS, Combination } from '@/data/combinations';
+import { REGIONS, TECHNOLOGIES, TEAM_COLORS, COMBINATIONS, Combination, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS, AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-interface GameContextType {
+import { useSession } from '@/contexts/SessionContext';
+import { SimulationClass } from '@/types/game';
+
+export interface GameContextType {
   gameState: GameState | null;
   initializeGame: (teams: Team[]) => void;
   addRoundData: (roundNumber: number, teamId: string, data: TeamRoundData) => void;
@@ -17,6 +20,8 @@ interface GameContextType {
   reshuffleRoundCards: () => import('@/data/improvements').ImprovementCardData[];
   allocateImprovementCards: (allocations: Record<number, string>) => void;
   advanceRound: () => void;
+  updatePhase: (phase: string) => void;
+  claimImprovementCard: (cardId: number, teamId: string) => void;
   markImprovementCardUsed: (cardId: number) => void;
   clearNonInitialCards: () => void;
   previewNextRoundCards: () => import('@/data/improvements').ImprovementCardData[];
@@ -33,7 +38,7 @@ interface GameContextType {
   getCombinations: () => Combination[];
 }
 
-const GameContext = createContext<GameContextType | undefined>(undefined);
+export const GameContext = createContext<GameContextType | undefined>(undefined);
 
 export const useGame = () => {
   const context = useContext(GameContext);
@@ -46,54 +51,101 @@ export const useGame = () => {
 export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const { currentClassId } = useSession();
+  
+  // Tracks if the state update was initiated from the Firestore snapshot listener
+  const isIncomingSnapshot = useRef(false);
 
   useEffect(() => {
-    let isMounted = true;
-    const loadState = async () => {
-      try {
-        const docRef = doc(db, 'evalu8smart_sessions', 'default_game');
-        const snap = await getDoc(docRef);
-        if (snap.exists() && isMounted) {
-          const data = snap.data() as GameState;
-          if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
-          if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
-          setGameState(data);
+    if (!currentClassId) {
+      let isMounted = true;
+      const loadState = async () => {
+        try {
+          const docRef = doc(db, 'evalu8smart_sessions', 'default_game');
+          const snap = await getDoc(docRef);
+          if (snap.exists() && isMounted) {
+            const data = snap.data() as GameState;
+            if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
+            if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
+            setGameState(data);
+          } else {
+            setGameState(null);
+          }
+        } catch (e) {
+          console.error("Failed to load game from Firebase:", e);
+        } finally {
+          if (isMounted) setIsLoaded(true);
         }
-      } catch (e) {
-        console.error("Failed to load game from Firebase:", e);
-      } finally {
-        if (isMounted) setIsLoaded(true);
-      }
-    };
-    loadState();
-    return () => { isMounted = false; };
-  }, []);
+      };
+      loadState();
+      return () => { isMounted = false; };
+    } else {
+      const docRef = doc(db, 'classes', currentClassId);
+      const unsubscribe = onSnapshot(docRef, (snap) => {
+        if (snap.exists()) {
+          const classData = snap.data() as SimulationClass;
+          const data = classData.gameState;
+          if (data) {
+            if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
+            if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
+            
+            // Mark as server update to bypass the local write useEffect trigger
+            isIncomingSnapshot.current = true;
+            setGameState(data);
+          } else {
+            setGameState(null);
+          }
+        } else {
+          setGameState(null);
+        }
+        setIsLoaded(true);
+      }, (error) => {
+        console.error("Error listening to class gameState:", error);
+      });
+      return () => unsubscribe();
+    }
+  }, [currentClassId]);
 
   useEffect(() => {
     if (!isLoaded) return;
     
-    const docRef = doc(db, 'evalu8smart_sessions', 'default_game');
-    if (gameState) {
-      // Serialize the dates for Firestore correctly or just let setDoc pass them if they are strings.
-      // We will clone and ensure dates are converted to strings if needed
-      const safeState = { ...gameState };
-      if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
-      safeState.updatedAt = new Date().toISOString() as any;
-      
-      setDoc(docRef, safeState)
-        .catch(e => console.error("Failed to save game to Firebase:", e));
-    } else {
-      deleteDoc(docRef).catch(e => console.error("Failed to delete game from Firebase:", e));
+    // Bypass writing back if this update originated from the database snapshot
+    if (isIncomingSnapshot.current) {
+      isIncomingSnapshot.current = false;
+      return;
     }
-  }, [gameState, isLoaded]);
+
+    if (!currentClassId) {
+      const docRef = doc(db, 'evalu8smart_sessions', 'default_game');
+      if (gameState) {
+        const safeState = { ...gameState };
+        if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
+        safeState.updatedAt = new Date().toISOString() as any;
+        
+        setDoc(docRef, safeState)
+          .catch(e => console.error("Failed to save game to Firebase:", e));
+      } else {
+        deleteDoc(docRef).catch(e => console.error("Failed to delete game from Firebase:", e));
+      }
+    } else {
+      const docRef = doc(db, 'classes', currentClassId);
+      if (gameState) {
+        const safeState = { ...gameState };
+        if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
+        safeState.updatedAt = new Date().toISOString() as any;
+        
+        setDoc(docRef, { gameState: safeState }, { merge: true })
+          .catch(e => console.error("Failed to save class game to Firebase:", e));
+      }
+    }
+  }, [gameState, isLoaded, currentClassId]);
 
   const initializeGame = (teams: Team[]) => {
     // Create initial improvement cards for each team with UNIQUE IDs
     const baseId = Date.now();
     const initialCards = teams.map((team, idx) => {
       // Find color name from hex value
-      const teamColor = TEAM_COLORS.find(c => c.value === team.color);
-      const colorName = teamColor?.name || 'Green'; // fallback to Green
+      const colorName = getTeamColorName(team.color, team.name);
       const cardData = INITIAL_IMPROVEMENT_CARDS[colorName];
       
       return {
@@ -143,8 +195,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     const teamLogisticsProgress: Record<string, TeamLogisticsProgress> = {};
     teams.forEach(team => {
       // Find team color name from hex value
-      const teamColor = TEAM_COLORS.find(c => c.value === team.color);
-      const colorName = teamColor?.name || 'Green';
+      const colorName = getTeamColorName(team.color, team.name);
       const startingRegion = INITIAL_TEAM_REGIONS[colorName];
       
       if (startingRegion) {
@@ -169,6 +220,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       gameId: Date.now().toString(),
       teams,
       currentRound: 1,
+      currentPhase: 'planning',
       rounds: [],
       technologies: TECHNOLOGIES.reduce((acc, tech) => ({
         ...acc,
@@ -283,7 +335,11 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const resetGame = () => {
-    setGameState(null);
+    if (gameState?.teams) {
+      initializeGame(gameState.teams);
+    } else {
+      setGameState(null);
+    }
   };
 
   const selectRandomCards = (): ImprovementCardData[] => {
@@ -433,6 +489,79 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       return {
         ...prev,
         currentRound: prev.currentRound + 1,
+        currentPhase: 'planning',
+        updatedAt: new Date()
+      };
+    });
+  };
+
+  const updatePhase = (phase: string) => {
+    if (!gameState) return;
+
+    setGameState(prev => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        currentPhase: phase,
+        updatedAt: new Date()
+      };
+    });
+  };
+
+  const claimImprovementCard = (cardId: number, teamId: string) => {
+    if (!gameState) return;
+
+    setGameState(prev => {
+      if (!prev) return prev;
+
+      // Check if this team already claimed a card this round
+      const alreadyClaimed = prev.improvementCards.some(c => 
+        c.availableForTeam === teamId && c.allocatedInRound === prev.currentRound
+      );
+      if (alreadyClaimed) return prev;
+
+      const newCards = [...prev.improvementCards];
+      const cardData = AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === cardId);
+      
+      if (cardData) {
+        newCards.push({
+          id: cardData.id,
+          icon1: cardData.icon1,
+          icon2: cardData.icon2,
+          availableForTeam: teamId,
+          used: false,
+          isInitial: false,
+          allocatedInRound: prev.currentRound,
+        });
+      }
+
+      // Automatically add product-only cards for teams with 0 improvement
+      const currentRoundData = prev.rounds.find(r => r.roundNumber === prev.currentRound);
+      if (currentRoundData) {
+        prev.teams.forEach(t => {
+          const tData = currentRoundData.teamData[t.id];
+          const hasCard = newCards.some(c => 
+            c.availableForTeam === t.id && c.allocatedInRound === prev.currentRound
+          );
+          if (tData && tData.improvementCards === 0 && !hasCard) {
+            const productCardId = -(newCards.filter(c => c.id < 0).length + 1);
+            newCards.push({
+              id: productCardId,
+              icon1: 'Product',
+              icon2: 'None',
+              availableForTeam: t.id,
+              used: false,
+              isInitial: false,
+              allocatedInRound: prev.currentRound,
+            });
+          }
+        });
+      }
+
+      return {
+        ...prev,
+        improvementCards: newCards,
         updatedAt: new Date()
       };
     });
@@ -832,6 +961,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         reshuffleRoundCards,
         allocateImprovementCards,
         advanceRound,
+        updatePhase,
+        claimImprovementCard,
         markImprovementCardUsed,
         clearNonInitialCards,
         previewNextRoundCards,

@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
 
+import { useSession } from '@/contexts/SessionContext';
+
 interface RegionControlResult {
   region: string;
   firstPlace?: { teamId: string; teamName: string; teamColor: string; sales: number; points: number };
@@ -18,6 +20,7 @@ interface RegionControlResult {
 
 export const ControlPhase = () => {
   const { gameState, addRoundData, getCurrentRound } = useGame();
+  const { currentRole } = useSession();
   const [controlCalculated, setControlCalculated] = useState(false);
   const [regionControlResults, setRegionControlResults] = useState<RegionControlResult[]>([]);
 
@@ -188,7 +191,16 @@ export const ControlPhase = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {!allTeamsHaveSalesData && (
+        {currentRole === 'STUDENT' && !controlAlreadyCalculated && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4 text-blue-500" />
+            <AlertDescription>
+              Waiting for the facilitator to calculate and apply control points for Round {currentRound}.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {currentRole !== 'STUDENT' && !allTeamsHaveSalesData && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
@@ -197,7 +209,7 @@ export const ControlPhase = () => {
           </Alert>
         )}
 
-        {allTeamsHaveSalesData && !controlAlreadyCalculated && !controlCalculated && (
+        {currentRole !== 'STUDENT' && allTeamsHaveSalesData && !controlAlreadyCalculated && !controlCalculated && (
           <Button onClick={calculateControl} className="w-full" size="lg">
             <Trophy className="mr-2 h-4 w-4" />
             Calculate Control Points
@@ -276,7 +288,7 @@ export const ControlPhase = () => {
               </div>
             </div>
 
-            {!controlAlreadyCalculated && (
+            {!controlAlreadyCalculated && currentRole !== 'STUDENT' && (
               <Button 
                 onClick={handleApplyControl} 
                 className="w-full" 

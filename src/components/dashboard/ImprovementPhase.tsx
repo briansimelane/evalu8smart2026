@@ -3,13 +3,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/contexts/GameContext';
 import { Badge } from '@/components/ui/badge';
-import { FlaskConical, Truck, Package, TrendingUp, TrendingDown, Wrench, Shuffle, Microscope, CirclePlus, CircleMinus, AlertCircle } from 'lucide-react';
+import { FlaskConical, Truck, Package, TrendingUp, TrendingDown, Wrench, Shuffle, Microscope, CirclePlus, CircleMinus, AlertCircle, AlertTriangle } from 'lucide-react';
 import { AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useMemo } from 'react';
+
+import { useSession } from '@/contexts/SessionContext';
 
 export const ImprovementPhase = () => {
-  const { gameState, allocateImprovementCards, selectRandomCards, reshuffleRoundCards, previewNextRoundCards } = useGame();
+  const { gameState, allocateImprovementCards, selectRandomCards, reshuffleRoundCards, previewNextRoundCards, claimImprovementCard } = useGame();
+  const { currentRole, currentTeamId, isReadOnly } = useSession();
+  const activePhase = gameState?.currentPhase || 'planning';
   const { toast } = useToast();
   const [availableCards, setAvailableCards] = useState<ImprovementCardData[]>([]);
   const [allocations, setAllocations] = useState<Record<number, string>>({});
@@ -26,7 +32,31 @@ export const ImprovementPhase = () => {
   if (!gameState) return null;
 
   const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
-  if (!currentRoundData) return null;
+
+  const allocationsCompleted = useMemo(() => {
+    return gameState.improvementCards.some(c => c.allocatedInRound === gameState.currentRound);
+  }, [gameState.improvementCards, gameState.currentRound]);
+
+  const teamsWithPlans = useMemo(() => {
+    return currentRoundData
+      ? Object.keys(currentRoundData.teamData).map(teamId => {
+          const team = gameState.teams.find(t => t.id === teamId);
+          const teamData = currentRoundData.teamData[teamId];
+          return { team, teamData };
+        }).filter(item => item.team)
+      : [];
+  }, [currentRoundData, gameState.teams]);
+
+  const allTeamsHavePlans = useMemo(() => {
+    return gameState.teams.every(team => teamsWithPlans.some(t => t.team?.id === team.id));
+  }, [gameState.teams, teamsWithPlans]);
+
+  useEffect(() => {
+    if (gameState && (isAllocated || allocationsCompleted) && nextRoundCards.length === 0) {
+      const nextCards = previewNextRoundCards();
+      setNextRoundCards(nextCards);
+    }
+  }, [gameState, isAllocated, allocationsCompleted, nextRoundCards.length, previewNextRoundCards]);
 
   const getIconElement = (iconType: string) => {
     if (iconType === 'Price and Product') {
@@ -55,15 +85,21 @@ export const ImprovementPhase = () => {
     return iconMap[iconType] || null;
   };
 
-  const teamsWithImprovement = gameState.teams.filter(team => {
-    const teamData = currentRoundData.teamData[team.id];
-    return teamData && teamData.improvementCards > 0;
-  });
+  const teamsWithImprovement = useMemo(() => {
+    if (!currentRoundData) return [];
+    return gameState.teams.filter(team => {
+      const teamData = currentRoundData.teamData[team.id];
+      return teamData && teamData.improvementCards > 0;
+    });
+  }, [gameState.teams, currentRoundData]);
 
-  const teamsWithoutImprovement = gameState.teams.filter(team => {
-    const teamData = currentRoundData.teamData[team.id];
-    return teamData && teamData.improvementCards === 0;
-  });
+  const teamsWithoutImprovement = useMemo(() => {
+    if (!currentRoundData) return [];
+    return gameState.teams.filter(team => {
+      const teamData = currentRoundData.teamData[team.id];
+      return teamData && teamData.improvementCards === 0;
+    });
+  }, [gameState.teams, currentRoundData]);
 
   const handleAllocate = (cardId: number, teamId: string) => {
     setAllocations(prev => ({ ...prev, [cardId]: teamId }));
@@ -113,12 +149,34 @@ export const ImprovementPhase = () => {
     });
   };
 
-  const isCardAllocated = (cardId: number) => allocations[cardId] !== undefined;
+  const isCardAllocated = (cardId: number) => {
+    return allocations[cardId] !== undefined || gameState.improvementCards.some(c => c.id === cardId && c.allocatedInRound === gameState.currentRound);
+  };
   const isTeamAllocated = (teamId: string) => Object.values(allocations).includes(teamId);
 
   return (
     <div className="space-y-6">
-      {gameState.currentRound === 4 && !isAllocated && (
+      {/* Warning if not all teams have submitted plans */}
+      {!allTeamsHavePlans && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Not all teams have submitted their plans yet. All teams must submit plans before improvement cards can be allocated.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Waiting alert for students if plans are submitted but cards not allocated yet */}
+      {allTeamsHavePlans && !(isAllocated || allocationsCompleted) && currentRole === 'STUDENT' && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4 text-blue-500" />
+          <AlertDescription>
+            Waiting for the facilitator to allocate improvement cards for Round {gameState.currentRound}.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {gameState.currentRound === 4 && !(isAllocated || allocationsCompleted) && (
         <Card className="border-amber-500/50 bg-amber-500/10">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -139,10 +197,10 @@ export const ImprovementPhase = () => {
             Improvement Phase - Round {gameState.currentRound}
           </h2>
           <p className="text-muted-foreground mt-1">
-            {isAllocated ? 'Allocation complete.' + (gameState.currentRound < 4 ? ' Preview of next round below.' : '') : 'Allocate improvement cards to teams based on their performance'}
+            {(isAllocated || allocationsCompleted) ? 'Allocation complete.' + (gameState.currentRound < 4 ? ' Preview of next round below.' : '') : 'Allocate improvement cards to teams based on their performance'}
           </p>
         </div>
-        {!isAllocated && (
+        {!(isAllocated || allocationsCompleted) && currentRole !== 'STUDENT' && (
           <Button onClick={handleReshuffle} variant="outline">
             <Shuffle className="h-4 w-4 mr-2" />
             Reshuffle Cards
@@ -151,7 +209,7 @@ export const ImprovementPhase = () => {
       </div>
 
       {/* Teams with Improvement */}
-      {!isAllocated && teamsWithImprovement.length > 0 && (
+      {!(isAllocated || allocationsCompleted) && teamsWithImprovement.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Teams Earning Improvement Cards</CardTitle>
@@ -181,6 +239,10 @@ export const ImprovementPhase = () => {
                     <Select
                       value={allocatedCardId?.toString() || ''}
                       onValueChange={(value) => handleAllocate(parseInt(value), team.id)}
+                      disabled={
+                        currentRole === 'STUDENT' && 
+                        (isReadOnly || team.id !== currentTeamId || activePhase !== 'improvement')
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select improvement card" />
@@ -199,6 +261,25 @@ export const ImprovementPhase = () => {
                         ))}
                       </SelectContent>
                     </Select>
+
+                    {currentRole === 'STUDENT' && team.id === currentTeamId && activePhase === 'improvement' && !isReadOnly && (
+                      <Button
+                        size="sm"
+                        className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                        disabled={!allocatedCardId}
+                        onClick={() => {
+                          if (allocatedCardId) {
+                            claimImprovementCard(parseInt(allocatedCardId), team.id);
+                            toast({
+                              title: "Card Claimed",
+                              description: "Your team has claimed this improvement card successfully."
+                            });
+                          }
+                        }}
+                      >
+                        Claim Card
+                      </Button>
+                    )}
                   </div>
                 );
               })}
@@ -208,7 +289,7 @@ export const ImprovementPhase = () => {
       )}
 
       {/* Available Cards Display */}
-      {!isAllocated && (
+      {!(isAllocated || allocationsCompleted) && (
         <Card>
           <CardHeader>
             <CardTitle>Available Improvement Cards</CardTitle>
@@ -254,8 +335,65 @@ export const ImprovementPhase = () => {
         </Card>
       )}
 
+      {/* Allocated Cards Summary (once confirmed) */}
+      {(isAllocated || allocationsCompleted) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Allocated Improvement Cards - Round {gameState.currentRound}</CardTitle>
+            <CardDescription>
+              Improvement cards assigned to teams for this round
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {gameState.teams.map(team => {
+                const teamCards = gameState.improvementCards.filter(c => 
+                  c.availableForTeam === team.id && c.allocatedInRound === gameState.currentRound
+                );
+                
+                return (
+                  <div key={team.id} className="p-4 border rounded-lg space-y-3 bg-card/50">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: team.color }}
+                      />
+                      <span className="font-semibold">{team.name}</span>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {teamCards.length > 0 ? (
+                        teamCards.map(card => (
+                          <div key={card.id} className="flex gap-2 items-center p-2 bg-background border rounded">
+                            <div className="flex gap-1">
+                              <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
+                                {getIconElement(card.icon1)}
+                              </div>
+                              {card.icon2 && (
+                                <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
+                                  {getIconElement(card.icon2)}
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground text-center">
+                              {card.id < 0 ? 'Product Card' : 'Improvement Card'}
+                            </span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No cards allocated this round</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Next Round Preview - Only show if not Round 4 */}
-      {isAllocated && nextRoundCards.length > 0 && gameState.currentRound < 4 && (
+      {(isAllocated || allocationsCompleted) && nextRoundCards.length > 0 && gameState.currentRound < 4 && (
         <Card className="border-primary/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -292,7 +430,7 @@ export const ImprovementPhase = () => {
       )}
 
       {/* Teams Without Improvement (Auto-assigned Product cards) - Only show before confirmation */}
-      {teamsWithoutImprovement.length > 0 && !isAllocated && (
+      {teamsWithoutImprovement.length > 0 && !(isAllocated || allocationsCompleted) && (
         <Card>
           <CardHeader>
             <CardTitle>Teams Receiving Product Cards</CardTitle>
@@ -323,7 +461,7 @@ export const ImprovementPhase = () => {
         </Card>
       )}
 
-      {!isAllocated && (
+      {!(isAllocated || allocationsCompleted) && currentRole !== 'STUDENT' && (
         <div className="flex justify-end">
           <Button
             onClick={handleConfirmAllocations}

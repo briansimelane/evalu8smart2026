@@ -7,7 +7,10 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useGame } from '@/contexts/GameContext';
 import { ICON_EFFECTS } from '@/data/improvements';
 import { toast } from 'sonner';
-import { Save, TrendingUp, TrendingDown, Package, FlaskConical, Truck, Box, Wrench, Microscope, CirclePlus, CircleMinus } from 'lucide-react';
+import { Save, TrendingUp, TrendingDown, Package, FlaskConical, Truck, Box, Wrench, Microscope, CirclePlus, CircleMinus, CheckCircle2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+
+import { useSession } from '@/contexts/SessionContext';
 
 export interface PlanningPhaseRef {
   loadTeamPlan: (roundNumber: number, teamId: string) => void;
@@ -15,6 +18,9 @@ export interface PlanningPhaseRef {
 
 export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const { gameState, getCurrentRound, addRoundData, getCombinations } = useGame();
+  const { currentRole, currentTeamId, isReadOnly } = useSession();
+  const activePhase = gameState?.currentPhase || 'planning';
+  const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'planning');
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedCombination, setSelectedCombination] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('');
@@ -22,8 +28,20 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const [cardUsages, setCardUsages] = useState<Record<number, 'use' | 'product' | 'none'>>({});
   const [animatingValues, setAnimatingValues] = useState<Record<string, boolean>>({});
   const previousValues = useRef<Record<string, number>>({});
+  const [isEditingSubmittedPlan, setIsEditingSubmittedPlan] = useState(false);
 
-  if (!gameState) return null;
+  const currentRound = gameState ? getCurrentRound() : 1;
+  const currentCombinations = gameState ? getCombinations() : [];
+
+  useEffect(() => {
+    setIsEditingSubmittedPlan(false);
+  }, [selectedTeam, currentRound]);
+
+  useEffect(() => {
+    if (currentRole === 'STUDENT' && currentTeamId) {
+      setSelectedTeam(currentTeamId);
+    }
+  }, [currentRole, currentTeamId]);
 
   const getIconElement = (iconType: string) => {
     if (iconType === 'Price and Product') {
@@ -59,12 +77,10 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   };
 
   // Helper to normalize allocation round (treat initial/undefined as round 0)
-  const getAllocatedRound = (card: typeof gameState.improvementCards[0]) => {
+  const getAllocatedRound = (card: any) => {
     return card.isInitial || card.allocatedInRound == null ? 0 : Number(card.allocatedInRound);
   };
 
-  const currentRound = getCurrentRound();
-  const currentCombinations = getCombinations();
   const combos = [...new Set(currentCombinations.map(c => c.combination))];
   const positions = selectedCombination
     ? currentCombinations.filter(c => c.combination === parseInt(selectedCombination)).map(c => c.position)
@@ -74,11 +90,11 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     c => c.combination === parseInt(selectedCombination) && c.position === parseInt(selectedPosition)
   );
 
-  const existingRoundData = gameState.rounds
-    .find(r => r.roundNumber === (editingRound || currentRound))
-    ?.teamData[selectedTeam];
+  const existingRoundData = gameState
+    ? gameState.rounds.find(r => r.roundNumber === (editingRound || currentRound))?.teamData[selectedTeam]
+    : undefined;
   
-  const allTeamCards = selectedTeam 
+  const allTeamCards = selectedTeam && gameState
     ? (editingRound !== null && existingRoundData?.improvementCardId !== undefined
         ? gameState.improvementCards.filter(card => card.id === existingRoundData.improvementCardId)
         : gameState.improvementCards.filter(card => card.availableForTeam === selectedTeam))
@@ -130,9 +146,11 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     }
   });
 
-  const currentRoundData = gameState.rounds.find(r => r.roundNumber === currentRound);
+  const currentRoundData = gameState ? gameState.rounds.find(r => r.roundNumber === currentRound) : undefined;
   const teamsWithData = new Set(Object.keys(currentRoundData?.teamData || {}));
-  const selectableTeams = editingRound ? gameState.teams : gameState.teams.filter(t => !teamsWithData.has(t.id));
+  const selectableTeams = gameState
+    ? (editingRound ? gameState.teams : gameState.teams.filter(t => !teamsWithData.has(t.id)))
+    : [];
 
   const calculatedPrice = selectedComboData ? 5 + selectedComboData.price + improvementPriceEffect : 0;
   const productsAvailable = (selectedComboData?.products || 0) + improvementProductEffect;
@@ -165,6 +183,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   }, [calculatedPrice, productsAvailable, improvementPoints, researchPoints, logisticsPoints]);
 
   const handleSubmitPlan = () => {
+    if (!gameState) return;
     if (!canSubmit) {
       toast.error('Please fill in all required fields');
       return;
@@ -214,9 +233,11 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     setSelectedPosition('');
     setEditingRound(null);
     setCardUsages({});
+    setIsEditingSubmittedPlan(false);
   };
 
   const loadTeamPlan = (roundNumber: number, teamId: string) => {
+    if (!gameState) return;
     const round = gameState.rounds.find(r => r.roundNumber === roundNumber);
     const teamData = round?.teamData[teamId];
     
@@ -234,6 +255,136 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     loadTeamPlan
   }));
 
+  if (!gameState) return null;
+
+  const submittedPlan = currentRoundData?.teamData[selectedTeam];
+  const isPlanSubmitted = !!submittedPlan;
+
+  if (isPlanSubmitted && !isEditingSubmittedPlan) {
+    const teamObj = gameState.teams.find(t => t.id === selectedTeam);
+    // Find used improvement cards
+    const usedCardsList = gameState.improvementCards.filter(card => {
+      const usage = submittedPlan.cardUsages?.[card.id] || (submittedPlan.improvementCardId === card.id ? (submittedPlan.improvementCardUsage || 'use') : 'none');
+      return usage === 'use' || usage === 'product';
+    });
+
+    return (
+      <Card className="border-emerald-500 bg-emerald-500/[0.02]">
+        <CardHeader className="border-b border-emerald-500/10">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-500 animate-pulse" />
+                Round {currentRound} Plan Submitted
+              </CardTitle>
+              <CardDescription>
+                Your strategy plan for {teamObj?.name || 'your team'} has been recorded for this round.
+              </CardDescription>
+            </div>
+            {!isReadOnlyMode && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditingSubmittedPlan(true)}
+                className="border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+              >
+                <Wrench className="mr-1.5 h-3.5 w-3.5" />
+                Edit Plan
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Strategy Choices */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Strategy Choices</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center bg-card p-3 rounded-lg border border-border">
+                  <span className="text-sm text-muted-foreground">Combination Chosen</span>
+                  <Badge variant="secondary" className="text-sm font-bold font-mono">
+                    Combo {submittedPlan.combination}
+                  </Badge>
+                </div>
+                <div className="flex justify-between items-center bg-card p-3 rounded-lg border border-border">
+                  <span className="text-sm text-muted-foreground">Position Chosen</span>
+                  <Badge variant="secondary" className="text-sm font-bold font-mono">
+                    Position {submittedPlan.position}
+                  </Badge>
+                </div>
+                <div className="flex justify-between items-center bg-card p-3 rounded-lg border border-border">
+                  <span className="text-sm text-muted-foreground">Product Price Set</span>
+                  <span className="text-base font-bold text-emerald-600 font-mono">
+                    ${submittedPlan.price.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Effects / Outputs */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Plan Effects (This Round)</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-card p-3 rounded-lg border border-border flex flex-col items-center justify-center text-center">
+                  <Package className="h-5 w-5 text-blue-500 mb-1" />
+                  <span className="text-xs text-muted-foreground">Products Produced</span>
+                  <span className="text-lg font-bold text-foreground font-mono">{submittedPlan.productsProduced}</span>
+                </div>
+                <div className="bg-card p-3 rounded-lg border border-border flex flex-col items-center justify-center text-center">
+                  <Microscope className="h-5 w-5 text-purple-500 mb-1" />
+                  <span className="text-xs text-muted-foreground">Research Points</span>
+                  <span className="text-lg font-bold text-foreground font-mono">+{submittedPlan.researchIcons}</span>
+                </div>
+                <div className="bg-card p-3 rounded-lg border border-border flex flex-col items-center justify-center text-center">
+                  <Truck className="h-5 w-5 text-amber-500 mb-1" />
+                  <span className="text-xs text-muted-foreground">Logistics Points</span>
+                  <span className="text-lg font-bold text-foreground font-mono">+{submittedPlan.logisticsIcons}</span>
+                </div>
+                <div className="bg-card p-3 rounded-lg border border-border flex flex-col items-center justify-center text-center">
+                  <Wrench className="h-5 w-5 text-teal-500 mb-1" />
+                  <span className="text-xs text-muted-foreground">Improvement Points</span>
+                  <span className="text-lg font-bold text-foreground font-mono">+{submittedPlan.improvementCards}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Used Improvement Cards */}
+          <div className="space-y-3 pt-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Improvement Cards Used</h3>
+            {usedCardsList.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">No improvement cards were used in this plan.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {usedCardsList.map(card => {
+                  const usage = submittedPlan.cardUsages?.[card.id] || (submittedPlan.improvementCardId === card.id ? (submittedPlan.improvementCardUsage || 'use') : 'none');
+                  return (
+                    <div key={card.id} className="flex items-center gap-3 bg-card p-3 rounded-lg border border-border">
+                      <div className="flex gap-1.5 p-1.5 bg-muted rounded">
+                        {getIconElement(card.icon1)}
+                        {!(card.id < 0) && getIconElement(card.icon2)}
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-foreground">
+                          Improvement Card
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {usage === 'use' 
+                            ? 'Used for special effects & price changes' 
+                            : 'Used as +1 Product production'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -248,7 +399,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="team">Select Team</Label>
-            <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+            <Select value={selectedTeam} onValueChange={setSelectedTeam} disabled={currentRole === 'STUDENT'}>
               <SelectTrigger id="team">
                 <SelectValue placeholder="Choose a team" />
               </SelectTrigger>
@@ -270,7 +421,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
 
           <div className="space-y-2">
             <Label htmlFor="combination">Combination</Label>
-            <Select value={selectedCombination} onValueChange={setSelectedCombination}>
+            <Select value={selectedCombination} onValueChange={setSelectedCombination} disabled={isReadOnlyMode}>
               <SelectTrigger id="combination">
                 <SelectValue placeholder="Select combination" />
               </SelectTrigger>
@@ -289,7 +440,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
             <Select
               value={selectedPosition}
               onValueChange={setSelectedPosition}
-              disabled={!selectedCombination}
+              disabled={!selectedCombination || isReadOnlyMode}
             >
               <SelectTrigger id="position">
                 <SelectValue placeholder="Select position" />
@@ -384,6 +535,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                              value={currentUsage} 
                              onValueChange={(v) => setCardUsages(prev => ({ ...prev, [card.id]: v as any }))}
                              className="gap-1"
+                             disabled={isReadOnlyMode}
                            >
                              <div className="flex items-center space-x-1 p-1 border rounded hover:bg-accent/50 cursor-pointer">
                                <RadioGroupItem value="use" id={`use-${card.id}`} className="h-3 w-3" />
@@ -450,7 +602,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
         )}
 
         <div className="flex gap-2 pt-4">
-          <Button onClick={handleSubmitPlan} disabled={!canSubmit} className="flex-1">
+          <Button onClick={handleSubmitPlan} disabled={!canSubmit || isReadOnlyMode} className="flex-1">
             <Save className="mr-2 h-4 w-4" />
             {editingRound ? 'Update Plan' : 'Submit Plan'}
           </Button>

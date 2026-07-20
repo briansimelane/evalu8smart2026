@@ -5,6 +5,20 @@ export interface Team {
   id: string;
   name: string;
   color: string;
+  ceoName?: string;
+  ceoPin?: string;
+  status?: string;
+}
+
+export type UserRole = 'ADMIN' | 'FACILITATOR' | 'STUDENT';
+
+export interface SimulationClass {
+  id: string;
+  name: string;
+  facilitatorCode: string;
+  teamCodes: Record<string, string>; // teamId -> accessCode
+  gameState: GameState | null;
+  createdAt: string;
 }
 
 export interface Technology {
@@ -98,6 +112,7 @@ export interface GameState {
   teamLogisticsProgress: Record<string, TeamLogisticsProgress>; // teamId -> logistics progress
   logisticsAllocatedByRound: Record<number, Record<string, number>>; // roundNumber -> teamId -> icons spent
   combinationsData?: Combination[]; // custom combination overrides
+  currentPhase?: 'PLANNING' | 'PRODUCTION';
   createdAt: Date;
   updatedAt: Date;
 }

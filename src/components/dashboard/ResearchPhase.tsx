@@ -22,10 +22,21 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
   '4G': Signal,
 };
 
+import { useSession } from '@/contexts/SessionContext';
+
 export const ResearchPhase = () => {
   const { gameState, allocateResearch, getTeamResearchProgress, getTechnologyCostForTeam, calculatePlayOrder } = useGame();
+  const { currentRole, currentTeamId, isReadOnly } = useSession();
+  const activePhase = gameState?.currentPhase || 'planning';
+  const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'innovation');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [allocations, setAllocations] = useState<Record<string, number>>({});
+  
+  useEffect(() => {
+    if (currentRole === 'STUDENT' && currentTeamId) {
+      setSelectedTeam(currentTeamId);
+    }
+  }, [currentRole, currentTeamId]);
   const [allocatedThisRound, setAllocatedThisRound] = useState<Record<string, number>>({});
   const [playOrder, setPlayOrder] = useState<typeof gameState.teams>([]);
 
@@ -251,7 +262,7 @@ export const ResearchPhase = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Select Team</Label>
-                  <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+                  <Select value={selectedTeam} onValueChange={setSelectedTeam} disabled={currentRole === 'STUDENT'}>
                     <SelectTrigger>
                       <SelectValue placeholder="Choose a team" />
                     </SelectTrigger>
@@ -411,7 +422,7 @@ export const ResearchPhase = () => {
                           value={allocations[tech.name] || ''}
                           onChange={(e) => handleAllocationChange(tech.name, e.target.value)}
                           placeholder="0"
-                          disabled={isCompleted || availableThisTeam <= 0}
+                          disabled={isCompleted || availableThisTeam <= 0 || isReadOnlyMode}
                           className="h-8"
                         />
                       </div>
@@ -446,12 +457,12 @@ export const ResearchPhase = () => {
                   <div className="flex gap-2">
                     <Button
                       onClick={handleConfirmAllocations}
-                      disabled={totalAllocated === 0 || remainingIcons < 0}
+                      disabled={totalAllocated === 0 || remainingIcons < 0 || isReadOnlyMode}
                       className="flex-1"
                     >
                       Confirm Allocations
                     </Button>
-                    <Button onClick={handleClearAll} variant="outline">
+                    <Button onClick={handleClearAll} variant="outline" disabled={isReadOnlyMode}>
                       Clear All
                     </Button>
                   </div>

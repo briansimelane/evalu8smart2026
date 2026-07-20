@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -18,10 +18,19 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
   '4G': Signal,
 };
 
+import { useSession } from '@/contexts/SessionContext';
+
 export const SalesPhase = () => {
   const { gameState, addRoundData, getCurrentRound, getTeamLogisticsProgress, calculatePlayOrder } = useGame();
+  const { currentRole, currentTeamId, isReadOnly } = useSession();
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedCustomers, setSelectedCustomers] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    if (currentRole === 'STUDENT' && currentTeamId) {
+      setSelectedTeam(currentTeamId);
+    }
+  }, [currentRole, currentTeamId]);
 
   if (!gameState) return null;
 
@@ -46,12 +55,32 @@ export const SalesPhase = () => {
     });
   }
   
-  // Get teams that have submitted production plans but no sales data yet
-  const availableTeams = gameState.teams.filter(t => {
-    const hasData = teamsWithData.has(t.id);
-    const teamData = currentRoundData?.teamData[t.id];
-    return hasData && teamData && teamData.productsProduced !== undefined && !teamData.customersSold;
-  });
+  // Get all teams that have completed their production plans
+  const teamsWithPlans = useMemo(() => {
+    return gameState.teams.filter(t => {
+      const hasData = teamsWithData.has(t.id);
+      const teamData = currentRoundData?.teamData[t.id];
+      return hasData && teamData && teamData.productsProduced !== undefined;
+    });
+  }, [gameState.teams, teamsWithData, currentRoundData]);
+
+  // Load saved sales into selectedCustomers when selectedTeam changes
+  useEffect(() => {
+    if (selectedTeam && currentRoundData?.teamData[selectedTeam]?.customersSold) {
+      const sold = currentRoundData.teamData[selectedTeam].customersSold || [];
+      const grouped: Record<string, string[]> = {};
+      
+      REGION_CUSTOMERS.forEach(({ region, customers }) => {
+        const matching = sold.filter(id => customers.some(c => c.id === id));
+        if (matching.length > 0) {
+          grouped[region] = matching;
+        }
+      });
+      setSelectedCustomers(grouped);
+    } else {
+      setSelectedCustomers({});
+    }
+  }, [selectedTeam, currentRoundData]);
 
   const selectedTeamData = selectedTeam && currentRoundData?.teamData[selectedTeam];
   const teamName = selectedTeam ? gameState.teams.find(t => t.id === selectedTeam)?.name : '';
@@ -73,10 +102,36 @@ export const SalesPhase = () => {
   const productsAvailable = selectedTeamData?.productsProduced || 0;
   const salesExceedProduction = totalProductsToSell > productsAvailable;
 
+  const isSalesSubmitted = selectedTeamData && !!selectedTeamData.customersSold;
+
+  const allTeamsHavePlans = useMemo(() => {
+    return gameState.teams.every(team => 
+      teamsWithPlans.some(t => t.id === team.id)
+    );
+  }, [gameState.teams, teamsWithPlans]);
+
+  const activeSalesTeam = useMemo(() => {
+    return playOrder.find(team => {
+      const teamData = currentRoundData?.teamData[team.id];
+      const produced = teamData?.productsProduced || 0;
+      return produced > 0 && !teamData?.customersSold;
+    });
+  }, [playOrder, currentRoundData]);
+
+  const isMyTurn = currentRole !== 'STUDENT' || (currentTeamId === activeSalesTeam?.id);
+  const activePhase = gameState?.currentPhase || 'planning';
+  const isReadOnlyMode = isReadOnly || 
+                          (currentRole === 'STUDENT' && !allTeamsHavePlans) || 
+                          (currentRole === 'STUDENT' && !isMyTurn) || 
+                          (currentRole === 'STUDENT' && isSalesSubmitted) ||
+                          (currentRole === 'STUDENT' && activePhase !== 'sales');
+
   const isCustomerEligible = (customer: Customer): boolean => {
     if (!selectedTeamData) return false;
     
-    if (soldCustomers.has(customer.id)) return false;
+    // Eligible if not sold by others (we allow toggling our own sold customers)
+    const isSoldByOther = soldCustomers.has(customer.id) && !selectedTeamData.customersSold?.includes(customer.id);
+    if (isSoldByOther) return false;
     
     if (customer.type === 'price') {
       return selectedTeamData.price <= (customer.price || 0);
@@ -134,7 +189,12 @@ export const SalesPhase = () => {
     setSelectedCustomers({});
   };
 
-  const allTeamsSubmitted = availableTeams.length === 0;
+  const allTeamsSubmitted = gameState.teams.every(t => {
+    const teamData = currentRoundData?.teamData[t.id];
+    if (!teamData) return false; // no plan yet
+    const produced = teamData.productsProduced || 0;
+    return produced > 0 ? Array.isArray(teamData.customersSold) : true;
+  });
 
   // Get regions with sales for status display
   const getRegionSalesStatus = () => {
@@ -161,7 +221,7 @@ export const SalesPhase = () => {
 
   return (
     <div className="space-y-6">
-      {!allTeamsSubmitted && (
+      {true && (
         <Card>
           <CardHeader>
             <CardTitle>Round {currentRound} Sales - Sell to Customers</CardTitle>
@@ -187,7 +247,7 @@ export const SalesPhase = () => {
                 ))}
               </div>
             </div>
-            {availableTeams.length === 0 && (
+            {teamsWithPlans.length === 0 && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
@@ -196,19 +256,46 @@ export const SalesPhase = () => {
               </Alert>
             )}
 
-            {availableTeams.length > 0 && (
+            {currentRole === 'STUDENT' && !allTeamsHavePlans && teamsWithPlans.length > 0 && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Waiting for all teams to submit plans. All teams must submit production plans before the sales phase can begin.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {currentRole === 'STUDENT' && allTeamsHavePlans && !isSalesSubmitted && !isMyTurn && activeSalesTeam && (
+              <Alert className="border-amber-500/50 bg-amber-500/10">
+                <AlertTriangle className="h-4 w-4 text-amber-600 animate-pulse" />
+                <AlertDescription className="text-amber-800 dark:text-amber-200">
+                  <strong>It is not your turn yet.</strong> The active turn belongs to <strong>{activeSalesTeam.name}</strong>. Please wait for them to finish their sales.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {currentRole === 'STUDENT' && allTeamsHavePlans && isSalesSubmitted && (
+              <Alert className="border-emerald-500/50 bg-emerald-500/10">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <AlertDescription className="text-emerald-800 dark:text-emerald-200">
+                  <strong>Your sales have been submitted.</strong> You sold {totalProductsToSell} products for a total of ${calculatedRevenue.toLocaleString()} revenue. Waiting for other teams to complete their sales.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {teamsWithPlans.length > 0 && (
               <>
                 <div className="space-y-2">
                   <label htmlFor="team-select" className="text-sm font-medium">Select Team</label>
                   <Select value={selectedTeam} onValueChange={(value) => {
                     setSelectedTeam(value);
                     setSelectedCustomers({});
-                  }}>
+                  }} disabled={currentRole === 'STUDENT'}>
                     <SelectTrigger id="team-select">
                       <SelectValue placeholder="Choose a team" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableTeams.map(team => (
+                      {teamsWithPlans.map(team => (
                         <SelectItem key={team.id} value={team.id}>
                           <div className="flex items-center gap-2">
                             <div
@@ -301,7 +388,7 @@ export const SalesPhase = () => {
                                   .sort((a, b) => a.position - b.position)
                                   .map(customer => {
                                     const isEligible = isCustomerEligible(customer);
-                                    const isSold = soldCustomers.has(customer.id);
+                                    const isSoldByOther = soldCustomers.has(customer.id) && !selectedTeamData?.customersSold?.includes(customer.id);
                                     const isSelected = selectedCustomers[regionName]?.includes(customer.id);
                                     const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
 
@@ -309,13 +396,13 @@ export const SalesPhase = () => {
                                       <div
                                         key={customer.id}
                                         className={`relative flex items-center justify-center w-12 h-12 rounded-lg transition-all ${
-                                          isSold ? 'opacity-40 cursor-not-allowed' :
+                                          isSoldByOther ? 'opacity-40 cursor-not-allowed' :
                                           isSelected ? 'ring-2 ring-primary ring-offset-2' :
                                           isEligible ? 'cursor-pointer hover:scale-105' :
                                           'opacity-40 cursor-not-allowed'
                                         }`}
                                         onClick={() => {
-                                          if (isEligible && !isSold) {
+                                          if (isEligible && !isSoldByOther && !isReadOnlyMode) {
                                             toggleCustomer(regionName, customer.id);
                                           }
                                         }}
@@ -350,24 +437,21 @@ export const SalesPhase = () => {
                     <div className="flex gap-3">
                       <Button 
                         onClick={handleSubmit} 
-                        className="flex-1" 
                         size="lg"
-                        disabled={salesExceedProduction || totalProductsToSell === 0}
+                        disabled={salesExceedProduction || totalProductsToSell === 0 || isReadOnlyMode}
+                        className="flex-1"
                       >
                         <Save className="mr-2 h-4 w-4" />
-                        Save Sales Data
+                        Submit Sales
                       </Button>
-                      <Button 
+                      <Button
                         onClick={() => {
-                          if (!selectedTeam || !selectedTeamData) return;
-                          
                           const updatedData = {
                             ...selectedTeamData,
                             customersSold: [],
                             revenue: 0,
-                            totalMoney: selectedTeamData.totalMoney || 0
+                            totalMoney: (selectedTeamData.totalMoney || 0) - (selectedTeamData.revenue || 0)
                           };
-                          
                           addRoundData(currentRound, selectedTeam, updatedData);
                           toast.success(`Zero sales recorded for ${teamName}`);
                           setSelectedTeam('');
@@ -375,6 +459,7 @@ export const SalesPhase = () => {
                         }}
                         variant="outline"
                         size="lg"
+                        disabled={isReadOnlyMode}
                       >
                         Record Zero Sales
                       </Button>

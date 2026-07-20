@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +10,7 @@ import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, Wifi, Gamepa
 import { useToast } from '@/hooks/use-toast';
 import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
+import { useSession } from '@/contexts/SessionContext';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -22,9 +23,18 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
 
 export const LogisticsPhase = () => {
   const { gameState, allocateLogistics, getTeamLogisticsProgress, canExpandToRegion, isRegionFull, calculatePlayOrder } = useGame();
+  const { currentRole, currentTeamId, isReadOnly } = useSession();
+  const activePhase = gameState?.currentPhase || 'planning';
+  const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'expansion');
   const { toast } = useToast();
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [allocations, setAllocations] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (currentRole === 'STUDENT' && currentTeamId) {
+      setSelectedTeam(currentTeamId);
+    }
+  }, [currentRole, currentTeamId]);
 
   if (!gameState) return null;
 
@@ -198,7 +208,7 @@ export const LogisticsPhase = () => {
         {/* Team Selection */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Select Team</label>
-          <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+          <Select value={selectedTeam} onValueChange={setSelectedTeam} disabled={currentRole === 'STUDENT'}>
             <SelectTrigger>
               <SelectValue placeholder="Choose a team..." />
             </SelectTrigger>
@@ -389,7 +399,7 @@ export const LogisticsPhase = () => {
                               value={allocations[region.name] || ''}
                               onChange={(e) => handleAllocationChange(region.name, e.target.value)}
                               className="w-20"
-                              placeholder="0"
+                              disabled={isReadOnlyMode}
                             />
                             <span className="text-xs text-muted-foreground">
                               icons (need {Math.max(0, region.logisticsCost - currentInvestment)} more to complete)
@@ -446,7 +456,7 @@ export const LogisticsPhase = () => {
             <div className="flex gap-2 pt-4">
               <Button
                 onClick={handleConfirm}
-                disabled={totalAllocated === 0 || totalAllocated > availableThisTeam}
+                disabled={totalAllocated === 0 || totalAllocated > availableThisTeam || isReadOnlyMode}
                 className="flex-1"
               >
                 Confirm Allocation ({totalAllocated} icons)
@@ -454,7 +464,7 @@ export const LogisticsPhase = () => {
               <Button
                 onClick={handleClear}
                 variant="outline"
-                disabled={totalAllocated === 0}
+                disabled={totalAllocated === 0 || isReadOnlyMode}
               >
                 Clear
               </Button>
