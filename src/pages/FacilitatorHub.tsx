@@ -47,7 +47,7 @@ export const FacilitatorHub: React.FC = () => {
 
       // Map to actual Team interface
       const teams: Team[] = activeConfigs.map((t, idx) => ({
-        id: `team_${idx + 1}_${Date.now()}`,
+        id: `team_${idx + 1}`,
         name: t.name,
         color: t.color
       }));
@@ -305,8 +305,11 @@ export const FacilitatorHub: React.FC = () => {
                                     </TableHeader>
                                     <TableBody>
                                       {cls.gameState?.teams ? (
-                                        cls.gameState.teams.map((team) => {
-                                          const code = cls.teamCodes[team.id];
+                                        cls.gameState.teams.map((team, idx) => {
+                                          const code = cls.teamCodes?.[team.id] || 
+                                                        cls.teamCodes?.[`team_${idx + 1}`] || 
+                                                        cls.teamCodes?.[`${idx + 1}`] || 
+                                                        (cls.teamCodes ? Object.values(cls.teamCodes)[idx] : undefined);
                                           const hasCeo = !!team.ceoName;
                                           return (
                                             <TableRow key={team.id} className="border-border hover:bg-muted/10 transition-colors">
