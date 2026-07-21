@@ -51,12 +51,24 @@ export const useGame = () => {
 export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const { currentClassId } = useSession();
+  const { currentClassId, activeClass } = useSession();
   
   // Tracks if the state update was initiated from the Firestore snapshot listener
   const isIncomingSnapshot = useRef(false);
+  const loadedForClassId = useRef<string | null>(null);
+  const dirty = useRef(false);
+
+  const mutateGameState = useCallback((updater: (prev: GameState | null) => GameState | null) => {
+    dirty.current = true;
+    setGameState(updater);
+  }, []);
 
   useEffect(() => {
+    setGameState(null);
+    setIsLoaded(false);
+    loadedForClassId.current = null;
+    dirty.current = false;
+
     if (!currentClassId) {
       let isMounted = true;
       const loadState = async () => {
@@ -67,6 +79,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
             const data = snap.data() as GameState;
             if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
             if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
+            loadedForClassId.current = null;
+            isIncomingSnapshot.current = true;
             setGameState(data);
           } else {
             setGameState(null);
@@ -80,23 +94,37 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       loadState();
       return () => { isMounted = false; };
     } else {
-      const docRef = doc(db, 'classes', currentClassId);
-      const unsubscribe = onSnapshot(docRef, (snap) => {
+      const stateDocRef = doc(db, 'classes', currentClassId, 'state', 'game');
+      const unsubscribe = onSnapshot(stateDocRef, (snap) => {
         if (snap.exists()) {
-          const classData = snap.data() as SimulationClass;
-          const data = classData.gameState;
+          const stateData = snap.data();
+          const data = stateData?.gameState as GameState;
           if (data) {
             if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
             if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
             
-            // Mark as server update to bypass the local write useEffect trigger
+            loadedForClassId.current = currentClassId;
             isIncomingSnapshot.current = true;
             setGameState(data);
           } else {
             setGameState(null);
           }
         } else {
-          setGameState(null);
+          // Fallback check on legacy root gameState for unmigrated classes
+          getDoc(doc(db, 'classes', currentClassId)).then(classSnap => {
+            if (classSnap.exists()) {
+              const legacyData = classSnap.data() as SimulationClass;
+              if (legacyData.gameState) {
+                loadedForClassId.current = currentClassId;
+                isIncomingSnapshot.current = true;
+                setGameState(legacyData.gameState);
+              } else {
+                setGameState(null);
+              }
+            } else {
+              setGameState(null);
+            }
+          });
         }
         setIsLoaded(true);
       }, (error) => {
@@ -107,7 +135,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   }, [currentClassId]);
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || !gameState) return;
     
     // Bypass writing back if this update originated from the database snapshot
     if (isIncomingSnapshot.current) {
@@ -116,27 +144,34 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     }
 
     if (!currentClassId) {
+      if (!dirty.current) return;
+      dirty.current = false;
+
       const docRef = doc(db, 'evalu8smart_sessions', 'default_game');
-      if (gameState) {
-        const safeState = { ...gameState };
-        if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
-        safeState.updatedAt = new Date().toISOString() as any;
-        
-        setDoc(docRef, safeState)
-          .catch(e => console.error("Failed to save game to Firebase:", e));
-      } else {
-        deleteDoc(docRef).catch(e => console.error("Failed to delete game from Firebase:", e));
-      }
+      const safeState = { ...gameState };
+      if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
+      safeState.updatedAt = new Date().toISOString() as any;
+      
+      setDoc(docRef, safeState)
+        .catch(e => console.error("Failed to save game to Firebase:", e));
     } else {
-      const docRef = doc(db, 'classes', currentClassId);
-      if (gameState) {
-        const safeState = { ...gameState };
-        if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
-        safeState.updatedAt = new Date().toISOString() as any;
-        
-        setDoc(docRef, { gameState: safeState }, { merge: true })
+      // HARD GUARD: never write a state loaded from or belonging to a different class
+      if (loadedForClassId.current !== currentClassId) return;
+
+      if (!dirty.current) return;
+      dirty.current = false;
+
+      const safeState = { ...gameState };
+      if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
+      safeState.updatedAt = new Date().toISOString() as any;
+      
+      const timer = setTimeout(() => {
+        const stateDocRef = doc(db, 'classes', currentClassId, 'state', 'game');
+        setDoc(stateDocRef, { gameState: safeState })
           .catch(e => console.error("Failed to save class game to Firebase:", e));
-      }
+      }, 400);
+
+      return () => clearTimeout(timer);
     }
   }, [gameState, isLoaded, currentClassId]);
 
@@ -248,13 +283,13 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    setGameState(newGame);
+    mutateGameState(() => newGame);
   };
 
   const addRoundData = (roundNumber: number, teamId: string, data: TeamRoundData) => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       const rounds = [...prev.rounds];
@@ -287,7 +322,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const updatePatent = (techName: string, teamId: string) => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       const newPatents = {
@@ -335,10 +370,14 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const resetGame = () => {
-    if (gameState?.teams) {
-      initializeGame(gameState.teams);
+    const teamsToUse: Team[] = (activeClass?.teamRegistry && activeClass.teamRegistry.length > 0)
+      ? activeClass.teamRegistry.map(t => ({ id: t.id, name: t.name, color: t.color }))
+      : (gameState?.teams || []);
+
+    if (teamsToUse.length > 0) {
+      initializeGame(teamsToUse);
     } else {
-      setGameState(null);
+      mutateGameState(() => null);
     }
   };
 
@@ -371,7 +410,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
     // Persist pool for this round
     const selectedIds = selected.map(c => c.id);
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
       return {
         ...prev,
@@ -406,7 +445,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     const selected = shuffled.slice(0, Math.max(0, numEligibleTeams));
     const selectedIds = selected.map(c => c.id);
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
       return {
         ...prev,
@@ -424,7 +463,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const allocateImprovementCards = (allocations: Record<number, string>) => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       const newCards = [...prev.improvementCards];
@@ -483,7 +522,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const advanceRound = () => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       return {
@@ -498,7 +537,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const updatePhase = (phase: string) => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       return {
@@ -512,7 +551,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const claimImprovementCard = (cardId: number, teamId: string) => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       // Check if this team already claimed a card this round
@@ -570,7 +609,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const markImprovementCardUsed = (cardId: number) => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       const updatedCards = prev.improvementCards.map(card =>
@@ -588,7 +627,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const clearNonInitialCards = () => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       // Keep only initial cards
@@ -634,7 +673,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     const selectedIds = selected.map(c => c.id);
 
     // Store the preview for next round
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
       return {
         ...prev,
@@ -652,7 +691,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const allocateResearch = (teamId: string, technology: string, points: number) => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       const tech = prev.technologies[technology];
@@ -811,7 +850,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const allocateLogistics = useCallback((teamId: string, regionName: string, points: number) => {
     if (!gameState) return;
 
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
 
       const region = prev.regionLogistics[regionName];
@@ -931,7 +970,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
   const updateCombinations = useCallback((data: Combination[] | null) => {
     if (!gameState) return;
-    setGameState(prev => {
+    mutateGameState(prev => {
       if (!prev) return prev;
       const newState = { ...prev };
       if (data) {

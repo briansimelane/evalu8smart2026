@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useGame } from '@/contexts/GameContext';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, Wrench, Microscope, Truck, ShoppingCart, PackageX, TrendingUp, ChevronDown, ChevronRight, MapPin, Award, Download, Plus, Minus, CheckCircle, XCircle, FlaskConical, Wifi, Battery, Gamepad2, MapPinned, Nfc, Radio, Trophy, Medal, Box } from 'lucide-react';
+import { Package, Wrench, Microscope, Truck, ShoppingCart, PackageX, TrendingUp, ChevronDown, ChevronRight, MapPin, Award, Download, Plus, Minus, CheckCircle, XCircle, FlaskConical, Wifi, Battery, Gamepad2, MapPinned, Nfc, Radio, Trophy, Medal, Box, Users } from 'lucide-react';
 import { TEAM_COLORS } from '@/data/combinations';
 import { Button } from '@/components/ui/button';
 import { useState, useRef } from 'react';
@@ -11,10 +11,13 @@ import { useReactToPrint } from 'react-to-print';
 import { IconType } from '@/data/improvements';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
+import { useSession } from '@/contexts/SessionContext';
 
 export const SimulationReport = () => {
   const { gameState, getTechnologyCostForTeam } = useGame();
+  const { currentRole, currentTeamId } = useSession();
   const [expandedRounds, setExpandedRounds] = useState<Record<string, boolean>>({});
+  const [showCompetitors, setShowCompetitors] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = useReactToPrint({
@@ -166,48 +169,33 @@ export const SimulationReport = () => {
     return 0;
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold">Simulation Report</h2>
-          <p className="text-muted-foreground">Complete performance overview for all teams across all rounds</p>
-        </div>
-        <Button onClick={handlePrint} variant="outline" className="gap-2">
-          <Download className="h-4 w-4" />
-          Download PDF
-        </Button>
-      </div>
+  const renderTeamCard = (team: typeof gameState.teams[0], isMyTeam: boolean = false) => {
+    const initialScore = getInitialScore(team);
+    let cumulativeMoney = initialScore;
 
-      <div ref={reportRef} className="print:text-xs">
-
-      {gameState.teams.map(team => {
-        const initialScore = getInitialScore(team);
-        let cumulativeMoney = initialScore;
-
-        return (
-          <div key={team.id} className="print-team-card mb-6 print:mb-0">
-            <div className="print-team-content w-full">
-              <Card className="print:border-0 print:shadow-none">
-                <CardHeader className="print:py-2 print:px-4">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-6 h-6 rounded-full border-2"
-                  style={{ backgroundColor: team.color }}
-                />
-                <CardTitle>{team.name}</CardTitle>
+    return (
+      <div key={team.id} className="print-team-card mb-6 print:mb-0">
+        <div className="print-team-content w-full">
+          <Card className={`print:border-0 print:shadow-none ${isMyTeam ? 'border-2 border-blue-500/50 bg-blue-500/[0.02]' : ''}`}>
+            <CardHeader className="print:py-2 print:px-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full border-2" style={{ backgroundColor: team.color }} />
+                  <CardTitle>{team.name}</CardTitle>
+                  {isMyTeam && <Badge className="bg-blue-600 text-white font-bold text-xs">Your Team</Badge>}
+                </div>
+                <CardDescription>Starting Value: ${initialScore}</CardDescription>
               </div>
-              <CardDescription>Starting Value: ${initialScore}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-20">Round</TableHead>
+                      <TableHead className="w-16">Round</TableHead>
                       <TableHead className="text-center">
                         <div className="flex flex-col items-center gap-1">
-                          <span className="font-bold text-red-500 text-lg">$</span>
+                          <span className="font-bold text-red-500 text-base">$</span>
                           <span className="text-xs">Price</span>
                         </div>
                       </TableHead>
@@ -220,7 +208,7 @@ export const SimulationReport = () => {
                       <TableHead className="text-center">
                         <div className="flex flex-col items-center gap-1">
                           <Wrench className="h-4 w-4 text-yellow-500" />
-                          <span className="text-xs">Improve</span>
+                          <span className="text-xs">Improvement</span>
                         </div>
                       </TableHead>
                       <TableHead className="text-center">
@@ -236,7 +224,7 @@ export const SimulationReport = () => {
                         </div>
                       </TableHead>
                       <TableHead className="text-center">
-                        <span className="text-xs">Combo</span>
+                        <span className="text-xs font-semibold">Combo</span>
                       </TableHead>
                       <TableHead className="text-center">
                         <div className="flex flex-col items-center gap-1">
@@ -246,14 +234,33 @@ export const SimulationReport = () => {
                       </TableHead>
                       <TableHead className="text-center">
                         <div className="flex flex-col items-center gap-1">
-                          <PackageX className="h-4 w-4" />
-                          <span className="text-xs">Lost</span>
+                          <PackageX className="h-4 w-4 text-destructive" />
+                          <span className="text-xs">Unsold</span>
                         </div>
                       </TableHead>
-                      <TableHead className="text-right">Revenue</TableHead>
-                      <TableHead className="text-right">Control</TableHead>
-                      <TableHead className="text-right">Current</TableHead>
-                      <TableHead className="text-right font-bold">Overall</TableHead>
+                      <TableHead className="text-right">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="font-bold text-emerald-600 text-sm">$</span>
+                          <span className="text-xs">Revenue</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <div className="flex flex-col items-end gap-1">
+                          <Trophy className="h-4 w-4 text-amber-500" />
+                          <span className="text-xs">Control</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-xs font-semibold">Current Money</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="text-right font-bold">
+                        <div className="flex flex-col items-end gap-1">
+                          <TrendingUp className="h-4 w-4 text-emerald-500" />
+                          <span className="text-xs font-bold text-foreground">Total Points</span>
+                        </div>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -629,7 +636,77 @@ export const SimulationReport = () => {
             </div>
           </div>
         );
-      })}
+  };
+
+  // Render for Student / Team view (shows User's Team on top, competitors collapsed below)
+  if (currentRole === 'STUDENT' && currentTeamId) {
+    const myTeam = gameState.teams.find(t => t.id === currentTeamId);
+    const competitorTeams = gameState.teams.filter(t => t.id !== currentTeamId);
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold">Simulation Report</h2>
+            <p className="text-muted-foreground">
+              Performance report for {myTeam?.name || 'your team'} and competitors
+            </p>
+          </div>
+          <Button onClick={handlePrint} variant="outline" className="gap-2">
+            <Download className="h-4 w-4" />
+            Download PDF
+          </Button>
+        </div>
+
+        <div ref={reportRef} className="print:text-xs space-y-6">
+          {/* User's Own Team Report Card */}
+          {myTeam && renderTeamCard(myTeam, true)}
+
+          {/* Competitor Teams Collapsible Stack */}
+          {competitorTeams.length > 0 && (
+            <Collapsible open={showCompetitors} onOpenChange={setShowCompetitors} className="space-y-3">
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full flex items-center justify-between p-4 h-auto border-dashed border-2 hover:bg-muted/50"
+                >
+                  <div className="flex items-center gap-2 font-bold text-sm">
+                    <Users className="h-4 w-4 text-blue-500" />
+                    <span>Competitor Teams Performance ({competitorTeams.length} Teams)</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{showCompetitors ? 'Hide Competitors' : 'View Competitors'}</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showCompetitors ? 'rotate-180' : ''}`} />
+                  </div>
+                </Button>
+              </CollapsibleTrigger>
+
+              <CollapsibleContent className="space-y-6 pt-2">
+                {competitorTeams.map(team => renderTeamCard(team, false))}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Render for Facilitator / Admin view (shows all teams stacked open as default)
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold">Simulation Report</h2>
+          <p className="text-muted-foreground">Complete performance overview for all teams across all rounds</p>
+        </div>
+        <Button onClick={handlePrint} variant="outline" className="gap-2">
+          <Download className="h-4 w-4" />
+          Download PDF
+        </Button>
+      </div>
+
+      <div ref={reportRef} className="print:text-xs">
+        {gameState.teams.map(team => renderTeamCard(team, false))}
       </div>
     </div>
   );

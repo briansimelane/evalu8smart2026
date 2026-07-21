@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings } from 'lucide-react';
+import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,7 +19,7 @@ const DEFAULT_TEAMS = [
 ];
 
 export const FacilitatorHub: React.FC = () => {
-  const { classes, createClass, deleteClass, logout, currentClassId, facilitatorReleaseCeoSlot, facilitatorChangeCeoPin } = useSession();
+  const { classes, createClass, deleteClass, logout, currentClassId, currentClassTeams, facilitatorReleaseCeoSlot, facilitatorChangeCeoPin, selectClass, selectTeam } = useSession();
   const [className, setClassName] = useState('');
   const [numTeams, setNumTeams] = useState(5);
   const [teamConfigs, setTeamConfigs] = useState<typeof DEFAULT_TEAMS>(DEFAULT_TEAMS);
@@ -228,7 +228,7 @@ export const FacilitatorHub: React.FC = () => {
                             {new Date(cls.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell className="text-foreground font-medium text-sm">
-                            {cls.gameState?.teams?.length || 0} Teams
+                            {cls.teamRegistry?.length || cls.gameState?.teams?.length || Object.keys(cls.teamCodes || {}).length || 0} Teams
                           </TableCell>
                           <TableCell>
                             <Button
@@ -303,94 +303,130 @@ export const FacilitatorHub: React.FC = () => {
                                         <TableHead className="text-right text-muted-foreground font-semibold">Actions</TableHead>
                                       </TableRow>
                                     </TableHeader>
-                                    <TableBody>
-                                      {cls.gameState?.teams ? (
-                                        cls.gameState.teams.map((team, idx) => {
-                                          const code = cls.teamCodes?.[team.id] || 
-                                                        cls.teamCodes?.[`team_${idx + 1}`] || 
-                                                        cls.teamCodes?.[`${idx + 1}`] || 
-                                                        (cls.teamCodes ? Object.values(cls.teamCodes)[idx] : undefined);
-                                          const hasCeo = !!team.ceoName;
-                                          return (
-                                            <TableRow key={team.id} className="border-border hover:bg-muted/10 transition-colors">
-                                              <TableCell className="font-semibold text-foreground">{team.name}</TableCell>
-                                              <TableCell>
-                                                <span
-                                                  className="inline-block w-4 h-4 rounded-full border border-border"
-                                                  style={{ backgroundColor: team.color }}
-                                                />
-                                              </TableCell>
-                                              <TableCell className="font-mono text-blue-600 font-bold tracking-wider">
-                                                <div className="flex items-center gap-1.5">
-                                                  <span>{code || 'N/A'}</span>
-                                                  {code && (
+                                     <TableBody>
+                                       {(() => {
+                                         const rawTeams = (cls.teamRegistry && cls.teamRegistry.length > 0) ? cls.teamRegistry : cls.gameState?.teams;
+                                         const teamsToRender = (rawTeams && rawTeams.length > 0)
+                                           ? rawTeams
+                                           : Object.keys(cls.teamCodes || {}).map((tId, idx) => ({
+                                               id: tId,
+                                               name: `Team ${idx + 1}`,
+                                               color: ['#22c55e', '#3b82f6', '#1f2937', '#eab308', '#ef4444'][idx % 5],
+                                               ceoName: '',
+                                               ceoPin: ''
+                                             }));
+
+                                         if (teamsToRender.length === 0) {
+                                           return (
+                                             <TableRow>
+                                               <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-4">
+                                                 No teams found in team registry.
+                                               </TableCell>
+                                             </TableRow>
+                                           );
+                                         }
+
+                                         return teamsToRender.map((team, idx) => {
+                                           if (!team) return null;
+                                           const teamId = team.id || `team_${idx + 1}`;
+                                           const code = cls.teamCodes?.[teamId];
+                                           const liveTeamDoc = (cls.id === currentClassId && currentClassTeams ? currentClassTeams[teamId] : null);
+                                           const effectiveCeoName = liveTeamDoc?.ceoName || team.ceoName || '';
+                                           const effectiveCeoPin = liveTeamDoc?.ceoPin || team.ceoPin || '';
+                                           const hasCeo = !!effectiveCeoName;
+
+                                           return (
+                                             <TableRow key={team.id} className="border-border hover:bg-muted/10 transition-colors">
+                                               <TableCell className="font-semibold text-foreground">{team.name}</TableCell>
+                                               <TableCell>
+                                                 <span
+                                                   className="inline-block w-4 h-4 rounded-full border border-border"
+                                                   style={{ backgroundColor: team.color }}
+                                                 />
+                                               </TableCell>
+                                               <TableCell className="font-mono text-blue-600 font-bold tracking-wider">
+                                                 <div className="flex items-center gap-1.5">
+                                                   {code ? (
+                                                     <>
+                                                       <span>{code}</span>
+                                                       <Button
+                                                         size="icon"
+                                                         variant="ghost"
+                                                         className="h-6 w-6 hover:bg-muted text-muted-foreground"
+                                                         onClick={() => handleCopy(code)}
+                                                       >
+                                                         {copiedCode === code ? (
+                                                           <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                                         ) : (
+                                                           <Copy className="h-3.5 w-3.5" />
+                                                         )}
+                                                       </Button>
+                                                     </>
+                                                   ) : (
+                                                     <span className="text-red-500 font-semibold text-xs border border-red-200 bg-red-50 px-2 py-0.5 rounded">
+                                                       code missing — data integrity issue
+                                                     </span>
+                                                   )}
+                                                 </div>
+                                               </TableCell>
+                                               <TableCell className="text-sm">
+                                                 {hasCeo ? (
+                                                   <span className="text-emerald-600 font-semibold">
+                                                     {effectiveCeoName} <span className="text-xs text-muted-foreground">(PIN: {effectiveCeoPin || 'N/A'})</span>
+                                                   </span>
+                                                 ) : (
+                                                   <span className="text-muted-foreground text-xs italic">Vacant</span>
+                                                 )}
+                                               </TableCell>
+                                                <TableCell className="text-right">
+                                                  <div className="flex gap-1.5 justify-end items-center">
                                                     <Button
-                                                      size="icon"
-                                                      variant="ghost"
-                                                      className="h-6 w-6 hover:bg-muted text-muted-foreground"
-                                                      onClick={() => handleCopy(code)}
+                                                      size="sm"
+                                                      onClick={() => {
+                                                        selectClass(cls.id);
+                                                        selectTeam(team.id);
+                                                        navigate(`/class/${cls.id}`);
+                                                      }}
+                                                      className="h-7 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold gap-1 shadow-sm"
                                                     >
-                                                      {copiedCode === code ? (
-                                                        <Check className="h-3.5 w-3.5 text-emerald-600" />
-                                                      ) : (
-                                                        <Copy className="h-3.5 w-3.5" />
-                                                      )}
+                                                      <Eye className="h-3.5 w-3.5" />
+                                                      View/Edit Team
                                                     </Button>
-                                                  )}
-                                                </div>
-                                              </TableCell>
-                                              <TableCell className="text-sm">
-                                                {hasCeo ? (
-                                                  <span className="text-emerald-600 font-semibold">
-                                                    {team.ceoName} <span className="text-xs text-muted-foreground">(PIN: {team.ceoPin || 'N/A'})</span>
-                                                  </span>
-                                                ) : (
-                                                  <span className="text-muted-foreground text-xs italic">Vacant</span>
-                                                )}
-                                              </TableCell>
-                                              <TableCell className="text-right">
-                                                <div className="flex gap-1.5 justify-end">
-                                                  {hasCeo && (
-                                                    <>
-                                                      <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => {
-                                                          const newPin = prompt(`Enter new CEO PIN code for ${team.name}:`, team.ceoPin || '');
-                                                          if (newPin !== null && newPin.trim().length > 0) {
-                                                            facilitatorChangeCeoPin(cls.id, team.id, newPin.trim());
-                                                          }
-                                                        }}
-                                                        className="h-7 px-2 border-border text-foreground hover:bg-muted text-xs"
-                                                      >
-                                                        Change PIN
-                                                      </Button>
-                                                      <Button
-                                                        size="sm"
-                                                        variant="destructive"
-                                                        onClick={() => {
-                                                          if (confirm(`Are you sure you want to release the CEO seat for ${team.name}?`)) {
-                                                            facilitatorReleaseCeoSlot(cls.id, team.id);
-                                                          }
-                                                        }}
-                                                        className="h-7 px-2 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 text-xs"
-                                                      >
-                                                        Release CEO
-                                                      </Button>
-                                                    </>
-                                                  )}
-                                                </div>
-                                              </TableCell>
-                                            </TableRow>
-                                          );
-                                        })
-                                      ) : (
-                                        <TableRow className="border-border">
-                                          <TableCell colSpan={5} className="text-center text-muted-foreground py-3">
-                                            Game state not initialized. Click "Control Panel" to setup and start.
-                                          </TableCell>
-                                        </TableRow>
-                                      )}
+                                                    {hasCeo && (
+                                                     <>
+                                                       <Button
+                                                         size="sm"
+                                                         variant="outline"
+                                                         onClick={() => {
+                                                           const newPin = prompt(`Enter new CEO PIN code for ${team.name}:`, effectiveCeoPin || '');
+                                                           if (newPin !== null && newPin.trim().length > 0) {
+                                                             facilitatorChangeCeoPin(cls.id, team.id, newPin.trim());
+                                                           }
+                                                         }}
+                                                         className="h-7 px-2 border-border text-foreground hover:bg-muted text-xs"
+                                                       >
+                                                         Change PIN
+                                                       </Button>
+                                                       <Button
+                                                         size="sm"
+                                                         variant="destructive"
+                                                         onClick={() => {
+                                                           if (confirm(`Are you sure you want to release the CEO seat for ${team.name}?`)) {
+                                                             facilitatorReleaseCeoSlot(cls.id, team.id);
+                                                           }
+                                                         }}
+                                                         className="h-7 px-2 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 text-xs"
+                                                       >
+                                                         Release CEO
+                                                       </Button>
+                                                     </>
+                                                   )}
+                                                 </div>
+                                               </TableCell>
+                                             </TableRow>
+                                           );
+                                         });
+                                       })()}
                                     </TableBody>
                                   </Table>
                                 </div>

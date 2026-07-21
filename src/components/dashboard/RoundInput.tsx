@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGame } from '@/contexts/GameContext';
+import { useSession } from '@/contexts/SessionContext';
+import { PhaseLockCard } from './PhaseLockCard';
 import { REGIONS } from '@/data/combinations';
 import { ICON_EFFECTS } from '@/data/improvements';
 import { TeamRoundData } from '@/types/game';
@@ -17,6 +19,7 @@ export interface RoundInputRef {
 
 export const RoundInput = forwardRef<RoundInputRef>((props, ref) => {
   const { gameState, addRoundData, getCurrentRound, markImprovementCardUsed, getCombinations } = useGame();
+  const { currentRole } = useSession();
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedCombination, setSelectedCombination] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('');
@@ -184,6 +187,10 @@ export const RoundInput = forwardRef<RoundInputRef>((props, ref) => {
 
   // Check if all teams have submitted their plans
   const allTeamsHavePlans = gameState.teams.every(team => teamsWithPlans.some(t => t.team?.id === team.id));
+
+  if (currentRole === 'STUDENT' && !allTeamsHavePlans) {
+    return <PhaseLockCard phaseName="Production Phase" />;
+  }
 
   return (
     <Card>

@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useGame } from '@/contexts/GameContext';
 import { ICON_EFFECTS } from '@/data/improvements';
 import { toast } from 'sonner';
-import { Save, TrendingUp, TrendingDown, Package, FlaskConical, Truck, Box, Wrench, Microscope, CirclePlus, CircleMinus, CheckCircle2 } from 'lucide-react';
+import { Save, TrendingUp, TrendingDown, Package, FlaskConical, Truck, Box, Wrench, Microscope, CirclePlus, CircleMinus, CheckCircle2, Trophy } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 import { useSession } from '@/contexts/SessionContext';
@@ -17,8 +17,8 @@ export interface PlanningPhaseRef {
 }
 
 export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
-  const { gameState, getCurrentRound, addRoundData, getCombinations } = useGame();
-  const { currentRole, currentTeamId, isReadOnly } = useSession();
+  const { gameState, getCurrentRound, addRoundData, getCombinations, calculatePlayOrder } = useGame();
+  const { currentRole, currentTeamId, currentClassTeams, isReadOnly } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'planning');
   const [selectedTeam, setSelectedTeam] = useState('');
@@ -38,10 +38,10 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   }, [selectedTeam, currentRound]);
 
   useEffect(() => {
-    if (currentRole === 'STUDENT' && currentTeamId) {
+    if (currentTeamId) {
       setSelectedTeam(currentTeamId);
     }
-  }, [currentRole, currentTeamId]);
+  }, [currentTeamId]);
 
   const getIconElement = (iconType: string) => {
     if (iconType === 'Price and Product') {
@@ -227,8 +227,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     
     toast.success('Plan submitted successfully! Now proceed to Production phase to enter sales data.');
     
-    // Reset form
-    setSelectedTeam('');
+    // Reset form fields while preserving selectedTeam so submitted summary displays immediately
     setSelectedCombination('');
     setSelectedPosition('');
     setEditingRound(null);
@@ -260,6 +259,87 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const submittedPlan = currentRoundData?.teamData[selectedTeam];
   const isPlanSubmitted = !!submittedPlan;
 
+  const renderPlayOrderSection = () => {
+    const playOrder = calculatePlayOrder(currentRound);
+    const activeTurnTeam = playOrder.find(t => !currentRoundData?.teamData[t.id]);
+
+    return (
+      <div className="space-y-2 mb-4 p-4 bg-card border border-border rounded-xl shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Trophy className="h-4 w-4 text-amber-500" />
+            <span>Turn Order — Round {currentRound}</span>
+          </h3>
+          <div className="flex items-center gap-2">
+            {activeTurnTeam ? (
+              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold gap-1.5 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                Current Turn: {activeTurnTeam.name}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-bold gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                All Teams Submitted
+              </Badge>
+            )}
+            <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground bg-muted/40 hidden md:inline-flex">
+              Price (Lowest First) & Wealth
+            </Badge>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 pt-1">
+          {playOrder.map((team, index) => {
+            const liveTeamDoc = currentClassTeams[team.id];
+            const ceoName = liveTeamDoc?.ceoName || team.ceoName || null;
+            const submittedData = currentRoundData?.teamData[team.id];
+            const isActiveTurn = team.id === activeTurnTeam?.id;
+
+            return (
+              <div
+                key={team.id}
+                onClick={() => currentRole !== 'STUDENT' && setSelectedTeam(team.id)}
+                className={`p-2.5 rounded-lg border text-xs flex flex-col justify-between space-y-1.5 transition-all ${
+                  isActiveTurn
+                    ? 'ring-2 ring-emerald-500 bg-emerald-500/10 border-emerald-500/80 shadow-md animate-pulse'
+                    : team.id === selectedTeam
+                    ? 'ring-2 ring-blue-500 bg-blue-500/5 shadow-sm border-blue-500/50'
+                    : 'bg-card hover:bg-muted/30 border-border'
+                } ${currentRole !== 'STUDENT' ? 'cursor-pointer' : ''}`}
+              >
+                <div className="flex items-center justify-between font-bold">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="text-muted-foreground font-mono text-[11px]">{index + 1}.</span>
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                    <span className="truncate">{team.name}</span>
+                  </div>
+                  {isActiveTurn && (
+                    <Badge className="bg-emerald-500 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                      Turn
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
+                  <span className="truncate">CEO: {ceoName ? <strong className="text-foreground font-semibold">{ceoName}</strong> : <span className="italic">Vacant</span>}</span>
+                  {submittedData?.price !== undefined ? (
+                    <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                      ${submittedData.price}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] py-0 px-1 font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                      Pending
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   if (isPlanSubmitted && !isEditingSubmittedPlan) {
     const teamObj = gameState.teams.find(t => t.id === selectedTeam);
     // Find used improvement cards
@@ -269,7 +349,9 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     });
 
     return (
-      <Card className="border-emerald-500 bg-emerald-500/[0.02]">
+      <div className="space-y-4">
+        {renderPlayOrderSection()}
+        <Card className="border-emerald-500 bg-emerald-500/[0.02]">
         <CardHeader className="border-b border-emerald-500/10">
           <div className="flex items-center justify-between">
             <div>
@@ -382,11 +464,14 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
           </div>
         </CardContent>
       </Card>
+    </div>
     );
   }
 
   return (
-    <Card>
+    <div className="space-y-4">
+      {renderPlayOrderSection()}
+      <Card>
       <CardHeader>
         <CardTitle>
           {editingRound ? `Edit Round ${editingRound}` : `Round ${currentRound}`} Planning
@@ -610,11 +695,14 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
             <Button
               variant="outline"
               onClick={() => {
-                setSelectedTeam('');
+                if (currentTeamId) {
+                  setSelectedTeam(currentTeamId);
+                }
                 setSelectedCombination('');
                 setSelectedPosition('');
                 setEditingRound(null);
                 setCardUsages({});
+                setIsEditingSubmittedPlan(false);
               }}
             >
               Cancel
@@ -623,6 +711,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
         </div>
       </CardContent>
     </Card>
+  </div>
   );
 });
 

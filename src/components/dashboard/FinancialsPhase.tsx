@@ -6,8 +6,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import {
   TrendingUp, TrendingDown, DollarSign, Percent, FlaskConical,
-  Cpu, BarChart2, RefreshCw, Scale,
+  Cpu, BarChart2, RefreshCw, Scale, Info,
 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
+interface InfoData {
+  formula: string;
+  description: string;
+}
+
+function InfoPill({ formula, description }: InfoData) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center p-0.5 ml-1 text-muted-foreground/60 hover:text-blue-500 transition-colors focus:outline-none"
+          title="View calculation breakdown"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" className="w-80 p-3 text-xs shadow-xl border-blue-500/30 bg-card z-50">
+        <div className="space-y-2">
+          <div className="font-bold text-foreground flex items-center gap-1.5 text-[11px]">
+            <Info className="h-3.5 w-3.5 text-blue-500" />
+            <span>Calculation Breakdown</span>
+          </div>
+          <div className="p-2 bg-blue-500/10 text-blue-700 dark:text-blue-300 rounded-md font-mono text-[11px] border border-blue-500/20">
+            Formula: {formula}
+          </div>
+          <p className="text-muted-foreground text-[11px] leading-relaxed">
+            {description}
+          </p>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const COGS_PER_UNIT = 1;
@@ -70,20 +106,24 @@ function TableSection({ title }: { title: string }) {
 }
 
 function TableRow({
-  label, cells, bold, indent, divider,
+  label, cells, bold, indent, divider, info,
 }: {
   label: string;
   cells: CellData[];
   bold?: boolean;
   indent?: boolean;
   divider?: boolean;
+  info?: InfoData;
 }) {
   return (
     <>
       {divider && <tr><td colSpan={99} className="px-3 py-0"><div className="h-px bg-border/50" /></td></tr>}
       <tr className={`${bold ? 'bg-secondary/25' : 'hover:bg-secondary/10'} transition-colors`}>
         <td className={`py-1.5 pl-3 pr-4 text-sm whitespace-nowrap ${indent ? 'pl-6 text-muted-foreground' : bold ? 'font-bold' : ''}`}>
-          {label}
+          <div className="inline-flex items-center">
+            <span>{label}</span>
+            {info && <InfoPill formula={info.formula} description={info.description} />}
+          </div>
         </td>
         {cells.map((cell, i) => {
           const colorClass =
@@ -264,14 +304,14 @@ export const FinancialsPhase = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    <TableRow label="Revenue" bold cells={teamData.map(d => ({ value: d.roundIS.revenue }))} />
-                    <TableRow label="Cost of Goods Sold" indent cells={teamData.map(d => ({ value: -d.roundIS.cogs, highlight: 'negative' as const }))} />
-                    <TableRow label="Gross Profit" bold divider cells={teamData.map(d => ({ value: d.roundIS.grossProfit, highlight: 'positive' as const }))} />
+                    <TableRow label="Revenue" bold cells={teamData.map(d => ({ value: d.roundIS.revenue }))} info={{ formula: 'Units Sold × Unit Selling Price', description: 'Total sales revenue earned from products sold to customers in the period.' }} />
+                    <TableRow label="Cost of Goods Sold" indent cells={teamData.map(d => ({ value: -d.roundIS.cogs, highlight: 'negative' as const }))} info={{ formula: 'Units Sold × $1.00', description: 'Direct unit production cost ($1.00 per unit sold).' }} />
+                    <TableRow label="Gross Profit" bold divider cells={teamData.map(d => ({ value: d.roundIS.grossProfit, highlight: 'positive' as const }))} info={{ formula: 'Revenue - COGS', description: 'Gross profit earned from sales before deducting operating expenses.' }} />
                     <TableSection title="Operating Expenses" />
-                    <TableRow label="Stock Loss (Unsold)" indent cells={teamData.map(d => ({ value: -d.roundIS.stockLoss, highlight: 'negative' as const }))} />
-                    <TableRow label="R&D Expense" indent cells={teamData.map(d => ({ value: -d.roundIS.researchExpense, highlight: 'negative' as const }))} />
-                    <TableRow label="Logistics Expense" indent cells={teamData.map(d => ({ value: -d.roundIS.logisticsExpense, highlight: 'negative' as const }))} />
-                    <TableRow label="Operating Profit (EBIT)" bold divider cells={teamData.map(d => ({ value: d.roundIS.operatingProfit, highlight: 'positive' as const }))} />
+                    <TableRow label="Stock Loss (Unsold)" indent cells={teamData.map(d => ({ value: -d.roundIS.stockLoss, highlight: 'negative' as const }))} info={{ formula: 'Unsold Units × $1.00', description: 'Loss incurred on unsold inventory produced in this round ($1.00 per unsold unit).' }} />
+                    <TableRow label="R&D Expense" indent cells={teamData.map(d => ({ value: -d.roundIS.researchExpense, highlight: 'negative' as const }))} info={{ formula: 'Research Icons Allocated × $1.00', description: 'Operating expense for research points invested in technologies ($1.00 per icon).' }} />
+                    <TableRow label="Logistics Expense" indent cells={teamData.map(d => ({ value: -d.roundIS.logisticsExpense, highlight: 'negative' as const }))} info={{ formula: 'Logistics Icons Allocated × $1.00', description: 'Operating expense for logistics points invested in regional offices ($1.00 per icon).' }} />
+                    <TableRow label="Operating Profit (EBIT)" bold divider cells={teamData.map(d => ({ value: d.roundIS.operatingProfit, highlight: 'positive' as const }))} info={{ formula: 'Gross Profit - Stock Loss - R&D Expense - Logistics Expense', description: 'Net operating earnings before interest and taxes (EBIT).' }} />
                   </tbody>
                 </table>
               </div>
@@ -312,13 +352,18 @@ export const FinancialsPhase = () => {
                     </thead>
                     <tbody>
                       {[
-                        { label: 'Gross Margin %', fn: (d: typeof teamData[0]) => pct(d.roundIS.grossProfit, d.roundIS.revenue) },
-                        { label: 'Return on Sales %', fn: (d: typeof teamData[0]) => pct(d.roundIS.operatingProfit, d.roundIS.revenue) },
-                        { label: 'R&D Intensity %', fn: (d: typeof teamData[0]) => pct(d.roundIS.researchExpense, d.roundIS.revenue) },
-                        { label: 'Market Share %', fn: (d: typeof teamData[0]) => pct(d.roundIS.revenue, totalRevenue) },
-                      ].map(({ label, fn }) => (
+                        { label: 'Gross Margin %', fn: (d: typeof teamData[0]) => pct(d.roundIS.grossProfit, d.roundIS.revenue), info: { formula: '(Gross Profit ÷ Revenue) × 100', description: 'Percentage of revenue retained after deducting direct production costs.' } },
+                        { label: 'EBIT %', fn: (d: typeof teamData[0]) => pct(d.roundIS.operatingProfit, d.roundIS.revenue), info: { formula: '(EBIT ÷ Revenue) × 100', description: 'Operating margin: Earnings Before Interest & Tax generated per dollar of revenue.' } },
+                        { label: 'R&D Intensity %', fn: (d: typeof teamData[0]) => pct(d.roundIS.researchExpense, d.roundIS.revenue), info: { formula: '(R&D Expense ÷ Revenue) × 100', description: 'Proportion of total revenue reinvested into research and development.' } },
+                        { label: 'Market Share %', fn: (d: typeof teamData[0]) => pct(d.roundIS.revenue, totalRevenue), info: { formula: '(Team Revenue ÷ Total Market Revenue) × 100', description: 'Percentage of overall industry revenue captured by this team.' } },
+                      ].map(({ label, fn, info }) => (
                         <tr key={label} className="hover:bg-secondary/10 border-b border-border/20 transition-colors">
-                          <td className="py-2 pl-3 pr-4 text-sm font-medium">{label}</td>
+                          <td className="py-2 pl-3 pr-4 text-sm font-medium">
+                            <div className="inline-flex items-center">
+                              <span>{label}</span>
+                              <InfoPill formula={info.formula} description={info.description} />
+                            </div>
+                          </td>
                           {teamData.map(d => (
                             <td key={d.team.id} className="text-right py-2 px-3 font-mono">{fn(d)}</td>
                           ))}
@@ -361,17 +406,17 @@ export const FinancialsPhase = () => {
                     {/* Assets */}
                     <TableSection title="Assets" />
                     <tr><td colSpan={99} className="px-3 py-0 pl-6 text-[10px] text-muted-foreground pb-1">Current Assets</td></tr>
-                    <TableRow label="Cash & Equivalents" indent cells={teamData.map(d => ({ value: d.bs.cash }))} />
+                    <TableRow label="Cash & Equivalents" indent cells={teamData.map(d => ({ value: d.bs.cash }))} info={{ formula: 'Starting Cash + Cumulative EBIT', description: 'Liquid funds remaining in cash at the end of the round.' }} />
                     <tr><td colSpan={99} className="px-3 py-0 pl-6 text-[10px] text-muted-foreground pt-2 pb-1">Non-Current Assets</td></tr>
-                    <TableRow label="Technology Assets" indent cells={teamData.map(d => ({ value: d.bs.techAssets }))} />
-                    <TableRow label="Market Presence (Goodwill)" indent cells={teamData.map(d => ({ value: d.bs.marketPresence }))} />
-                    <TableRow label="Total Assets" bold divider cells={teamData.map(d => ({ value: d.bs.totalAssets }))} />
+                    <TableRow label="Technology Assets" indent cells={teamData.map(d => ({ value: d.bs.techAssets }))} info={{ formula: 'Cumulative R&D Investments', description: 'Capitalized value of investments into developing proprietary technologies.' }} />
+                    <TableRow label="Market Presence (Goodwill)" indent cells={teamData.map(d => ({ value: d.bs.marketPresence }))} info={{ formula: 'Cumulative Regional Control Points', description: 'Capitalized value of market presence and regional control acquired.' }} />
+                    <TableRow label="Total Assets" bold divider cells={teamData.map(d => ({ value: d.bs.totalAssets }))} info={{ formula: 'Cash + Tech Assets + Market Presence', description: 'Total economic resources owned by the business.' }} />
                     {/* Equity */}
-                    <TableSection title="Shareholders' Equity" />
-                    <TableRow label="Share Capital" indent cells={teamData.map(d => ({ value: d.bs.shareCapital }))} />
-                    <TableRow label="Retained Earnings (EBIT)" indent cells={teamData.map(d => ({ value: d.bs.retainedEarnings, highlight: (d.bs.retainedEarnings >= 0 ? 'positive' : 'negative') as 'positive' | 'negative' }))} />
-                    <TableRow label="Valuation Reserve (Intangibles)" indent cells={teamData.map(d => ({ value: d.bs.valuationReserve }))} />
-                    <TableRow label="Total Equity" bold divider cells={teamData.map(d => ({ value: d.bs.totalEquity, highlight: (d.bs.totalEquity >= 0 ? 'positive' : 'negative') as 'positive' | 'negative' }))} />
+                    <TableSection title="Shareholders\' Equity" />
+                    <TableRow label="Share Capital" indent cells={teamData.map(d => ({ value: d.bs.shareCapital }))} info={{ formula: '$20.00', description: 'Initial equity capital invested at company launch.' }} />
+                    <TableRow label="Retained Earnings (EBIT)" indent cells={teamData.map(d => ({ value: d.bs.retainedEarnings, highlight: (d.bs.retainedEarnings >= 0 ? 'positive' : 'negative') as 'positive' | 'negative' }))} info={{ formula: 'Cumulative Operating Profit (EBIT)', description: 'Accumulated net operating profits retained in the business.' }} />
+                    <TableRow label="Valuation Reserve (Intangibles)" indent cells={teamData.map(d => ({ value: d.bs.valuationReserve }))} info={{ formula: 'Technology Assets + Market Presence', description: 'Reserve capturing total capitalized value of intangible assets.' }} />
+                    <TableRow label="Total Equity" bold divider cells={teamData.map(d => ({ value: d.bs.totalEquity, highlight: (d.bs.totalEquity >= 0 ? 'positive' : 'negative') as 'positive' | 'negative' }))} info={{ formula: 'Share Capital + Retained Earnings + Valuation Reserve', description: 'Total net worth of shareholders (equals Total Assets).' }} />
                   </tbody>
                 </table>
               </div>
@@ -400,13 +445,18 @@ export const FinancialsPhase = () => {
                     </thead>
                     <tbody>
                       {[
-                        { label: 'Return on Assets %', fn: (d: typeof teamData[0]) => pct(d.ytd.operatingProfit, d.bs.totalAssets) },
-                        { label: 'Return on Equity %', fn: (d: typeof teamData[0]) => pct(d.ytd.operatingProfit, d.bs.totalEquity) },
-                        { label: 'Asset Turnover', fn: (d: typeof teamData[0]) => ratio(d.ytd.revenue, d.bs.totalAssets) },
-                        { label: 'Intangibles % of Assets', fn: (d: typeof teamData[0]) => pct(d.bs.techAssets + d.bs.marketPresence, d.bs.totalAssets) },
-                      ].map(({ label, fn }) => (
+                        { label: 'Return on Assets %', fn: (d: typeof teamData[0]) => pct(d.ytd.operatingProfit, d.bs.totalAssets), info: { formula: '(YTD Operating Profit ÷ Total Assets) × 100', description: 'Efficiency of total asset utilization in generating net operating profit.' } },
+                        { label: 'Return on Equity %', fn: (d: typeof teamData[0]) => pct(d.ytd.operatingProfit, d.bs.totalEquity), info: { formula: '(YTD Operating Profit ÷ Total Equity) × 100', description: 'Rate of return generated on total shareholders equity.' } },
+                        { label: 'Asset Turnover', fn: (d: typeof teamData[0]) => ratio(d.ytd.revenue, d.bs.totalAssets), info: { formula: 'YTD Revenue ÷ Total Assets', description: 'Revenue generated per dollar of total enterprise assets.' } },
+                        { label: 'Intangibles % of Assets', fn: (d: typeof teamData[0]) => pct(d.bs.techAssets + d.bs.marketPresence, d.bs.totalAssets), info: { formula: '((Tech Assets + Market Presence) ÷ Total Assets) × 100', description: 'Proportion of enterprise asset value represented by intangible assets.' } },
+                      ].map(({ label, fn, info }) => (
                         <tr key={label} className="hover:bg-secondary/10 border-b border-border/20 transition-colors">
-                          <td className="py-2 pl-3 pr-4 text-sm font-medium">{label}</td>
+                          <td className="py-2 pl-3 pr-4 text-sm font-medium">
+                            <div className="inline-flex items-center">
+                              <span>{label}</span>
+                              <InfoPill formula={info.formula} description={info.description} />
+                            </div>
+                          </td>
                           {teamData.map(d => (
                             <td key={d.team.id} className="text-right py-2 px-3 font-mono">{fn(d)}</td>
                           ))}

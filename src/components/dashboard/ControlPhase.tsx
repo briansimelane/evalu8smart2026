@@ -18,9 +18,11 @@ interface RegionControlResult {
   secondPlace?: { teamId: string; teamName: string; teamColor: string; sales: number; points: number };
 }
 
+import { PhaseLockCard } from './PhaseLockCard';
+
 export const ControlPhase = () => {
   const { gameState, addRoundData, getCurrentRound } = useGame();
-  const { currentRole } = useSession();
+  const { currentRole, currentTeamId } = useSession();
   const [controlCalculated, setControlCalculated] = useState(false);
   const [regionControlResults, setRegionControlResults] = useState<RegionControlResult[]>([]);
 
@@ -29,6 +31,12 @@ export const ControlPhase = () => {
   const currentRound = getCurrentRound();
   const currentRoundData = gameState.rounds.find(r => r.roundNumber === currentRound);
   const teamsWithData = new Set(Object.keys(currentRoundData?.teamData || {}));
+  
+  const allTeamsHavePlans = gameState.teams.every(t => !!currentRoundData?.teamData[t.id]);
+
+  if (currentRole === 'STUDENT' && !allTeamsHavePlans) {
+    return <PhaseLockCard phaseName="Control Phase" />;
+  }
   
   // Check if all teams have submitted sales data
   const allTeamsHaveSalesData = gameState.teams.every(t => {
@@ -132,9 +140,9 @@ export const ControlPhase = () => {
     setControlCalculated(true);
   };
 
-  // Auto-calculate when component mounts and all sales data is available
+  // Auto-calculate when component mounts and all sales data is available OR if control was already calculated
   useEffect(() => {
-    if (allTeamsHaveSalesData && !controlAlreadyCalculated && !controlCalculated) {
+    if ((allTeamsHaveSalesData || controlAlreadyCalculated) && !controlCalculated) {
       calculateControl();
     }
   }, [allTeamsHaveSalesData, controlAlreadyCalculated, controlCalculated]);
@@ -219,6 +227,56 @@ export const ControlPhase = () => {
         {(controlCalculated || controlAlreadyCalculated) && (
           <>
             <div className="space-y-4">
+              {currentRole === 'STUDENT' && currentTeamId && (() => {
+                const myTeamObj = gameState.teams.find(t => t.id === currentTeamId);
+
+                let myTotalPointsThisRound = 0;
+                const myWins: Array<{ region: string; place: '1st' | '2nd'; points: number }> = [];
+
+                regionControlResults.forEach(res => {
+                  if (res.firstPlace?.teamId === currentTeamId) {
+                    myTotalPointsThisRound += res.firstPlace.points;
+                    myWins.push({ region: res.region, place: '1st', points: res.firstPlace.points });
+                  } else if (res.secondPlace?.teamId === currentTeamId) {
+                    myTotalPointsThisRound += res.secondPlace.points;
+                    myWins.push({ region: res.region, place: '2nd', points: res.secondPlace.points });
+                  }
+                });
+
+                return (
+                  <div className="p-4 bg-amber-500/10 border-2 border-amber-500/30 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Trophy className="h-5 w-5 text-amber-500 animate-pulse" />
+                        <h3 className="font-bold text-sm text-foreground">
+                          {myTeamObj?.name || 'Your Team'}'s Allocated Control Points — Round {currentRound}
+                        </h3>
+                      </div>
+                      <Badge className="bg-amber-600 text-white font-extrabold text-xs px-2.5 py-1">
+                        +{myTotalPointsThisRound} Control Points
+                      </Badge>
+                    </div>
+
+                    {myWins.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic">
+                        No regional control points earned in Round {currentRound}. Increase sales presence in target regions to win control points.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+                        {myWins.map(w => (
+                          <div key={w.region} className="flex items-center justify-between p-2 bg-card rounded-lg border text-xs">
+                            <span className="font-medium text-foreground">{w.region} ({w.place} Place)</span>
+                            <Badge variant="outline" className="text-[10px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                              +{w.points} pts
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="text-sm text-muted-foreground">
                 Control points awarded based on sales performance in each region. Teams with presence in the region compete for control.
               </div>
@@ -227,17 +285,27 @@ export const ControlPhase = () => {
                 {[...regionControlResults]
                   .sort((a, b) => REGION_CUSTOMERS.findIndex(r => r.region === a.region) - REGION_CUSTOMERS.findIndex(r => r.region === b.region))
                   .map(result => {
+                  const isMyFirst = result.firstPlace?.teamId === currentTeamId && currentRole === 'STUDENT';
+                  const isMySecond = result.secondPlace?.teamId === currentTeamId && currentRole === 'STUDENT';
+
                   return (
-                    <Card key={result.region} className="border-primary/20">
+                    <Card key={result.region} className={`border-primary/20 ${(isMyFirst || isMySecond) ? 'ring-2 ring-amber-500/50 bg-amber-500/[0.02]' : ''}`}>
                       <CardHeader className="pb-3">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Trophy className="h-4 w-4 text-amber-500" />
-                          {result.region}
+                        <CardTitle className="text-base flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            <Trophy className="h-4 w-4 text-amber-500" />
+                            {result.region}
+                          </span>
+                          {(isMyFirst || isMySecond) && (
+                            <Badge className="bg-amber-600 text-white text-[10px]">
+                              Your Team ({isMyFirst ? '1st' : '2nd'})
+                            </Badge>
+                          )}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         {result.firstPlace ? (
-                          <div className="flex items-center justify-between p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                          <div className={`flex items-center justify-between p-3 border rounded-lg ${result.firstPlace.teamId === currentTeamId && currentRole === 'STUDENT' ? 'bg-amber-500/20 border-amber-500/50 font-bold' : 'bg-amber-500/10 border-amber-500/20'}`}>
                             <div className="flex items-center gap-3">
                               <Trophy className="h-5 w-5 text-amber-500" />
                               <div className="flex items-center gap-2">
@@ -251,7 +319,7 @@ export const ControlPhase = () => {
                                 {result.firstPlace.sales} sales
                               </Badge>
                             </div>
-                            <Badge className="bg-amber-500 hover:bg-amber-600 text-white">
+                            <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold">
                               +{result.firstPlace.points} points
                             </Badge>
                           </div>
@@ -262,7 +330,7 @@ export const ControlPhase = () => {
                         )}
 
                         {result.secondPlace && (
-                          <div className="flex items-center justify-between p-3 bg-slate-500/10 border border-slate-500/20 rounded-lg">
+                          <div className={`flex items-center justify-between p-3 border rounded-lg ${result.secondPlace.teamId === currentTeamId && currentRole === 'STUDENT' ? 'bg-slate-500/20 border-slate-500/50 font-bold' : 'bg-slate-500/10 border-slate-500/20'}`}>
                             <div className="flex items-center gap-3">
                               <Medal className="h-5 w-5 text-slate-500" />
                               <div className="flex items-center gap-2">
@@ -276,7 +344,7 @@ export const ControlPhase = () => {
                                 {result.secondPlace.sales} sales
                               </Badge>
                             </div>
-                            <Badge className="bg-slate-500 hover:bg-slate-600 text-white">
+                            <Badge className="bg-slate-500 hover:bg-slate-600 text-white font-bold">
                               +{result.secondPlace.points} points
                             </Badge>
                           </div>

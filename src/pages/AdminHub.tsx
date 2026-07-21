@@ -1,13 +1,13 @@
 import React from 'react';
 import { useSession } from '@/contexts/SessionContext';
-import { Trash2, ShieldAlert, LogOut, LayoutGrid } from 'lucide-react';
+import { Trash2, ShieldAlert, LogOut, LayoutGrid, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 
 export const AdminHub: React.FC = () => {
-  const { classes, deleteClass, logout } = useSession();
+  const { classes, deleteClass, logout, migrateLegacyClass } = useSession();
 
   const handleDeleteClass = async (id: string, name: string) => {
     if (confirm(`ADMIN FORCE: Are you sure you want to permanently delete class "${name}"?`)) {
@@ -63,34 +63,61 @@ export const AdminHub: React.FC = () => {
                     <TableHead className="text-foreground font-semibold">Facilitator Code</TableHead>
                     <TableHead className="text-foreground font-semibold">Teams Count</TableHead>
                     <TableHead className="text-foreground font-semibold">Created Date</TableHead>
-                    <TableHead className="text-right text-foreground font-semibold">Action</TableHead>
+                    <TableHead className="text-right text-foreground font-semibold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {classes.map((cls) => (
-                    <TableRow key={cls.id} className="border-border hover:bg-muted/10 transition-colors">
-                      <TableCell className="font-semibold text-foreground">{cls.name}</TableCell>
-                      <TableCell className="font-mono text-emerald-700 font-bold tracking-wider">
-                        {cls.facilitatorCode}
-                      </TableCell>
-                      <TableCell className="text-foreground">
-                        {cls.gameState?.teams?.length || 0} teams
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {new Date(cls.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="icon"
-                          variant="destructive"
-                          onClick={() => handleDeleteClass(cls.id, cls.name)}
-                          className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 h-8 w-8"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {classes.map((cls) => {
+                    const teamCount = cls.teamRegistry?.length || cls.gameState?.teams?.length || 0;
+                    const isLegacy = !!cls.gameState;
+
+                    return (
+                      <TableRow key={cls.id} className="border-border hover:bg-muted/10 transition-colors">
+                        <TableCell className="font-semibold text-foreground">
+                          <div className="flex items-center gap-2">
+                            <span>{cls.name}</span>
+                            {isLegacy && (
+                              <span className="text-[10px] bg-amber-500/10 text-amber-600 border border-amber-500/20 px-1.5 py-0.5 rounded font-mono font-bold">
+                                Legacy
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-emerald-700 font-bold tracking-wider">
+                          {cls.facilitatorCode}
+                        </TableCell>
+                        <TableCell className="text-foreground">
+                          {teamCount} teams
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {new Date(cls.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-2 justify-end">
+                            {isLegacy && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => migrateLegacyClass(cls.id)}
+                                className="border-amber-300 text-amber-700 hover:bg-amber-50 h-8 gap-1 text-xs"
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" />
+                                Migrate
+                              </Button>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="destructive"
+                              onClick={() => handleDeleteClass(cls.id, cls.name)}
+                              className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 h-8 w-8"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}

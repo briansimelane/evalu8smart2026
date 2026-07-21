@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGame } from '@/contexts/GameContext';
 import { REGION_CUSTOMERS, Customer } from '@/data/customers';
 import { toast } from 'sonner';
-import { Save, AlertTriangle, CheckCircle2, Package, MapPin, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
+import { Save, AlertTriangle, CheckCircle2, Package, Microscope, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Trophy } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
@@ -19,6 +19,7 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
 };
 
 import { useSession } from '@/contexts/SessionContext';
+import { PhaseLockCard } from './PhaseLockCard';
 
 export const SalesPhase = () => {
   const { gameState, addRoundData, getCurrentRound, getTeamLogisticsProgress, calculatePlayOrder } = useGame();
@@ -27,10 +28,10 @@ export const SalesPhase = () => {
   const [selectedCustomers, setSelectedCustomers] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
-    if (currentRole === 'STUDENT' && currentTeamId) {
+    if (currentTeamId) {
       setSelectedTeam(currentTeamId);
     }
-  }, [currentRole, currentTeamId]);
+  }, [currentTeamId]);
 
   if (!gameState) return null;
 
@@ -109,6 +110,10 @@ export const SalesPhase = () => {
       teamsWithPlans.some(t => t.id === team.id)
     );
   }, [gameState.teams, teamsWithPlans]);
+
+  if (currentRole === 'STUDENT' && !allTeamsHavePlans) {
+    return <PhaseLockCard phaseName="Sales Phase" />;
+  }
 
   const activeSalesTeam = useMemo(() => {
     return playOrder.find(team => {
@@ -232,19 +237,69 @@ export const SalesPhase = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Play Order */}
+            {/* Play Order, Products & Technologies Overview */}
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Play Order (by price/value)</h3>
-              <div className="flex flex-wrap gap-2">
-                {playOrder.map((team, index) => (
-                  <Badge
-                    key={team.id}
-                    style={{ backgroundColor: team.color }}
-                    className="text-white"
-                  >
-                    {index + 1}. {team.name}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Trophy className="h-4 w-4 text-amber-500" />
+                  <span>Play Order & Team Inventory (Products & Technologies)</span>
+                </h3>
+                {activeSalesTeam ? (
+                  <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-bold gap-1.5 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    Current Turn: {activeSalesTeam.name}
                   </Badge>
-                ))}
+                ) : (
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-bold gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Sales Complete
+                  </Badge>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                {playOrder.map((team, index) => {
+                  const teamData = currentRoundData?.teamData[team.id];
+                  const products = teamData?.productsProduced || 0;
+                  const techs = teamData?.technologiesResearched || [];
+                  const isActiveTurn = team.id === activeSalesTeam?.id;
+
+                  return (
+                    <div
+                      key={team.id}
+                      className={`p-2.5 rounded-lg border flex flex-col justify-between space-y-1.5 text-xs transition-all ${
+                        isActiveTurn
+                          ? 'ring-2 ring-emerald-500 bg-emerald-500/10 border-emerald-500/80 shadow-md animate-pulse'
+                          : team.id === selectedTeam
+                          ? 'ring-2 ring-blue-500 bg-blue-500/5 shadow-sm border-blue-500/50'
+                          : 'bg-card/60 border-border'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                          <span className="truncate">{index + 1}. {team.name}</span>
+                        </div>
+                        {isActiveTurn && (
+                          <Badge className="bg-emerald-500 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                            Turn
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="space-y-1 text-[11px] pt-1 border-t border-border/50">
+                        <div className="flex justify-between items-center font-semibold text-emerald-600 dark:text-emerald-400">
+                          <span className="flex items-center gap-1"><Package className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Products:</span>
+                          <span>{products}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-purple-600 dark:text-purple-400">
+                          <span className="flex items-center gap-1"><Microscope className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" /> Techs ({techs.length}):</span>
+                          <span className="truncate text-[10px] font-mono">{techs.length > 0 ? techs.join(', ') : 'None'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             {teamsWithPlans.length === 0 && (

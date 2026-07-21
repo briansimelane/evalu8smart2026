@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/contexts/GameContext';
 import { Badge } from '@/components/ui/badge';
-import { FlaskConical, Truck, Package, TrendingUp, TrendingDown, Wrench, Shuffle, Microscope, CirclePlus, CircleMinus, AlertCircle, AlertTriangle } from 'lucide-react';
+import { FlaskConical, Truck, Package, TrendingUp, TrendingDown, Wrench, Shuffle, Microscope, CirclePlus, CircleMinus, AlertCircle, AlertTriangle, Trophy, CheckCircle2 } from 'lucide-react';
 import { AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
@@ -11,10 +11,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMemo } from 'react';
 
 import { useSession } from '@/contexts/SessionContext';
+import { PhaseLockCard } from './PhaseLockCard';
 
 export const ImprovementPhase = () => {
-  const { gameState, allocateImprovementCards, selectRandomCards, reshuffleRoundCards, previewNextRoundCards, claimImprovementCard } = useGame();
-  const { currentRole, currentTeamId, isReadOnly } = useSession();
+  const { gameState, allocateImprovementCards, selectRandomCards, reshuffleRoundCards, previewNextRoundCards, claimImprovementCard, calculatePlayOrder } = useGame();
+  const { currentRole, currentTeamId, currentClassTeams, isReadOnly } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const { toast } = useToast();
   const [availableCards, setAvailableCards] = useState<ImprovementCardData[]>([]);
@@ -50,6 +51,10 @@ export const ImprovementPhase = () => {
   const allTeamsHavePlans = useMemo(() => {
     return gameState.teams.every(team => teamsWithPlans.some(t => t.team?.id === team.id));
   }, [gameState.teams, teamsWithPlans]);
+
+  if (currentRole === 'STUDENT' && !allTeamsHavePlans) {
+    return <PhaseLockCard phaseName="Improvement Phase" />;
+  }
 
   useEffect(() => {
     if (gameState && (isAllocated || allocationsCompleted) && nextRoundCards.length === 0) {
@@ -208,6 +213,99 @@ export const ImprovementPhase = () => {
         )}
       </div>
 
+      {/* Turn Order & Improvement Overview */}
+      {(() => {
+        const playOrder = calculatePlayOrder(gameState.currentRound);
+        const activeTurnTeam = playOrder.find(t => {
+          const count = currentRoundData?.teamData[t.id]?.improvementCards || 0;
+          const isDone = isTeamAllocated(t.id) || gameState.improvementCards.some(c => c.usedBy === t.id && c.allocatedInRound === gameState.currentRound);
+          return count > 0 && !isDone;
+        });
+
+        return (
+          <div className="space-y-2 p-4 bg-card border border-border rounded-xl shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Trophy className="h-4 w-4 text-amber-500" />
+                <span>Turn Order & Improvement Points — Round {gameState.currentRound}</span>
+              </h3>
+              <div className="flex items-center gap-2">
+                {activeTurnTeam ? (
+                  <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold gap-1.5 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    Current Turn: {activeTurnTeam.name}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-bold gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Improvements Complete
+                  </Badge>
+                )}
+                <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground bg-muted/40 hidden md:inline-flex">
+                  Ordered by Price & Wealth
+                </Badge>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 pt-1">
+              {playOrder.map((team, index) => {
+                const teamData = currentRoundData?.teamData[team.id];
+                const improvementCount = teamData?.improvementCards || 0;
+                const isClaimedOrAllocated = isTeamAllocated(team.id) || gameState.improvementCards.some(c => c.usedBy === team.id && c.allocatedInRound === gameState.currentRound);
+                const isActiveTurn = team.id === activeTurnTeam?.id;
+
+                return (
+                  <div
+                    key={team.id}
+                    className={`p-2.5 rounded-lg border text-xs flex flex-col justify-between space-y-1.5 transition-all ${
+                      isActiveTurn
+                        ? 'ring-2 ring-emerald-500 bg-emerald-500/10 border-emerald-500/80 shadow-md animate-pulse'
+                        : team.id === currentTeamId && currentRole === 'STUDENT'
+                        ? 'ring-2 ring-yellow-500 bg-yellow-500/5 shadow-sm border-yellow-500/50'
+                        : 'bg-card border-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-bold">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="text-muted-foreground font-mono text-[11px]">{index + 1}.</span>
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                        <span className="truncate">{team.name}</span>
+                      </div>
+                      {isActiveTurn && (
+                        <Badge className="bg-emerald-500 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                          Turn
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50">
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <Wrench className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
+                        {improvementCount} {improvementCount === 1 ? 'Card' : 'Cards'}
+                      </span>
+
+                      {improvementCount === 0 ? (
+                        <Badge variant="outline" className="text-[10px] py-0 px-1 font-normal bg-muted/40 text-muted-foreground border-border">
+                          Skipped (0 Cards)
+                        </Badge>
+                      ) : isClaimedOrAllocated ? (
+                        <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                          Claimed
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                          Pending
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Teams with Improvement */}
       {!(isAllocated || allocationsCompleted) && teamsWithImprovement.length > 0 && (
         <Card>
@@ -222,6 +320,8 @@ export const ImprovementPhase = () => {
                 const allocatedCardId = Object.entries(allocations).find(
                   ([_, teamId]) => teamId === team.id
                 )?.[0];
+                const isMyTeam = currentRole === 'STUDENT' && team.id === currentTeamId;
+                const isOtherTeamStudent = currentRole === 'STUDENT' && team.id !== currentTeamId;
 
                 return (
                   <div key={team.id} className="p-4 border rounded-lg space-y-3">
@@ -236,49 +336,68 @@ export const ImprovementPhase = () => {
                       </Badge>
                     </div>
                     
-                    <Select
-                      value={allocatedCardId?.toString() || ''}
-                      onValueChange={(value) => handleAllocate(parseInt(value), team.id)}
-                      disabled={
-                        currentRole === 'STUDENT' && 
-                        (isReadOnly || team.id !== currentTeamId || activePhase !== 'improvement')
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select improvement card" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableCards.map((card, cardIndex) => (
-                          <SelectItem
-                            key={card.id}
-                            value={card.id.toString()}
-                            disabled={isCardAllocated(card.id)}
-                          >
-                            <div className="flex items-center gap-2">
-                              Card {cardIndex + 1}: {getIconElement(card.icon1)} {getIconElement(card.icon2)}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    {currentRole === 'STUDENT' && team.id === currentTeamId && activePhase === 'improvement' && !isReadOnly && (
-                      <Button
-                        size="sm"
-                        className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-                        disabled={!allocatedCardId}
-                        onClick={() => {
-                          if (allocatedCardId) {
-                            claimImprovementCard(parseInt(allocatedCardId), team.id);
-                            toast({
-                              title: "Card Claimed",
-                              description: "Your team has claimed this improvement card successfully."
-                            });
+                    {isOtherTeamStudent ? (
+                      <div className="p-3 bg-muted/40 rounded-lg border text-xs space-y-1">
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>Team Status:</span>
+                          {isTeamAllocated(team.id) ? (
+                            <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-[10px] font-bold">
+                              Card Claimed
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 text-[10px] font-bold">
+                              Selecting Card...
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Select
+                          value={allocatedCardId?.toString() || ''}
+                          onValueChange={(value) => handleAllocate(parseInt(value), team.id)}
+                          disabled={
+                            currentRole === 'STUDENT' && 
+                            (isReadOnly || team.id !== currentTeamId || activePhase !== 'improvement')
                           }
-                        }}
-                      >
-                        Claim Card
-                      </Button>
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select improvement card" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableCards.map((card, cardIndex) => (
+                              <SelectItem
+                                key={card.id}
+                                value={card.id.toString()}
+                                disabled={isCardAllocated(card.id)}
+                              >
+                                <div className="flex items-center gap-2">
+                                  Card {cardIndex + 1}: {getIconElement(card.icon1)} {getIconElement(card.icon2)}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        {isMyTeam && activePhase === 'improvement' && !isReadOnly && (
+                          <Button
+                            size="sm"
+                            className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                            disabled={!allocatedCardId}
+                            onClick={() => {
+                              if (allocatedCardId) {
+                                claimImprovementCard(parseInt(allocatedCardId), team.id);
+                                toast({
+                                  title: "Card Claimed",
+                                  description: "Your team has claimed this improvement card successfully."
+                                });
+                              }
+                            }}
+                          >
+                            Claim Card
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 );

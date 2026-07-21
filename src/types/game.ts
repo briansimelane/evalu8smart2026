@@ -12,12 +12,22 @@ export interface Team {
 
 export type UserRole = 'ADMIN' | 'FACILITATOR' | 'STUDENT';
 
+export interface ClassTeam {
+  id: string;
+  name: string;
+  color: string;
+  ceoName?: string;
+  ceoPin?: string;
+  updatedAt?: any;
+}
+
 export interface SimulationClass {
   id: string;
   name: string;
   facilitatorCode: string;
   teamCodes: Record<string, string>; // teamId -> accessCode
-  gameState: GameState | null;
+  teamRegistry: ClassTeam[];
+  gameState?: GameState | null; // Optional for backward compatibility with unmigrated classes
   createdAt: string;
 }
 

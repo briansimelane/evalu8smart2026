@@ -1,23 +1,116 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
-import { ShieldCheck, ShieldAlert, Key, LogOut } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Key, LogOut, LayoutDashboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
 export const CeoClaimBar: React.FC = () => {
-  const { currentRole, currentTeamId, activeClass, isReadOnly, isCeo, ceoName, claimCeoSlot, releaseCeoSlot } = useSession();
+  const navigate = useNavigate();
+  const { currentRole, currentTeamId, activeClass, currentClassTeams, isReadOnly, isCeo, ceoName, claimCeoSlot, releaseCeoSlot, logout, selectTeam } = useSession();
   const [isOpen, setIsOpen] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [currentPinInput, setCurrentPinInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (currentRole !== 'STUDENT') return null;
+  if (currentRole !== 'STUDENT') {
+    const teamsList = activeClass?.gameState?.teams || activeClass?.teamRegistry || [];
+    const activeTeamObj = teamsList.find(t => t.id === currentTeamId);
 
-  const team = activeClass?.gameState?.teams.find(t => t.id === currentTeamId);
-  if (!team) return null;
+    return (
+      <div className="w-full bg-slate-900 border border-purple-800/40 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 mb-6 shadow-xl text-white relative overflow-hidden">
+        <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-500" />
+        
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
+            <ShieldCheck className="h-5 w-5 text-purple-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400">Facilitator Control Mode</span>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-mono">Full Edit & View Access</span>
+            </div>
+            <p className="text-sm font-semibold text-slate-200 mt-0.5 flex items-center gap-2">
+              {activeTeamObj ? (
+                <>
+                  <span>Viewing & Editing:</span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold text-white shadow-sm" style={{ backgroundColor: activeTeamObj.color }}>
+                    {activeTeamObj.name}
+                  </span>
+                </>
+              ) : (
+                <span className="text-slate-400">Viewing: <strong className="text-white">All Teams Overview</strong> (Select a team to focus inputs)</span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-medium">Team Focus:</span>
+            <Select
+              value={currentTeamId || 'all'}
+              onValueChange={(val) => selectTeam(val === 'all' ? null : val)}
+            >
+              <SelectTrigger className="w-[180px] h-8 bg-slate-800 border-slate-700 text-white text-xs font-semibold">
+                <SelectValue placeholder="Select Team" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectItem value="all" className="text-xs font-semibold">-- View All Teams --</SelectItem>
+                {teamsList.map((t) => (
+                  <SelectItem key={t.id} value={t.id} className="text-xs font-medium">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: t.color }} />
+                      <span>{t.name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(currentRole === 'ADMIN' ? '/admin' : '/facilitator/classes')}
+            className="h-8 border-purple-500/40 text-purple-300 hover:bg-purple-950/60 text-xs font-semibold gap-1.5"
+          >
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            All Games
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const team = (currentTeamId && currentClassTeams[currentTeamId])
+    || activeClass?.teamRegistry?.find(t => t.id === currentTeamId)
+    || activeClass?.gameState?.teams.find(t => t.id === currentTeamId);
+
+  if (!team) {
+    return (
+      <div className="w-full bg-slate-900 border border-red-800/60 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 mb-6 shadow-xl text-white">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+            <ShieldAlert className="h-5 w-5 text-red-400" />
+          </div>
+          <div>
+            <h4 className="font-semibold text-red-300">Team Lookup Error</h4>
+            <p className="text-xs text-slate-400">
+              Your team ({currentTeamId}) could not be located in this class session. Please log out and re-enter your team access code, or contact your facilitator.
+            </p>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" onClick={logout} className="border-red-800/40 text-red-300 hover:bg-red-950/60">
+          Logout
+        </Button>
+      </div>
+    );
+  }
 
   const handleClaim = async (e?: React.FormEvent) => {
     if (e) {
@@ -160,10 +253,9 @@ export const CeoClaimBar: React.FC = () => {
                     {ceoName ? 'Choose New PIN Code (Optional)' : 'CEO 4-Digit PIN Code'}
                   </label>
                   <Input
-                    required={!ceoName}
                     type="password"
                     maxLength={4}
-                    placeholder={ceoName ? "Leave blank to keep current PIN" : "e.g. 1234"}
+                    placeholder={ceoName ? 'Leave blank to keep current PIN' : 'e.g. 1234'}
                     value={pinInput}
                     onChange={(e) => setPinInput(e.target.value)}
                     className="bg-background border-border text-foreground tracking-widest text-center font-mono"
@@ -175,7 +267,6 @@ export const CeoClaimBar: React.FC = () => {
                   </Button>
                   <Button 
                     type="submit" 
-                    onClick={() => handleClaim()}
                     disabled={isSubmitting}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                   >

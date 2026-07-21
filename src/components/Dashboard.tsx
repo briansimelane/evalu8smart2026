@@ -15,6 +15,7 @@ import { SimulationReport } from './dashboard/SimulationReport';
 import { LogisticsPhase } from './dashboard/LogisticsPhase';
 import { FinancialsPhase } from './dashboard/FinancialsPhase';
 import { GameSettingsDialog } from './dashboard/GameSettingsDialog';
+import { TeamSubmissionStatus } from './dashboard/TeamSubmissionStatus';
 import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -31,13 +32,15 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
+import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
 import { CeoClaimBar } from './CeoClaimBar';
 
 export const Dashboard = () => {
+  const navigate = useNavigate();
   const gameContext = useGame();
   const { gameState, resetGame, advanceRound, updatePhase } = gameContext;
-  const { currentRole, logout } = useSession();
+  const { currentRole, logout, activeClass } = useSession();
   const [activeTab, setActiveTab] = useState('planning');
   const [isAnimatingRound, setIsAnimatingRound] = useState(false);
   const roundInputRef = useRef<{ loadTeamData: (roundNumber: number, teamId: string) => void }>(null);
@@ -73,17 +76,7 @@ export const Dashboard = () => {
   };
 
   const renderPhasePlaceholder = (tabName: string) => {
-    return (
-      <Card className="max-w-2xl mx-auto border-dashed border-2 border-muted bg-card text-center p-12 space-y-4">
-        <div className="mx-auto w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-          <Award className="h-6 w-6 text-blue-500 animate-pulse" />
-        </div>
-        <CardTitle className="text-xl">Round 1 Simulation Pending</CardTitle>
-        <CardDescription className="max-w-md mx-auto text-sm text-muted-foreground">
-          The {tabName} will become available once Round 1 plans are submitted and the facilitator advances the game to the Production phase.
-        </CardDescription>
-      </Card>
-    );
+    return <TeamSubmissionStatus tabName={tabName} />;
   };
 
   if (!gameState) return null;
@@ -91,8 +84,12 @@ export const Dashboard = () => {
   const isPlanningPhase = currentRole === 'STUDENT' && (gameState.currentPhase === 'planning' || !gameState.currentPhase);
   const effectiveRound = isPlanningPhase ? gameState.currentRound - 1 : gameState.currentRound;
 
+  const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
+  const submittedTeamDataMap = currentRoundData?.teamData || {};
+  const allTeamsSubmitted = gameState.teams.length > 0 && gameState.teams.every(t => !!submittedTeamDataMap[t.id]);
+
   const getRestrictedGameState = () => {
-    if (!isPlanningPhase) return gameState;
+    if (!isPlanningPhase || allTeamsSubmitted) return gameState;
     const prevRounds = gameState.rounds.filter(r => r.roundNumber < gameState.currentRound);
     return {
       ...gameState,
@@ -106,7 +103,7 @@ export const Dashboard = () => {
   const restrictedGameContextValue = {
     ...gameContext,
     gameState: restrictedGameState,
-    getCurrentRound: () => effectiveRound
+    getCurrentRound: () => (!isPlanningPhase || allTeamsSubmitted ? gameState.currentRound : effectiveRound)
   };
 
   return (
@@ -117,13 +114,18 @@ export const Dashboard = () => {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold text-foreground">Smartphone Inc Tracker</h1>
+                {activeClass?.name && (
+                  <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs px-2.5 py-1 font-bold">
+                    Class: {activeClass.name}
+                  </Badge>
+                )}
               </div>
-              <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1">
+              <div className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1">
                 Round <span className={`inline-block transition-all duration-500 ease-out ${isAnimatingRound ? 'scale-[2.5] text-blue-500 font-black mx-2 -translate-y-1' : 'scale-100 font-normal mx-0'}`}>{gameState.currentRound}</span> of 5 | {gameState.teams.length} Teams
                 <Badge variant={(gameState.currentPhase || 'planning') === 'planning' ? 'secondary' : 'default'} className="ml-1 text-[10px] px-1.5 py-0 capitalize font-semibold">
                   {(gameState.currentPhase || 'planning') === 'innovation' ? 'Research Phase' : (gameState.currentPhase || 'planning') === 'expansion' ? 'Logistics Phase' : `${gameState.currentPhase || 'planning'} Phase`}
                 </Badge>
-              </p>
+              </div>
             </div>
             
             <div className="flex gap-2 items-center">
@@ -201,6 +203,15 @@ export const Dashboard = () => {
                   </AlertDialog>
                   
                   <GameSettingsDialog />
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => navigate(currentRole === 'ADMIN' ? '/admin' : '/facilitator/classes')}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-sm text-xs"
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    All Games
+                  </Button>
                   <Button variant="outline" size="sm" onClick={logout} className="border-border hover:bg-muted text-foreground">
                     <LogOut className="h-4 w-4" />
                   </Button>
@@ -302,55 +313,71 @@ export const Dashboard = () => {
           </TabsContent>
 
           {/* Data View Tabs */}
-          <TabsContent value="state" className="space-y-4">
-            {effectiveRound === 0 ? (
-              renderPhasePlaceholder("Current State")
-            ) : (
-              <GameContext.Provider value={restrictedGameContextValue}>
-                <CurrentState onEditTeamData={handleEditTeamData} />
-              </GameContext.Provider>
-            )}
-          </TabsContent>
+          {(() => {
+            const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
+            const submittedTeamDataMap = currentRoundData?.teamData || {};
+            const allTeamsSubmitted = gameState.teams.length > 0 && gameState.teams.every(t => !!submittedTeamDataMap[t.id]);
+            const isPlaceholderMode = effectiveRound === 0 && !allTeamsSubmitted;
 
-          <TabsContent value="scoreboard" className="space-y-4">
-            {effectiveRound === 0 ? (
-              renderPhasePlaceholder("Scoreboard")
-            ) : (
-              <GameContext.Provider value={restrictedGameContextValue}>
-                <Scoreboard onEditTeamData={handleEditTeamData} />
-              </GameContext.Provider>
-            )}
-          </TabsContent>
+            return (
+              <>
+                <TabsContent value="state" className="space-y-4">
+                  {isPlaceholderMode ? (
+                    renderPhasePlaceholder("Current State")
+                  ) : (
+                    <GameContext.Provider value={restrictedGameContextValue}>
+                      <TeamSubmissionStatus tabName="Current State" isCompact />
+                      <CurrentState onEditTeamData={handleEditTeamData} />
+                    </GameContext.Provider>
+                  )}
+                </TabsContent>
 
-          <TabsContent value="analytics" className="space-y-4">
-            {effectiveRound === 0 ? (
-              renderPhasePlaceholder("Analytics")
-            ) : (
-              <GameContext.Provider value={restrictedGameContextValue}>
-                <Analytics />
-              </GameContext.Provider>
-            )}
-          </TabsContent>
+                <TabsContent value="scoreboard" className="space-y-4">
+                  {isPlaceholderMode ? (
+                    renderPhasePlaceholder("Scoreboard")
+                  ) : (
+                    <GameContext.Provider value={restrictedGameContextValue}>
+                      <TeamSubmissionStatus tabName="Scoreboard" isCompact />
+                      <Scoreboard onEditTeamData={handleEditTeamData} />
+                    </GameContext.Provider>
+                  )}
+                </TabsContent>
 
-          <TabsContent value="financials" className="space-y-4">
-            {effectiveRound === 0 ? (
-              renderPhasePlaceholder("Financials")
-            ) : (
-              <GameContext.Provider value={restrictedGameContextValue}>
-                <FinancialsPhase />
-              </GameContext.Provider>
-            )}
-          </TabsContent>
+                <TabsContent value="analytics" className="space-y-4">
+                  {isPlaceholderMode ? (
+                    renderPhasePlaceholder("Analytics")
+                  ) : (
+                    <GameContext.Provider value={restrictedGameContextValue}>
+                      <TeamSubmissionStatus tabName="Analytics" isCompact />
+                      <Analytics />
+                    </GameContext.Provider>
+                  )}
+                </TabsContent>
 
-          <TabsContent value="report" className="space-y-4">
-            {effectiveRound === 0 ? (
-              renderPhasePlaceholder("Simulation Report")
-            ) : (
-              <GameContext.Provider value={restrictedGameContextValue}>
-                <SimulationReport />
-              </GameContext.Provider>
-            )}
-          </TabsContent>
+                <TabsContent value="financials" className="space-y-4">
+                  {isPlaceholderMode ? (
+                    renderPhasePlaceholder("Financials")
+                  ) : (
+                    <GameContext.Provider value={restrictedGameContextValue}>
+                      <TeamSubmissionStatus tabName="Financials" isCompact />
+                      <FinancialsPhase />
+                    </GameContext.Provider>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="report" className="space-y-4">
+                  {isPlaceholderMode ? (
+                    renderPhasePlaceholder("Simulation Report")
+                  ) : (
+                    <GameContext.Provider value={restrictedGameContextValue}>
+                      <TeamSubmissionStatus tabName="Simulation Report" isCompact />
+                      <SimulationReport />
+                    </GameContext.Provider>
+                  )}
+                </TabsContent>
+              </>
+            );
+          })()}
         </Tabs>
       </main>
     </div>

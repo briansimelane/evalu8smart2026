@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
-import { SimulationClass, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress } from '@/types/game';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, deleteField } from 'firebase/firestore';
+import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress } from '@/types/game';
 import { toast } from 'sonner';
-import { REGIONS, TECHNOLOGIES, TEAM_COLORS, getTeamColorName } from '@/data/combinations';
+import { REGIONS, TECHNOLOGIES, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS } from '@/data/improvements';
 import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
 
@@ -14,6 +14,7 @@ interface SessionContextType {
   classes: SimulationClass[];
   classesLoaded: boolean;
   activeClass: SimulationClass | null;
+  currentClassTeams: Record<string, ClassTeam>;
   isReadOnly: boolean;
   isCeo: boolean;
   ceoName: string | null;
@@ -25,6 +26,7 @@ interface SessionContextType {
   releaseCeoSlot: () => Promise<void>;
   facilitatorReleaseCeoSlot: (classId: string, teamId: string) => Promise<void>;
   facilitatorChangeCeoPin: (classId: string, teamId: string, newPin: string) => Promise<void>;
+  migrateLegacyClass: (classId: string) => Promise<boolean>;
   selectClass: (classId: string | null) => void;
   selectTeam: (teamId: string | null) => void;
 }
@@ -47,6 +49,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   const [classesLoaded, setClassesLoaded] = useState(false);
   const [classesLoadError, setClassesLoadError] = useState<any>(null);
   const [activeClass, setActiveClass] = useState<SimulationClass | null>(null);
+  const [currentClassTeams, setCurrentClassTeams] = useState<Record<string, ClassTeam>>({});
 
   // CEO state from localStorage
   const [localCeoPin, setLocalCeoPin] = useState<string | null>(localStorage.getItem('evalu8_ceo_pin'));
@@ -64,12 +67,12 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Listen to classes collection in Firestore
+  // Listen to classes identity collection in Firestore
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'classes'), (snapshot) => {
       const classList: SimulationClass[] = [];
-      snapshot.forEach((doc) => {
-        classList.push(doc.data() as SimulationClass);
+      snapshot.forEach((docSnap) => {
+        classList.push(docSnap.data() as SimulationClass);
       });
       setClasses(classList);
       setClassesLoaded(true);
@@ -82,6 +85,26 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, []);
 
+  // Listen to active class teams subcollection in Firestore
+  useEffect(() => {
+    if (!currentClassId) {
+      setCurrentClassTeams({});
+      return;
+    }
+
+    const unsubscribe = onSnapshot(collection(db, 'classes', currentClassId, 'teams'), (snapshot) => {
+      const teamsMap: Record<string, ClassTeam> = {};
+      snapshot.forEach((docSnap) => {
+        teamsMap[docSnap.id] = docSnap.data() as ClassTeam;
+      });
+      setCurrentClassTeams(teamsMap);
+    }, (error) => {
+      console.error('Error fetching class teams subcollection:', error);
+    });
+
+    return () => unsubscribe();
+  }, [currentClassId]);
+
   // Sync active class details when currentClassId or classes update
   useEffect(() => {
     if (currentClassId) {
@@ -93,12 +116,42 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   }, [currentClassId, classes]);
 
   // Derived state: CEO and Read-Only control
-  const activeTeam = activeClass?.gameState?.teams.find(t => t.id === currentTeamId);
+  const currentTeamDoc = currentTeamId ? currentClassTeams[currentTeamId] : null;
+  const activeTeam = currentTeamDoc || activeClass?.gameState?.teams.find(t => t.id === currentTeamId);
+
   const isCeo = currentRole === 'STUDENT' && !!activeTeam?.ceoPin && localCeoPin === activeTeam.ceoPin;
   const isReadOnly = currentRole === 'STUDENT' && !isCeo;
   const ceoName = activeTeam?.ceoName || null;
 
+  // Track the CEO PIN that was successfully verified against DB
+  const lastVerifiedCeoPinRef = useRef<string | null>(null);
+
+  // Keep lastVerifiedCeoPinRef in sync when activeTeam matches localCeoPin
+  useEffect(() => {
+    if (currentRole === 'STUDENT' && localCeoPin && activeTeam?.ceoPin === localCeoPin) {
+      lastVerifiedCeoPinRef.current = localCeoPin;
+    }
+  }, [currentRole, localCeoPin, activeTeam?.ceoPin]);
+
+  // Real-time CEO revocation alert for sitting CEO
+  useEffect(() => {
+    if (currentRole === 'STUDENT' && localCeoPin) {
+      // Only revoke if this PIN was previously verified against DB, but now DB CEO PIN changed/cleared
+      if (lastVerifiedCeoPinRef.current === localCeoPin && currentTeamDoc && currentTeamDoc.ceoPin !== localCeoPin) {
+        toast.info("Your CEO access was changed by the facilitator.");
+        localStorage.removeItem('evalu8_ceo_pin');
+        localStorage.removeItem('evalu8_ceo_name');
+        lastVerifiedCeoPinRef.current = null;
+        setLocalCeoPin(null);
+      }
+    }
+  }, [currentRole, localCeoPin, currentTeamDoc]);
+
   const login = async (code: string): Promise<{ success: boolean; message?: string; role?: UserRole }> => {
+    if (!classesLoaded) {
+      return { success: false, message: 'Still connecting — please try again in a moment.' };
+    }
+
     const trimmedCode = code.trim().toUpperCase();
 
     if (trimmedCode === 'ADMIN-MASTER') {
@@ -160,6 +213,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     setCurrentRole(null);
     setCurrentClassId(null);
     setCurrentTeamId(null);
+    lastVerifiedCeoPinRef.current = null;
     setLocalCeoPin(null);
   };
 
@@ -278,24 +332,59 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
     const facilitatorCode = `FAC-${rand4()}`;
     const teamCodes: Record<string, string> = {};
+    const teamRegistry: ClassTeam[] = [];
 
-    teams.forEach((team, idx) => {
-      const teamNum = idx + 1;
-      teamCodes[team.id] = `TM${teamNum}-${randAlpha4()}`;
+    // Ensure teams have canonical team_1 ... team_N IDs
+    const canonicalTeams: Team[] = teams.map((team, idx) => {
+      const canonicalId = `team_${idx + 1}`;
+      teamCodes[canonicalId] = `TM${idx + 1}-${randAlpha4()}`;
+      const regTeam: ClassTeam = {
+        id: canonicalId,
+        name: team.name,
+        color: team.color,
+        ceoName: '',
+        ceoPin: ''
+      };
+      teamRegistry.push(regTeam);
+      return {
+        ...team,
+        id: canonicalId
+      };
     });
 
-    const initialGameState = buildInitialGameState(teams);
+    const initialGameState = buildInitialGameState(canonicalTeams);
 
-    const newClass: SimulationClass = {
+    const batch = writeBatch(db);
+
+    // 1. Identity Document: classes/{classId}
+    const classDocRef = doc(db, 'classes', classId);
+    batch.set(classDocRef, {
       id: classId,
       name,
       facilitatorCode,
       teamCodes,
-      gameState: initialGameState,
+      teamRegistry,
       createdAt: new Date().toISOString()
-    };
+    });
 
-    await setDoc(doc(db, 'classes', classId), newClass);
+    // 2. Game State Document: classes/{classId}/state/game
+    const stateDocRef = doc(db, 'classes', classId, 'state', 'game');
+    batch.set(stateDocRef, { gameState: initialGameState });
+
+    // 3. Per-Team CEO Subcollection Documents: classes/{classId}/teams/{teamId}
+    canonicalTeams.forEach((team) => {
+      const teamDocRef = doc(db, 'classes', classId, 'teams', team.id);
+      batch.set(teamDocRef, {
+        id: team.id,
+        name: team.name,
+        color: team.color,
+        ceoName: '',
+        ceoPin: '',
+        updatedAt: serverTimestamp()
+      });
+    });
+
+    await batch.commit();
     return classId;
   };
 
@@ -305,52 +394,52 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   const claimCeoSlot = async (name: string, newPin?: string, currentPin?: string): Promise<boolean> => {
     try {
-      if (!currentClassId || !currentTeamId || !activeClass) {
-        console.warn("claimCeoSlot aborted: missing session variables", { currentClassId, currentTeamId, activeClass });
+      if (!currentClassId || !currentTeamId) {
+        console.warn("claimCeoSlot aborted: missing session variables", { currentClassId, currentTeamId });
         return false;
       }
 
-      const classRef = doc(db, 'classes', currentClassId);
-      const classSnap = await getDoc(classRef);
-      if (!classSnap.exists()) {
-        console.warn(`claimCeoSlot aborted: class ${currentClassId} snap not found`);
-        return false;
-      }
+      const teamRef = doc(db, 'classes', currentClassId, 'teams', currentTeamId);
 
-      const classData = classSnap.data() as SimulationClass;
-      if (!classData.gameState) {
-        console.warn("claimCeoSlot aborted: class has no gameState");
-        return false;
-      }
-
-      const team = classData.gameState.teams.find(t => t.id === currentTeamId);
-      if (!team) {
-        console.warn(`claimCeoSlot aborted: team ${currentTeamId} not found in class teams`);
-        return false;
-      }
-
-      // If already claimed, verify the current PIN
-      if (team.ceoPin) {
-        if (!currentPin || team.ceoPin !== currentPin) {
-          toast.error('This CEO seat is already claimed! Incorrect current PIN.');
-          return false;
+      const finalPin = await runTransaction(db, async (tx) => {
+        const snap = await tx.get(teamRef);
+        let currentPinInDb = '';
+        if (snap.exists()) {
+          currentPinInDb = snap.data().ceoPin || '';
         }
+
+        // If seat is already claimed with a PIN, verify the current PIN
+        if (currentPinInDb) {
+          if (!currentPin || currentPinInDb !== currentPin) {
+            return null; // Invalid PIN
+          }
+        }
+
+        const calculatedPin = newPin || currentPinInDb;
+        if (!calculatedPin) return null;
+
+        tx.set(teamRef, {
+          id: currentTeamId,
+          ceoName: name,
+          ceoPin: calculatedPin,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        return calculatedPin;
+      });
+
+      if (!finalPin) {
+        toast.error('This CEO seat is already claimed or PIN is invalid!');
+        return false;
       }
 
-      // Set CEO details
-      team.ceoName = name;
-      const finalPin = newPin || team.ceoPin || '';
-      team.ceoPin = finalPin;
-
-      // Save locally first to prevent race condition during latency compensation
+      // Save locally after successful transaction
       localStorage.setItem('evalu8_ceo_name', name);
       localStorage.setItem('evalu8_ceo_pin', finalPin);
       setLocalCeoPin(finalPin);
 
-      // Update in Firestore
-      await setDoc(classRef, classData);
-
-      toast.success(`You have claimed the CEO seat for team ${team.name}!`);
+      const tName = currentTeamDoc?.name || currentTeamId;
+      toast.success(`You have claimed the CEO seat for team ${tName}!`);
       return true;
     } catch (error: any) {
       console.error("Error inside claimCeoSlot:", error);
@@ -361,29 +450,23 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   const releaseCeoSlot = async () => {
     try {
-      if (!currentClassId || !currentTeamId || !activeClass) return;
+      if (!currentClassId || !currentTeamId) return;
 
-      const classRef = doc(db, 'classes', currentClassId);
-      const classSnap = await getDoc(classRef);
-      if (!classSnap.exists()) return;
+      const teamRef = doc(db, 'classes', currentClassId, 'teams', currentTeamId);
+      await runTransaction(db, async (tx) => {
+        tx.update(teamRef, {
+          ceoName: '',
+          ceoPin: '',
+          updatedAt: serverTimestamp()
+        });
+      });
 
-      const classData = classSnap.data() as SimulationClass;
-      if (!classData.gameState) return;
-
-      const team = classData.gameState.teams.find(t => t.id === currentTeamId);
-      if (!team) return;
-
-      team.ceoName = '';
-      team.ceoPin = '';
-
-      // Clear locally first to prevent race condition during latency compensation
       localStorage.removeItem('evalu8_ceo_name');
       localStorage.removeItem('evalu8_ceo_pin');
+      lastVerifiedCeoPinRef.current = null;
       setLocalCeoPin(null);
 
-      await setDoc(classRef, classData);
-
-      toast.success(`CEO seat released for team ${team.name}.`);
+      toast.success(`CEO seat released.`);
     } catch (error: any) {
       console.error("Error inside releaseCeoSlot:", error);
       toast.error(`Failed to release CEO seat: ${error.message || error}`);
@@ -392,21 +475,15 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   const facilitatorReleaseCeoSlot = async (classId: string, teamId: string): Promise<void> => {
     try {
-      const classRef = doc(db, 'classes', classId);
-      const classSnap = await getDoc(classRef);
-      if (!classSnap.exists()) return;
-
-      const classData = classSnap.data() as SimulationClass;
-      if (!classData.gameState) return;
-
-      const team = classData.gameState.teams.find(t => t.id === teamId);
-      if (!team) return;
-
-      team.ceoName = '';
-      team.ceoPin = '';
-
-      await setDoc(classRef, classData);
-      toast.success(`CEO seat released for ${team.name}.`);
+      const teamRef = doc(db, 'classes', classId, 'teams', teamId);
+      await runTransaction(db, async (tx) => {
+        tx.update(teamRef, {
+          ceoName: '',
+          ceoPin: '',
+          updatedAt: serverTimestamp()
+        });
+      });
+      toast.success(`CEO seat released.`);
     } catch (error: any) {
       console.error("Facilitator error releasing CEO seat:", error);
       toast.error(`Failed to release CEO seat: ${error.message || error}`);
@@ -415,23 +492,73 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   const facilitatorChangeCeoPin = async (classId: string, teamId: string, newPin: string): Promise<void> => {
     try {
-      const classRef = doc(db, 'classes', classId);
-      const classSnap = await getDoc(classRef);
-      if (!classSnap.exists()) return;
-
-      const classData = classSnap.data() as SimulationClass;
-      if (!classData.gameState) return;
-
-      const team = classData.gameState.teams.find(t => t.id === teamId);
-      if (!team) return;
-
-      team.ceoPin = newPin;
-
-      await setDoc(classRef, classData);
-      toast.success(`CEO PIN updated for ${team.name}.`);
+      const teamRef = doc(db, 'classes', classId, 'teams', teamId);
+      await runTransaction(db, async (tx) => {
+        tx.update(teamRef, {
+          ceoPin: newPin,
+          updatedAt: serverTimestamp()
+        });
+      });
+      toast.success(`CEO PIN updated.`);
     } catch (error: any) {
       console.error("Facilitator error changing CEO PIN:", error);
       toast.error(`Failed to change CEO PIN: ${error.message || error}`);
+    }
+  };
+
+  const migrateLegacyClass = async (classId: string): Promise<boolean> => {
+    try {
+      const classRef = doc(db, 'classes', classId);
+      const snap = await getDoc(classRef);
+      if (!snap.exists()) return false;
+
+      const data = snap.data() as SimulationClass;
+      if (!data.gameState) {
+        toast.info(`Class ${data.name || classId} is already migrated.`);
+        return true;
+      }
+
+      const legacyState = data.gameState;
+      const teamRegistry: ClassTeam[] = data.teamRegistry || legacyState.teams.map((t, idx) => ({
+        id: t.id || `team_${idx + 1}`,
+        name: t.name,
+        color: t.color,
+        ceoName: t.ceoName || '',
+        ceoPin: t.ceoPin || ''
+      }));
+
+      const batch = writeBatch(db);
+
+      // 1. Write state doc
+      const stateRef = doc(db, 'classes', classId, 'state', 'game');
+      batch.set(stateRef, { gameState: legacyState });
+
+      // 2. Write team subcollection docs
+      teamRegistry.forEach((t) => {
+        const teamRef = doc(db, 'classes', classId, 'teams', t.id);
+        batch.set(teamRef, {
+          id: t.id,
+          name: t.name,
+          color: t.color,
+          ceoName: t.ceoName || '',
+          ceoPin: t.ceoPin || '',
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      });
+
+      // 3. Update root identity doc: set teamRegistry, delete gameState field
+      batch.update(classRef, {
+        teamRegistry,
+        gameState: deleteField()
+      });
+
+      await batch.commit();
+      toast.success(`Class ${data.name || classId} successfully migrated!`);
+      return true;
+    } catch (err: any) {
+      console.error("Failed to migrate class:", err);
+      toast.error(`Migration error: ${err.message || err}`);
+      return false;
     }
   };
 
@@ -446,6 +573,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   const selectTeam = (teamId: string | null) => {
     setCurrentTeamId(teamId);
+    lastVerifiedCeoPinRef.current = null;
     if (teamId) {
       localStorage.setItem('evalu8_team_id', teamId);
     } else {
@@ -477,6 +605,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       classes,
       classesLoaded,
       activeClass,
+      currentClassTeams,
       isReadOnly,
       isCeo,
       ceoName,
@@ -488,6 +617,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       releaseCeoSlot,
       facilitatorReleaseCeoSlot,
       facilitatorChangeCeoPin,
+      migrateLegacyClass,
       selectClass,
       selectTeam
     }}>

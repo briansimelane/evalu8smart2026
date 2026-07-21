@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { useSession } from '@/contexts/SessionContext';
+import { PhaseLockCard } from './PhaseLockCard';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -31,15 +32,20 @@ export const LogisticsPhase = () => {
   const [allocations, setAllocations] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (currentRole === 'STUDENT' && currentTeamId) {
+    if (currentTeamId) {
       setSelectedTeam(currentTeamId);
     }
-  }, [currentRole, currentTeamId]);
+  }, [currentTeamId]);
 
   if (!gameState) return null;
 
   const currentRound = gameState.currentRound;
   const currentRoundData = gameState.rounds.find(r => r.roundNumber === currentRound);
+  const allTeamsHavePlans = gameState.teams.every(t => !!currentRoundData?.teamData[t.id]);
+
+  if (currentRole === 'STUDENT' && !allTeamsHavePlans) {
+    return <PhaseLockCard phaseName="Logistics Phase" />;
+  }
   
   // Filter play order to only include teams with logistics icons > 0
   const allPlayOrder = calculatePlayOrder(currentRound);
@@ -189,21 +195,76 @@ export const LogisticsPhase = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Play Order */}
-            <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Play Order (by price/value)</h3>
-          <div className="flex flex-wrap gap-2">
-            {playOrder.map((team, index) => (
-              <Badge
-                key={team.id}
-                style={{ backgroundColor: team.color }}
-                className="text-white"
-              >
-                {index + 1}. {team.name}
-              </Badge>
-            ))}
-          </div>
-        </div>
+            {/* Play Order & Logistics Icons Overview */}
+            {(() => {
+              const activeTurnTeam = playOrder.find(t => {
+                const icons = currentRoundData?.teamData[t.id]?.logisticsIcons || 0;
+                const spent = gameState.logisticsAllocatedByRound[currentRound]?.[t.id] || 0;
+                return icons > 0 && spent < icons;
+              });
+
+              return (
+                <div className="space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <Trophy className="h-4 w-4 text-amber-500" />
+                      <span>Play Order & Team Logistics Icons</span>
+                    </h3>
+                    {activeTurnTeam ? (
+                      <Badge className="bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 text-xs font-bold gap-1.5 animate-pulse">
+                        <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
+                        Current Turn: {activeTurnTeam.name}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-bold gap-1">
+                        <CheckCircle className="h-3 w-3" />
+                        Logistics Complete
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                    {playOrder.map((team, index) => {
+                      const icons = currentRoundData?.teamData[team.id]?.logisticsIcons || 0;
+                      const spent = gameState.logisticsAllocatedByRound[currentRound]?.[team.id] || 0;
+                      const isActiveTurn = team.id === activeTurnTeam?.id;
+
+                      return (
+                        <div
+                          key={team.id}
+                          className={`p-2.5 rounded-lg border flex flex-col justify-between space-y-1 text-xs transition-all ${
+                            isActiveTurn
+                              ? 'ring-2 ring-cyan-500 bg-cyan-500/10 border-cyan-500/80 shadow-md animate-pulse'
+                              : team.id === selectedTeam
+                              ? 'ring-2 ring-blue-500 bg-blue-500/5 shadow-sm border-blue-500/50'
+                              : 'bg-card/60 border-border'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between font-bold">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                              <span className="truncate">{index + 1}. {team.name}</span>
+                            </div>
+                            {isActiveTurn && (
+                              <Badge className="bg-cyan-600 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                                Turn
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
+                            <span className="font-semibold text-cyan-600 dark:text-cyan-400 flex items-center gap-1">
+                              <Truck className="h-3.5 w-3.5" />
+                              {icons} Icons
+                            </span>
+                            <span>{spent}/{icons} spent</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
         {/* Team Selection */}
         <div className="space-y-2">
