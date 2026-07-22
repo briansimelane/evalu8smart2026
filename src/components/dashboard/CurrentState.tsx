@@ -83,7 +83,7 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold">Current Round</h2>
+      <h2 className="text-3xl font-bold">State: Round {gameState.currentRound}</h2>
 
       <Card>
         <CardHeader>
