@@ -81,16 +81,16 @@ export const Dashboard = () => {
 
   if (!gameState) return null;
 
-  const isPlanningPhase = currentRole === 'STUDENT' && (gameState.currentPhase === 'planning' || !gameState.currentPhase);
-  const effectiveRound = isPlanningPhase ? gameState.currentRound - 1 : gameState.currentRound;
-
   const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
   const submittedTeamDataMap = currentRoundData?.teamData || {};
   const allTeamsSubmitted = gameState.teams.length > 0 && gameState.teams.every(t => !!submittedTeamDataMap[t.id]);
 
+  const isStudentRestricted = currentRole === 'STUDENT' && !allTeamsSubmitted;
+  const effectiveRound = isStudentRestricted ? Math.max(0, gameState.currentRound - 1) : gameState.currentRound;
+
   const getRestrictedGameState = () => {
-    if (!isPlanningPhase || allTeamsSubmitted) return gameState;
-    const prevRounds = gameState.rounds.filter(r => r.roundNumber < gameState.currentRound);
+    if (!isStudentRestricted) return gameState;
+    const prevRounds = gameState.rounds.filter(r => r.roundNumber <= effectiveRound);
     return {
       ...gameState,
       currentRound: effectiveRound,
@@ -103,7 +103,7 @@ export const Dashboard = () => {
   const restrictedGameContextValue = {
     ...gameContext,
     gameState: restrictedGameState,
-    getCurrentRound: () => (!isPlanningPhase || allTeamsSubmitted ? gameState.currentRound : effectiveRound)
+    getCurrentRound: () => (!isStudentRestricted ? gameState.currentRound : effectiveRound)
   };
 
   return (

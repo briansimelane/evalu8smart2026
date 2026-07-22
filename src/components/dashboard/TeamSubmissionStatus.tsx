@@ -49,6 +49,27 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
   // Once all teams have submitted, hide this submission status box completely
   if (allSubmitted) return null;
 
+  if (isCompact) {
+    const prevRound = currentRound - 1;
+    return (
+      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between text-xs max-w-5xl mx-auto shadow-sm">
+        <div className="flex items-center gap-2">
+          <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
+          <span>
+            {prevRound > 0 ? (
+              <>Showing <strong>Round {prevRound}</strong> results while Round {currentRound} decisions are being submitted.</>
+            ) : (
+              <>Round {currentRound} results will unlock once all teams submit plans.</>
+            )}
+          </span>
+        </div>
+        <Badge variant="outline" className="bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/40 text-[10px] font-bold">
+          Submissions Pending ({submittedCount}/{totalTeams})
+        </Badge>
+      </div>
+    );
+  }
+
   // Find user's current team
   const myTeam = teamsStatus.find(t => t.id === currentTeamId);
 
