@@ -425,6 +425,19 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
           updatedAt: serverTimestamp()
         }, { merge: true });
 
+        // Sync with teamRegistry on main class doc
+        const classRef = doc(db, 'classes', currentClassId);
+        const classSnap = await tx.get(classRef);
+        if (classSnap.exists()) {
+          const classData = classSnap.data() as SimulationClass;
+          if (classData.teamRegistry) {
+            const updatedRegistry = classData.teamRegistry.map(t =>
+              t.id === currentTeamId ? { ...t, ceoName: name, ceoPin: calculatedPin } : t
+            );
+            tx.update(classRef, { teamRegistry: updatedRegistry });
+          }
+        }
+
         return calculatedPin;
       });
 
@@ -453,12 +466,25 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       if (!currentClassId || !currentTeamId) return;
 
       const teamRef = doc(db, 'classes', currentClassId, 'teams', currentTeamId);
+      const classRef = doc(db, 'classes', currentClassId);
+
       await runTransaction(db, async (tx) => {
         tx.update(teamRef, {
           ceoName: '',
           ceoPin: '',
           updatedAt: serverTimestamp()
         });
+
+        const classSnap = await tx.get(classRef);
+        if (classSnap.exists()) {
+          const classData = classSnap.data() as SimulationClass;
+          if (classData.teamRegistry) {
+            const updatedRegistry = classData.teamRegistry.map(t =>
+              t.id === currentTeamId ? { ...t, ceoName: '', ceoPin: '' } : t
+            );
+            tx.update(classRef, { teamRegistry: updatedRegistry });
+          }
+        }
       });
 
       localStorage.removeItem('evalu8_ceo_name');
@@ -476,12 +502,25 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   const facilitatorReleaseCeoSlot = async (classId: string, teamId: string): Promise<void> => {
     try {
       const teamRef = doc(db, 'classes', classId, 'teams', teamId);
+      const classRef = doc(db, 'classes', classId);
+
       await runTransaction(db, async (tx) => {
         tx.update(teamRef, {
           ceoName: '',
           ceoPin: '',
           updatedAt: serverTimestamp()
         });
+
+        const classSnap = await tx.get(classRef);
+        if (classSnap.exists()) {
+          const classData = classSnap.data() as SimulationClass;
+          if (classData.teamRegistry) {
+            const updatedRegistry = classData.teamRegistry.map(t =>
+              t.id === teamId ? { ...t, ceoName: '', ceoPin: '' } : t
+            );
+            tx.update(classRef, { teamRegistry: updatedRegistry });
+          }
+        }
       });
       toast.success(`CEO seat released.`);
     } catch (error: any) {
@@ -493,11 +532,24 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   const facilitatorChangeCeoPin = async (classId: string, teamId: string, newPin: string): Promise<void> => {
     try {
       const teamRef = doc(db, 'classes', classId, 'teams', teamId);
+      const classRef = doc(db, 'classes', classId);
+
       await runTransaction(db, async (tx) => {
         tx.update(teamRef, {
           ceoPin: newPin,
           updatedAt: serverTimestamp()
         });
+
+        const classSnap = await tx.get(classRef);
+        if (classSnap.exists()) {
+          const classData = classSnap.data() as SimulationClass;
+          if (classData.teamRegistry) {
+            const updatedRegistry = classData.teamRegistry.map(t =>
+              t.id === teamId ? { ...t, ceoPin: newPin } : t
+            );
+            tx.update(classRef, { teamRegistry: updatedRegistry });
+          }
+        }
       });
       toast.success(`CEO PIN updated.`);
     } catch (error: any) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye } from 'lucide-react';
@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Team } from '@/types/game';
+import { Team, SimulationClass, ClassTeam } from '@/types/game';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 // Predefined colors for teams
 const DEFAULT_TEAMS = [
@@ -17,6 +19,174 @@ const DEFAULT_TEAMS = [
   { name: 'Yellow Team', color: '#eab308' },
   { name: 'Red Team', color: '#ef4444' }
 ];
+
+interface ClassTeamCodesTableProps {
+  cls: SimulationClass;
+  handleCopy: (code: string) => void;
+  copiedCode: string | null;
+}
+
+const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, handleCopy, copiedCode }) => {
+  const { selectClass, selectTeam, facilitatorReleaseCeoSlot, facilitatorChangeCeoPin } = useSession();
+  const [subcollectionTeams, setSubcollectionTeams] = useState<Record<string, ClassTeam>>({});
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!cls.id) return;
+    const unsubscribe = onSnapshot(collection(db, 'classes', cls.id, 'teams'), (snapshot) => {
+      const map: Record<string, ClassTeam> = {};
+      snapshot.forEach(docSnap => {
+        map[docSnap.id] = docSnap.data() as ClassTeam;
+      });
+      setSubcollectionTeams(map);
+    }, (error) => {
+      console.error(`Error listening to subcollection teams for class ${cls.id}:`, error);
+    });
+
+    return () => unsubscribe();
+  }, [cls.id]);
+
+  const rawTeams = (cls.teamRegistry && cls.teamRegistry.length > 0) ? cls.teamRegistry : cls.gameState?.teams;
+  const teamsToRender = (rawTeams && rawTeams.length > 0)
+    ? rawTeams
+    : Object.keys(cls.teamCodes || {}).map((tId, idx) => ({
+        id: tId,
+        name: `Team ${idx + 1}`,
+        color: ['#22c55e', '#3b82f6', '#1f2937', '#eab308', '#ef4444'][idx % 5],
+        ceoName: '',
+        ceoPin: ''
+      }));
+
+  if (teamsToRender.length === 0) {
+    return (
+      <Table className="border border-border bg-card">
+        <TableBody>
+          <TableRow>
+            <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-4">
+              No teams found in team registry.
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    );
+  }
+
+  return (
+    <Table className="border border-border bg-card">
+      <TableHeader className="bg-muted/40">
+        <TableRow className="border-border">
+          <TableHead className="text-muted-foreground font-semibold">Team</TableHead>
+          <TableHead className="text-muted-foreground font-semibold">Color</TableHead>
+          <TableHead className="text-muted-foreground font-semibold">Access Code</TableHead>
+          <TableHead className="text-muted-foreground font-semibold">CEO Spot</TableHead>
+          <TableHead className="text-right text-muted-foreground font-semibold">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {teamsToRender.map((team, idx) => {
+          if (!team) return null;
+          const teamId = team.id || `team_${idx + 1}`;
+          const code = cls.teamCodes?.[teamId];
+          const liveTeamDoc = subcollectionTeams[teamId];
+          const effectiveCeoName = liveTeamDoc?.ceoName || team.ceoName || '';
+          const effectiveCeoPin = liveTeamDoc?.ceoPin || team.ceoPin || '';
+          const hasCeo = !!effectiveCeoName;
+
+          return (
+            <TableRow key={team.id} className="border-border hover:bg-muted/10 transition-colors">
+              <TableCell className="font-semibold text-foreground">{team.name}</TableCell>
+              <TableCell>
+                <span
+                  className="inline-block w-4 h-4 rounded-full border border-border"
+                  style={{ backgroundColor: team.color }}
+                />
+              </TableCell>
+              <TableCell className="font-mono text-blue-600 font-bold tracking-wider">
+                <div className="flex items-center gap-1.5">
+                  {code ? (
+                    <>
+                      <span>{code}</span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 hover:bg-muted text-muted-foreground"
+                        onClick={() => handleCopy(code)}
+                      >
+                        {copiedCode === code ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-red-500 font-semibold text-xs border border-red-200 bg-red-50 px-2 py-0.5 rounded">
+                      code missing — data integrity issue
+                    </span>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell className="text-sm">
+                {hasCeo ? (
+                  <span className="text-emerald-600 font-semibold">
+                    {effectiveCeoName} <span className="text-xs text-muted-foreground">(PIN: {effectiveCeoPin || 'N/A'})</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground text-xs italic">Vacant</span>
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                <div className="flex gap-1.5 justify-end items-center">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      selectClass(cls.id);
+                      selectTeam(team.id);
+                      navigate(`/class/${cls.id}`);
+                    }}
+                    className="h-7 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold gap-1 shadow-sm"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    View/Edit Team
+                  </Button>
+                  {hasCeo && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const newPin = prompt(`Enter new CEO PIN code for ${team.name}:`, effectiveCeoPin || '');
+                          if (newPin !== null && newPin.trim().length > 0) {
+                            facilitatorChangeCeoPin(cls.id, team.id, newPin.trim());
+                          }
+                        }}
+                        className="h-7 px-2 border-border text-foreground hover:bg-muted text-xs"
+                      >
+                        Change PIN
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to release the CEO seat for ${team.name}?`)) {
+                            facilitatorReleaseCeoSlot(cls.id, team.id);
+                          }
+                        }}
+                        className="h-7 px-2 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 text-xs"
+                      >
+                        Release CEO
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+};
 
 export const FacilitatorHub: React.FC = () => {
   const { classes, createClass, deleteClass, logout, currentClassId, currentClassTeams, facilitatorReleaseCeoSlot, facilitatorChangeCeoPin, selectClass, selectTeam } = useSession();
@@ -289,146 +459,10 @@ export const FacilitatorHub: React.FC = () => {
                                     )}
                                   </Button>
                                 </div>
-
                                 {/* Team Codes */}
                                 <div className="space-y-2">
                                   <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Team Access Codes</div>
-                                  <Table className="border border-border bg-card">
-                                    <TableHeader className="bg-muted/40">
-                                      <TableRow className="border-border">
-                                        <TableHead className="text-muted-foreground font-semibold">Team</TableHead>
-                                        <TableHead className="text-muted-foreground font-semibold">Color</TableHead>
-                                        <TableHead className="text-muted-foreground font-semibold">Access Code</TableHead>
-                                        <TableHead className="text-muted-foreground font-semibold">CEO Spot</TableHead>
-                                        <TableHead className="text-right text-muted-foreground font-semibold">Actions</TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                     <TableBody>
-                                       {(() => {
-                                         const rawTeams = (cls.teamRegistry && cls.teamRegistry.length > 0) ? cls.teamRegistry : cls.gameState?.teams;
-                                         const teamsToRender = (rawTeams && rawTeams.length > 0)
-                                           ? rawTeams
-                                           : Object.keys(cls.teamCodes || {}).map((tId, idx) => ({
-                                               id: tId,
-                                               name: `Team ${idx + 1}`,
-                                               color: ['#22c55e', '#3b82f6', '#1f2937', '#eab308', '#ef4444'][idx % 5],
-                                               ceoName: '',
-                                               ceoPin: ''
-                                             }));
-
-                                         if (teamsToRender.length === 0) {
-                                           return (
-                                             <TableRow>
-                                               <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-4">
-                                                 No teams found in team registry.
-                                               </TableCell>
-                                             </TableRow>
-                                           );
-                                         }
-
-                                         return teamsToRender.map((team, idx) => {
-                                           if (!team) return null;
-                                           const teamId = team.id || `team_${idx + 1}`;
-                                           const code = cls.teamCodes?.[teamId];
-                                           const liveTeamDoc = (cls.id === currentClassId && currentClassTeams ? currentClassTeams[teamId] : null);
-                                           const effectiveCeoName = liveTeamDoc?.ceoName || team.ceoName || '';
-                                           const effectiveCeoPin = liveTeamDoc?.ceoPin || team.ceoPin || '';
-                                           const hasCeo = !!effectiveCeoName;
-
-                                           return (
-                                             <TableRow key={team.id} className="border-border hover:bg-muted/10 transition-colors">
-                                               <TableCell className="font-semibold text-foreground">{team.name}</TableCell>
-                                               <TableCell>
-                                                 <span
-                                                   className="inline-block w-4 h-4 rounded-full border border-border"
-                                                   style={{ backgroundColor: team.color }}
-                                                 />
-                                               </TableCell>
-                                               <TableCell className="font-mono text-blue-600 font-bold tracking-wider">
-                                                 <div className="flex items-center gap-1.5">
-                                                   {code ? (
-                                                     <>
-                                                       <span>{code}</span>
-                                                       <Button
-                                                         size="icon"
-                                                         variant="ghost"
-                                                         className="h-6 w-6 hover:bg-muted text-muted-foreground"
-                                                         onClick={() => handleCopy(code)}
-                                                       >
-                                                         {copiedCode === code ? (
-                                                           <Check className="h-3.5 w-3.5 text-emerald-600" />
-                                                         ) : (
-                                                           <Copy className="h-3.5 w-3.5" />
-                                                         )}
-                                                       </Button>
-                                                     </>
-                                                   ) : (
-                                                     <span className="text-red-500 font-semibold text-xs border border-red-200 bg-red-50 px-2 py-0.5 rounded">
-                                                       code missing — data integrity issue
-                                                     </span>
-                                                   )}
-                                                 </div>
-                                               </TableCell>
-                                               <TableCell className="text-sm">
-                                                 {hasCeo ? (
-                                                   <span className="text-emerald-600 font-semibold">
-                                                     {effectiveCeoName} <span className="text-xs text-muted-foreground">(PIN: {effectiveCeoPin || 'N/A'})</span>
-                                                   </span>
-                                                 ) : (
-                                                   <span className="text-muted-foreground text-xs italic">Vacant</span>
-                                                 )}
-                                               </TableCell>
-                                                <TableCell className="text-right">
-                                                  <div className="flex gap-1.5 justify-end items-center">
-                                                    <Button
-                                                      size="sm"
-                                                      onClick={() => {
-                                                        selectClass(cls.id);
-                                                        selectTeam(team.id);
-                                                        navigate(`/class/${cls.id}`);
-                                                      }}
-                                                      className="h-7 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold gap-1 shadow-sm"
-                                                    >
-                                                      <Eye className="h-3.5 w-3.5" />
-                                                      View/Edit Team
-                                                    </Button>
-                                                    {hasCeo && (
-                                                     <>
-                                                       <Button
-                                                         size="sm"
-                                                         variant="outline"
-                                                         onClick={() => {
-                                                           const newPin = prompt(`Enter new CEO PIN code for ${team.name}:`, effectiveCeoPin || '');
-                                                           if (newPin !== null && newPin.trim().length > 0) {
-                                                             facilitatorChangeCeoPin(cls.id, team.id, newPin.trim());
-                                                           }
-                                                         }}
-                                                         className="h-7 px-2 border-border text-foreground hover:bg-muted text-xs"
-                                                       >
-                                                         Change PIN
-                                                       </Button>
-                                                       <Button
-                                                         size="sm"
-                                                         variant="destructive"
-                                                         onClick={() => {
-                                                           if (confirm(`Are you sure you want to release the CEO seat for ${team.name}?`)) {
-                                                             facilitatorReleaseCeoSlot(cls.id, team.id);
-                                                           }
-                                                         }}
-                                                         className="h-7 px-2 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 text-xs"
-                                                       >
-                                                         Release CEO
-                                                       </Button>
-                                                     </>
-                                                   )}
-                                                 </div>
-                                               </TableCell>
-                                             </TableRow>
-                                           );
-                                         });
-                                       })()}
-                                    </TableBody>
-                                  </Table>
+                                  <ClassTeamCodesTable cls={cls} handleCopy={handleCopy} copiedCode={copiedCode} />
                                 </div>
                               </div>
                             </TableCell>
