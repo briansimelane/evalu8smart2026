@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGame } from '@/contexts/GameContext';
 import { REGION_CUSTOMERS, Customer } from '@/data/customers';
 import { toast } from 'sonner';
-import { Save, AlertTriangle, CheckCircle2, Package, Microscope, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Trophy } from 'lucide-react';
+import { Save, AlertTriangle, CheckCircle2, Package, Microscope, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Trophy, Users, Target, TrendingUp } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
@@ -23,7 +23,7 @@ import { PhaseLockCard } from './PhaseLockCard';
 
 export const SalesPhase = () => {
   const { gameState, addRoundData, getCurrentRound, getTeamLogisticsProgress, calculatePlayOrder } = useGame();
-  const { currentRole, currentTeamId, isReadOnly } = useSession();
+  const { currentRole, currentTeamId, isReadOnly, selectTeam } = useSession();
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedCustomers, setSelectedCustomers] = useState<Record<string, string[]>>({});
 
@@ -102,6 +102,48 @@ export const SalesPhase = () => {
   const calculatedRevenue = selectedTeamData ? selectedTeamData.price * totalProductsToSell : 0;
   const productsAvailable = selectedTeamData?.productsProduced || 0;
   const salesExceedProduction = totalProductsToSell > productsAvailable;
+
+  // Calculate eligible price and value customers for the selected team across present regions
+  const eligibleCustomerCounts = useMemo(() => {
+    if (!selectedTeam || !selectedTeamData) {
+      return { priceCount: 0, valueCount: 0, totalEligible: 0 };
+    }
+
+    let priceCount = 0;
+    let valueCount = 0;
+
+    teamRegions.forEach(regionName => {
+      const regionData = REGION_CUSTOMERS.find(r => r.region === regionName);
+      if (!regionData) return;
+
+      regionData.customers.forEach(customer => {
+        // Check if sold by another team prior in turn order
+        const isSoldByOther = soldCustomers.has(customer.id) && !selectedTeamData.customersSold?.includes(customer.id);
+        if (isSoldByOther) return;
+
+        if (customer.type === 'price') {
+          if (selectedTeamData.price <= (customer.price || 0)) {
+            priceCount++;
+          }
+        } else if (customer.type === 'value') {
+          if (customer.technology && completedTechs.has(customer.technology)) {
+            valueCount++;
+          }
+        }
+      });
+    });
+
+    return {
+      priceCount,
+      valueCount,
+      totalEligible: priceCount + valueCount
+    };
+  }, [selectedTeam, selectedTeamData, teamRegions, soldCustomers, completedTechs]);
+
+  const demandFulfillmentRate = useMemo(() => {
+    if (eligibleCustomerCounts.totalEligible === 0) return 0;
+    return (totalProductsToSell / eligibleCustomerCounts.totalEligible) * 100;
+  }, [totalProductsToSell, eligibleCustomerCounts.totalEligible]);
 
   const isSalesSubmitted = selectedTeamData && !!selectedTeamData.customersSold;
 
@@ -183,12 +225,32 @@ export const SalesPhase = () => {
       ...selectedTeamData,
       customersSold: allSelectedCustomers,
       revenue: calculatedRevenue,
-      totalMoney: (selectedTeamData.totalMoney || 0) - (selectedTeamData.revenue || 0) + calculatedRevenue
+      totalMoney: (selectedTeamData.totalMoney || 0) - (selectedTeamData.revenue || 0) + calculatedRevenue,
+      eligiblePriceCustomers: eligibleCustomerCounts.priceCount,
+      eligibleValueCustomers: eligibleCustomerCounts.valueCount,
+      eligibleSalesUnits: eligibleCustomerCounts.totalEligible,
+      demandFulfillmentRate: demandFulfillmentRate
     };
 
     addRoundData(currentRound, selectedTeam, updatedData);
     toast.success(`Sales data saved for ${teamName}`);
     
+    if (currentRole !== 'STUDENT' && gameState) {
+      const activeSalesPlayOrder = calculatePlayOrder(currentRound).filter(team => {
+        const productsProduced = currentRoundData?.teamData[team.id]?.productsProduced || 0;
+        return productsProduced > 0;
+      });
+      const currIdx = activeSalesPlayOrder.findIndex(t => t.id === selectedTeam);
+      if (currIdx >= 0 && currIdx < activeSalesPlayOrder.length - 1) {
+        const nextTeam = activeSalesPlayOrder[currIdx + 1];
+        selectTeam(nextTeam.id);
+        setSelectedTeam(nextTeam.id);
+        setSelectedCustomers({});
+        toast.info(`Turn Order: Advanced to ${nextTeam.name}`);
+        return;
+      }
+    }
+
     // Reset form
     setSelectedTeam('');
     setSelectedCustomers({});
@@ -367,34 +429,83 @@ export const SalesPhase = () => {
 
                 {selectedTeam && selectedTeamData && (
                   <>
-                    <Card className="bg-accent/10 border-accent/30">
-                      <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Package className="h-4 w-4" />
-                          Team Summary ({teamName})
-                        </CardTitle>
+                    <Card className="bg-accent/10 border-accent/30 shadow-sm">
+                      <CardHeader className="pb-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <Package className="h-4 w-4 text-cyan-500" />
+                            Team Summary ({teamName})
+                          </CardTitle>
+                          {eligibleCustomerCounts.totalEligible > 0 && (
+                            <Badge variant="outline" className="bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold self-start sm:self-auto">
+                              Fulfillment Rate: {demandFulfillmentRate.toFixed(1)}%
+                            </Badge>
+                          )}
+                        </div>
                       </CardHeader>
-                      <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                        <div>
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <span className="font-bold text-red-500 text-sm">$</span>
-                            Price:
-                          </span>
-                          <div className="font-semibold text-lg">${selectedTeamData.price}</div>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Products Available:</span>
-                          <div className="font-semibold text-lg">{productsAvailable}</div>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Products to Sell:</span>
-                          <div className={`font-semibold text-lg ${salesExceedProduction ? 'text-destructive' : ''}`}>
-                            {totalProductsToSell}
+                      <CardContent className="space-y-4 text-sm">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div>
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              <span className="font-bold text-red-500 text-sm">$</span>
+                              Price:
+                            </span>
+                            <div className="font-semibold text-lg">${selectedTeamData.price}</div>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Products Available:</span>
+                            <div className="font-semibold text-lg">{productsAvailable}</div>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Products Sold (Sales Units):</span>
+                            <div className={`font-semibold text-lg ${salesExceedProduction ? 'text-destructive' : ''}`}>
+                              {totalProductsToSell}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Revenue:</span>
+                            <div className="font-semibold text-lg text-primary">${calculatedRevenue.toLocaleString()}</div>
                           </div>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground">Revenue:</span>
-                          <div className="font-semibold text-lg text-primary">${calculatedRevenue.toLocaleString()}</div>
+
+                        {/* Customer Demand & Fulfillment Breakdown */}
+                        <div className="pt-3 border-t border-border/50 grid grid-cols-2 md:grid-cols-4 gap-3 bg-card/60 p-3 rounded-lg border">
+                          <div>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
+                              <Users className="h-3.5 w-3.5 text-red-500" />
+                              Eligible Price Customers:
+                            </span>
+                            <div className="font-bold text-base text-red-600 dark:text-red-400">
+                              {eligibleCustomerCounts.priceCount}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
+                              <Users className="h-3.5 w-3.5 text-purple-500" />
+                              Eligible Value Customers:
+                            </span>
+                            <div className="font-bold text-base text-purple-600 dark:text-purple-400">
+                              {eligibleCustomerCounts.valueCount}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
+                              <Target className="h-3.5 w-3.5 text-blue-500" />
+                              Total Eligible Sales Units:
+                            </span>
+                            <div className="font-bold text-base text-blue-600 dark:text-blue-400">
+                              {eligibleCustomerCounts.totalEligible} units
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
+                              <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+                              Demand Fulfillment Rate:
+                            </span>
+                            <div className="font-bold text-base text-emerald-600 dark:text-emerald-400">
+                              {demandFulfillmentRate.toFixed(1)}%
+                            </div>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>

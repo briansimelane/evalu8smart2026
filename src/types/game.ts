@@ -1,5 +1,7 @@
 import { ImprovementCardData } from '@/data/improvements';
 import { Combination } from '@/data/combinations';
+import { REGION_CUSTOMERS } from '@/data/customers';
+import { getControlPointsForRegion } from '@/data/control';
 
 export interface Team {
   id: string;
@@ -89,6 +91,10 @@ export interface TeamRoundData {
   improvementCardId?: number;
   cardUsages?: Record<number, 'use' | 'product' | 'none'>;
   customersSold?: string[]; // IDs of customers sold to
+  eligiblePriceCustomers?: number;
+  eligibleValueCustomers?: number;
+  eligibleSalesUnits?: number;
+  demandFulfillmentRate?: number;
 }
 
 export interface RegionLogistics {
@@ -126,3 +132,208 @@ export interface GameState {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export const PATENT_POINTS: Record<string, number> = {
+  'GPS': 6,
+  'Wifi': 6,
+  'Gaming': 8,
+  'Battery': 8,
+  'NFC': 10,
+  '4G': 12,
+};
+
+export const getTeamPatentPoints = (
+  teamId: string,
+  patents: Record<string, string> | undefined,
+  currentRound: number
+): number => {
+  if (currentRound < 5 || !patents) return 0;
+
+  let points = 0;
+  Object.entries(patents).forEach(([tech, holderTeamId]) => {
+    if (holderTeamId === teamId && PATENT_POINTS[tech]) {
+      points += PATENT_POINTS[tech];
+    }
+  });
+
+  return points;
+};
+
+export const COLOR_SCORES: Record<string, number> = {
+  green: 3,
+  blue: 4,
+  black: 5,
+  yellow: 6,
+  red: 7
+};
+
+export const getInitialScore = (team: { name: string; color: string }): number => {
+  const teamName = (team.name || '').toLowerCase();
+  for (const key of Object.keys(COLOR_SCORES)) {
+    if (teamName.includes(key)) return COLOR_SCORES[key];
+  }
+  const colorHex = (team.color || '').toLowerCase();
+  if (colorHex.includes('10b981') || colorHex.includes('green')) return 3;
+  if (colorHex.includes('3b82f6') || colorHex.includes('blue')) return 4;
+  if (colorHex.includes('1e293b') || colorHex.includes('black')) return 5;
+  if (colorHex.includes('f59e0b') || colorHex.includes('yellow')) return 6;
+  if (colorHex.includes('ef4444') || colorHex.includes('red')) return 7;
+
+  return 0;
+};
+
+export const getControlPointsForTeamInRound = (
+  roundObj: RoundData | undefined,
+  teamId: string,
+  gameState: GameState
+): number => {
+  if (!roundObj) return 0;
+
+  let totalPoints = 0;
+
+  REGION_CUSTOMERS.forEach(({ region, customers }) => {
+    const regionLogisticsData = gameState.regionLogistics?.[region];
+    const teamsPresent = regionLogisticsData?.teamsPresent || [];
+
+    const teamSales: Array<{ teamId: string; salesCount: number; leftmostPos: number }> = [];
+
+    gameState.teams.forEach(t => {
+      const td = roundObj.teamData[t.id];
+      if (!td || !td.customersSold) return;
+
+      const soldInRegion = td.customersSold.filter(cid => customers.some(c => c.id === cid));
+      if (soldInRegion.length > 0) {
+        let minPos = Infinity;
+        soldInRegion.forEach(cid => {
+          const cust = customers.find(c => c.id === cid);
+          if (cust && cust.position < minPos) minPos = cust.position;
+        });
+
+        teamSales.push({
+          teamId: t.id,
+          salesCount: soldInRegion.length,
+          leftmostPos: minPos === Infinity ? 999 : minPos,
+        });
+      }
+    });
+
+    teamSales.sort((a, b) => {
+      if (b.salesCount !== a.salesCount) return b.salesCount - a.salesCount;
+      return a.leftmostPos - b.leftmostPos;
+    });
+
+    if (teamSales[0] && teamSales[0].teamId === teamId) {
+      totalPoints += getControlPointsForRegion(region, teamsPresent.length, 'first');
+    } else if (teamSales[1] && teamSales[1].teamId === teamId) {
+      totalPoints += getControlPointsForRegion(region, teamsPresent.length, 'second');
+    }
+  });
+
+  return totalPoints;
+};
+
+export interface RegionalControlDetail {
+  region: string;
+  points: number;
+  rank: 'first' | 'second';
+  teamsPresentCount: number;
+}
+
+export const getRegionalControlBreakdownForTeamInRound = (
+  roundObj: RoundData | undefined,
+  teamId: string,
+  gameState: GameState
+): RegionalControlDetail[] => {
+  if (!roundObj) return [];
+
+  const details: RegionalControlDetail[] = [];
+
+  REGION_CUSTOMERS.forEach(({ region, customers }) => {
+    const regionLogisticsData = gameState.regionLogistics?.[region];
+    const teamsPresent = regionLogisticsData?.teamsPresent || [];
+
+    const teamSales: Array<{ teamId: string; salesCount: number; leftmostPos: number }> = [];
+
+    gameState.teams.forEach(t => {
+      const td = roundObj.teamData[t.id];
+      if (!td || !td.customersSold) return;
+
+      const soldInRegion = td.customersSold.filter(cid => customers.some(c => c.id === cid));
+      if (soldInRegion.length > 0) {
+        let minPos = Infinity;
+        soldInRegion.forEach(cid => {
+          const cust = customers.find(c => c.id === cid);
+          if (cust && cust.position < minPos) minPos = cust.position;
+        });
+
+        teamSales.push({
+          teamId: t.id,
+          salesCount: soldInRegion.length,
+          leftmostPos: minPos === Infinity ? 999 : minPos,
+        });
+      }
+    });
+
+    teamSales.sort((a, b) => {
+      if (b.salesCount !== a.salesCount) return b.salesCount - a.salesCount;
+      return a.leftmostPos - b.leftmostPos;
+    });
+
+    if (teamSales[0] && teamSales[0].teamId === teamId) {
+      const pts = getControlPointsForRegion(region, teamsPresent.length, 'first');
+      if (pts > 0) {
+        details.push({ region, points: pts, rank: 'first', teamsPresentCount: teamsPresent.length });
+      }
+    } else if (teamSales[1] && teamSales[1].teamId === teamId) {
+      const pts = getControlPointsForRegion(region, teamsPresent.length, 'second');
+      if (pts > 0) {
+        details.push({ region, points: pts, rank: 'second', teamsPresentCount: teamsPresent.length });
+      }
+    }
+  });
+
+  return details;
+};
+
+export const calculateTeamTotalScore = (
+  teamId: string,
+  targetRound: number,
+  gameState: GameState
+): {
+  startValue: number;
+  cumulativeRevenue: number;
+  cumulativeControl: number;
+  patentBonus: number;
+  totalScore: number;
+} => {
+  const team = gameState.teams.find(t => t.id === teamId);
+  if (!team) {
+    return { startValue: 0, cumulativeRevenue: 0, cumulativeControl: 0, patentBonus: 0, totalScore: 0 };
+  }
+
+  const startValue = getInitialScore(team);
+  let cumulativeRevenue = 0;
+  let cumulativeControl = 0;
+
+  for (let r = 1; r <= targetRound; r++) {
+    const rd = gameState.rounds.find(round => round.roundNumber === r);
+    if (rd) {
+      const tData = rd.teamData[teamId];
+      if (tData) {
+        cumulativeRevenue += tData.revenue || 0;
+      }
+      cumulativeControl += getControlPointsForTeamInRound(rd, teamId, gameState);
+    }
+  }
+
+  const patentBonus = getTeamPatentPoints(teamId, gameState.patents, targetRound);
+  const totalScore = startValue + cumulativeRevenue + cumulativeControl + patentBonus;
+
+  return {
+    startValue,
+    cumulativeRevenue,
+    cumulativeControl,
+    patentBonus,
+    totalScore,
+  };
+};

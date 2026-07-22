@@ -15,7 +15,7 @@ import { PhaseLockCard } from './PhaseLockCard';
 
 export const ImprovementPhase = () => {
   const { gameState, allocateImprovementCards, selectRandomCards, reshuffleRoundCards, previewNextRoundCards, claimImprovementCard, calculatePlayOrder } = useGame();
-  const { currentRole, currentTeamId, currentClassTeams, isReadOnly } = useSession();
+  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const { toast } = useToast();
   const [availableCards, setAvailableCards] = useState<ImprovementCardData[]>([]);
@@ -31,6 +31,22 @@ export const ImprovementPhase = () => {
   }, [gameState, availableCards.length, selectRandomCards]);
 
   if (!gameState) return null;
+
+  if (gameState.currentRound >= 5) {
+    return (
+      <Card className="border-amber-500/40 bg-amber-500/10 max-w-4xl mx-auto my-8 shadow-md">
+        <CardContent className="pt-8 pb-8 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center mx-auto">
+            <Wrench className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+          </div>
+          <h3 className="text-2xl font-bold text-amber-900 dark:text-amber-100">Improvement Phase Skipped (Final Round)</h3>
+          <p className="text-sm text-amber-800/90 dark:text-amber-200/90 max-w-lg mx-auto leading-relaxed">
+            Round {gameState.currentRound} is the final round of the simulation. No improvement cards are available or allocated in the final round. Teams proceed directly to Research & Expansion.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
 
@@ -108,6 +124,23 @@ export const ImprovementPhase = () => {
 
   const handleAllocate = (cardId: number, teamId: string) => {
     setAllocations(prev => ({ ...prev, [cardId]: teamId }));
+
+    if (currentRole !== 'STUDENT' && gameState) {
+      const playOrder = calculatePlayOrder(gameState.currentRound);
+      const teamsWithImprovement = playOrder.filter(t => {
+        const count = currentRoundData?.teamData[t.id]?.improvementCards || 0;
+        return count > 0;
+      });
+      const currIdx = teamsWithImprovement.findIndex(t => t.id === teamId);
+      if (currIdx >= 0 && currIdx < teamsWithImprovement.length - 1) {
+        const nextTeam = teamsWithImprovement[currIdx + 1];
+        selectTeam(nextTeam.id);
+        toast({
+          title: "Turn Order",
+          description: `Advanced to ${nextTeam.name}`
+        });
+      }
+    }
   };
 
   const handleConfirmAllocations = () => {

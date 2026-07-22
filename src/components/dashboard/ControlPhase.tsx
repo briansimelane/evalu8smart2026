@@ -20,8 +20,12 @@ interface RegionControlResult {
 
 import { PhaseLockCard } from './PhaseLockCard';
 
-export const ControlPhase = () => {
-  const { gameState, addRoundData, getCurrentRound } = useGame();
+interface ControlPhaseProps {
+  onEndGame?: () => void;
+}
+
+export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
+  const { gameState, addRoundData, getCurrentRound, recalculateControlPoints } = useGame();
   const { currentRole, currentTeamId } = useSession();
   const [controlCalculated, setControlCalculated] = useState(false);
   const [regionControlResults, setRegionControlResults] = useState<RegionControlResult[]>([]);
@@ -148,43 +152,54 @@ export const ControlPhase = () => {
   }, [allTeamsHaveSalesData, controlAlreadyCalculated, controlCalculated]);
 
   const handleApplyControl = () => {
-    // Apply control points to all teams
-    regionControlResults.forEach(result => {
-      // Update first place team
-      if (result.firstPlace) {
-        const teamData = currentRoundData?.teamData[result.firstPlace.teamId];
-        if (teamData) {
-          const currentControlPoints = teamData.regionControlPoints || {};
-          const updatedData = {
-            ...teamData,
-            regionControlPoints: {
-              ...currentControlPoints,
-              [result.region]: result.firstPlace.points
-            },
-            controlValue: (teamData.controlValue || 0) + result.firstPlace.points,
-            totalMoney: (teamData.totalMoney || 0) + result.firstPlace.points
-          };
-          addRoundData(currentRound, result.firstPlace.teamId, updatedData);
-        }
-      }
+    if (!currentRoundData) return;
 
-      // Update second place team
-      if (result.secondPlace) {
-        const teamData = currentRoundData?.teamData[result.secondPlace.teamId];
-        if (teamData) {
-          const currentControlPoints = teamData.regionControlPoints || {};
-          const updatedData = {
-            ...teamData,
-            regionControlPoints: {
-              ...currentControlPoints,
-              [result.region]: result.secondPlace.points
-            },
-            controlValue: (teamData.controlValue || 0) + result.secondPlace.points,
-            totalMoney: (teamData.totalMoney || 0) + result.secondPlace.points
-          };
-          addRoundData(currentRound, result.secondPlace.teamId, updatedData);
+    // Aggregate control points per team across all regions first to avoid React state mutation overwrites
+    const teamControlUpdates: Record<string, {
+      regionControlPoints: Record<string, number>;
+      totalControlPoints: number;
+    }> = {};
+
+    gameState.teams.forEach(team => {
+      const existing = currentRoundData.teamData[team.id];
+      teamControlUpdates[team.id] = {
+        regionControlPoints: { ...(existing?.regionControlPoints || {}) },
+        totalControlPoints: 0,
+      };
+    });
+
+    regionControlResults.forEach(result => {
+      if (result.firstPlace) {
+        const tid = result.firstPlace.teamId;
+        if (teamControlUpdates[tid]) {
+          teamControlUpdates[tid].regionControlPoints[result.region] = result.firstPlace.points;
+          teamControlUpdates[tid].totalControlPoints += result.firstPlace.points;
         }
       }
+      if (result.secondPlace) {
+        const tid = result.secondPlace.teamId;
+        if (teamControlUpdates[tid]) {
+          teamControlUpdates[tid].regionControlPoints[result.region] = result.secondPlace.points;
+          teamControlUpdates[tid].totalControlPoints += result.secondPlace.points;
+        }
+      }
+    });
+
+    gameState.teams.forEach(team => {
+      const teamData = currentRoundData.teamData[team.id];
+      if (!teamData) return;
+
+      const update = teamControlUpdates[team.id];
+      if (!update) return;
+
+      const updatedData = {
+        ...teamData,
+        regionControlPoints: update.regionControlPoints,
+        controlValue: update.totalControlPoints,
+        totalMoney: (teamData.totalMoney || 0) - (teamData.controlValue || 0) + update.totalControlPoints,
+      };
+
+      addRoundData(currentRound, team.id, updatedData);
     });
 
     toast.success('Control points applied to all teams');
@@ -368,11 +383,42 @@ export const ControlPhase = () => {
             )}
 
             {controlAlreadyCalculated && (
-              <Alert>
-                <AlertDescription>
-                  Control points have been applied for this round.
-                </AlertDescription>
-              </Alert>
+              <div className="space-y-3">
+                <Alert>
+                  <AlertDescription className="flex items-center justify-between">
+                    <span>Control points have been applied for this round.</span>
+                  </AlertDescription>
+                </Alert>
+                {currentRole !== 'STUDENT' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      recalculateControlPoints();
+                      toast.success("Control points recalculated & repaired across all rounds!");
+                    }}
+                    className="w-full border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 font-semibold"
+                  >
+                    <Trophy className="mr-2 h-4 w-4 text-amber-500" />
+                    Recalculate & Repair All Control Points
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {currentRound >= 5 && (
+              <div className="pt-4 border-t border-border">
+                <Button
+                  onClick={() => {
+                    toast.success("Game Ended! Displaying final Summary Map.");
+                    if (onEndGame) onEndGame();
+                  }}
+                  size="lg"
+                  className="w-full bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-extrabold shadow-xl gap-2 text-lg py-6"
+                >
+                  <Trophy className="h-6 w-6 text-yellow-200 animate-bounce" />
+                  End Game — View Summary Map
+                </Button>
+              </div>
             )}
           </>
         )}

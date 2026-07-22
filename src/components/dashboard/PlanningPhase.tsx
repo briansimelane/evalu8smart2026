@@ -18,7 +18,7 @@ export interface PlanningPhaseRef {
 
 export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const { gameState, getCurrentRound, addRoundData, getCombinations, calculatePlayOrder } = useGame();
-  const { currentRole, currentTeamId, currentClassTeams, isReadOnly } = useSession();
+  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'planning');
   const [selectedTeam, setSelectedTeam] = useState('');
@@ -227,6 +227,18 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     
     toast.success('Plan submitted successfully! Now proceed to Production phase to enter sales data.');
     
+    // If Facilitator mode, auto-advance focused team selection to next team in turn order
+    if (currentRole !== 'STUDENT' && gameState) {
+      const playOrder = calculatePlayOrder(roundNumber);
+      const currIdx = playOrder.findIndex(t => t.id === selectedTeam);
+      if (currIdx >= 0 && currIdx < playOrder.length - 1) {
+        const nextTeam = playOrder[currIdx + 1];
+        selectTeam(nextTeam.id);
+        setSelectedTeam(nextTeam.id);
+        toast.info(`Turn Order: Advanced to ${nextTeam.name}`);
+      }
+    }
+
     // Reset form fields while preserving selectedTeam so submitted summary displays immediately
     setSelectedCombination('');
     setSelectedPosition('');
@@ -593,11 +605,11 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
               <>
                 <Label>Available Improvement Cards ({availableCards.length})</Label>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-                  {availableCards.map((card, index) => {
+                  {usableCards.map((card, index) => {
                     const currentUsage = cardUsages[card.id] || 'none';
                     return (
                       <Card 
-                        key={card.id}
+                        key={`${card.id}-${index}`}
                         className="transition-all"
                       >
                         <CardHeader className="py-2 px-3">
@@ -658,7 +670,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
                   {futureCards.map((card, index) => (
                     <Card 
-                      key={card.id}
+                      key={`${card.id}-${index}`}
                       className="opacity-60 border-amber-300/50 bg-amber-500/5"
                     >
                       <CardHeader className="py-2 px-3">

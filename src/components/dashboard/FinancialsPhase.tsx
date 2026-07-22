@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useGame } from '@/contexts/GameContext';
+import { getControlPointsForTeamInRound, getTeamPatentPoints } from '@/types/game';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -219,10 +220,12 @@ export const FinancialsPhase = () => {
     // Balance sheet (always YTD snapshot)
     const latestTd = latestRound.teamData[t.id];
     const cash = latestTd?.totalMoney ?? 0;
-    const techAssets = gameState.teamResearchProgress[t.id]
+    const patentBonus = getTeamPatentPoints(t.id, gameState.patents, latestRound ? latestRound.roundNumber : gameState.currentRound);
+    const researchInvestments = gameState.teamResearchProgress[t.id]
       ? Object.values(gameState.teamResearchProgress[t.id].technologyInvestments).reduce((s, v) => s + v, 0)
       : 0;
-    const marketPresence = completedRounds.reduce((s, r) => s + (r.teamData[t.id]?.controlValue ?? 0), 0);
+    const techAssets = researchInvestments + patentBonus;
+    const marketPresence = completedRounds.reduce((s, r) => s + getControlPointsForTeamInRound(r, t.id, gameState), 0);
     const bs = buildBS(cash, techAssets, marketPresence, ytd.operatingProfit);
 
     return { team: t, ytd, roundIS, bs };
@@ -408,7 +411,7 @@ export const FinancialsPhase = () => {
                     <tr><td colSpan={99} className="px-3 py-0 pl-6 text-[10px] text-muted-foreground pb-1">Current Assets</td></tr>
                     <TableRow label="Cash & Equivalents" indent cells={teamData.map(d => ({ value: d.bs.cash }))} info={{ formula: 'Starting Cash + Cumulative EBIT', description: 'Liquid funds remaining in cash at the end of the round.' }} />
                     <tr><td colSpan={99} className="px-3 py-0 pl-6 text-[10px] text-muted-foreground pt-2 pb-1">Non-Current Assets</td></tr>
-                    <TableRow label="Technology Assets" indent cells={teamData.map(d => ({ value: d.bs.techAssets }))} info={{ formula: 'Cumulative R&D Investments', description: 'Capitalized value of investments into developing proprietary technologies.' }} />
+                    <TableRow label="Technology Assets" indent cells={teamData.map(d => ({ value: d.bs.techAssets }))} info={{ formula: 'Cumulative R&D Investments + Patent Points', description: 'Capitalized value of research investments into developing technologies plus bonus points for held patents.' }} />
                     <TableRow label="Market Presence (Goodwill)" indent cells={teamData.map(d => ({ value: d.bs.marketPresence }))} info={{ formula: 'Cumulative Regional Control Points', description: 'Capitalized value of market presence and regional control acquired.' }} />
                     <TableRow label="Total Assets" bold divider cells={teamData.map(d => ({ value: d.bs.totalAssets }))} info={{ formula: 'Cash + Tech Assets + Market Presence', description: 'Total economic resources owned by the business.' }} />
                     {/* Equity */}

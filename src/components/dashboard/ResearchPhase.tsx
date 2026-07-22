@@ -27,7 +27,7 @@ import { PhaseLockCard } from './PhaseLockCard';
 
 export const ResearchPhase = () => {
   const { gameState, allocateResearch, getTeamResearchProgress, getTechnologyCostForTeam, calculatePlayOrder } = useGame();
-  const { currentRole, currentTeamId, isReadOnly } = useSession();
+  const { currentRole, currentTeamId, isReadOnly, selectTeam } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'innovation');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
@@ -191,7 +191,17 @@ export const ResearchPhase = () => {
         const spent = updatedAllocations[t.id] || 0;
         return spent < icons;
       });
-      setSelectedTeam(nextTeam ? nextTeam.id : '');
+      const nextId = nextTeam ? nextTeam.id : '';
+      setSelectedTeam(nextId);
+      if (currentRole !== 'STUDENT' && nextId) {
+        selectTeam(nextId);
+        if (nextTeam) {
+          toast({
+            title: "Turn Order",
+            description: `Advanced to ${nextTeam.name}`
+          });
+        }
+      }
     }
 
     setAllocations({});

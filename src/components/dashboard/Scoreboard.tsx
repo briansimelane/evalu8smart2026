@@ -4,7 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Trophy, Package, Wrench, Microscope, Truck, ShoppingCart, PackageX } from 'lucide-react';
 import { TEAM_COLORS } from '@/data/combinations';
+import { calculateTeamTotalScore, getControlPointsForTeamInRound, getTeamPatentPoints } from '@/types/game';
 import { toast } from 'sonner';
+
+import { useSession } from '@/contexts/SessionContext';
 
 interface ScoreboardProps {
   onEditTeamData?: (roundNumber: number, teamId: string) => void;
@@ -12,6 +15,7 @@ interface ScoreboardProps {
 
 export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
   const { gameState } = useGame();
+  const { currentRole } = useSession();
 
   if (!gameState) return null;
 
@@ -72,33 +76,40 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
         <CardContent className="pt-6">
           <div className="space-y-4">
             {(() => {
-              // Sort teams by Overall Value (highest first), then by Total Money (lowest first) for ties
+              // Sort teams by Overall Value (highest first)
               const sortedTeams = [...gameState.teams].sort((a, b) => {
-                const aData = currentRoundData?.teamData[a.id];
-                const bData = currentRoundData?.teamData[b.id];
+                const aOverallValue = calculateTeamTotalScore(a.id, gameState.currentRound, gameState).totalScore;
+                const bOverallValue = calculateTeamTotalScore(b.id, gameState.currentRound, gameState).totalScore;
                 
-                if (!aData || !bData) return 0;
-                
-                const aOverallValue = getPreviousRoundValue(a.id) + aData.totalMoney;
-                const bOverallValue = getPreviousRoundValue(b.id) + bData.totalMoney;
-                
-                // Primary sort: by Overall Value (highest first)
                 if (aOverallValue !== bOverallValue) {
                   return bOverallValue - aOverallValue;
                 }
                 
-                // Secondary sort: by Total Money (lowest first)
-                return aData.totalMoney - bData.totalMoney;
+                const aMoney = currentRoundData?.teamData[a.id]?.totalMoney || 0;
+                const bMoney = currentRoundData?.teamData[b.id]?.totalMoney || 0;
+                return aMoney - bMoney;
               });
               
               return sortedTeams.map(team => {
-                const teamRoundData = currentRoundData?.teamData[team.id];
-                
-                if (!teamRoundData) return null;
+                const teamRoundData = currentRoundData?.teamData[team.id] || {
+                  price: 0,
+                  productsProduced: 0,
+                  improvementCards: 0,
+                  researchIcons: 0,
+                  logisticsIcons: 0,
+                  combination: 0,
+                  position: 0,
+                  revenue: 0,
+                  controlValue: 0,
+                  totalMoney: 0,
+                  customersSold: []
+                };
 
                 const totalRegionalSales = teamRoundData.customersSold ? teamRoundData.customersSold.length : 0;
-                const lostProducts = teamRoundData.productsProduced - totalRegionalSales;
-                const overallValue = getPreviousRoundValue(team.id) + teamRoundData.totalMoney;
+                const lostProducts = Math.max(0, teamRoundData.productsProduced - totalRegionalSales);
+                const roundControl = getControlPointsForTeamInRound(currentRoundData, team.id, gameState);
+                const patentBonus = getTeamPatentPoints(team.id, gameState.patents, gameState.currentRound);
+                const overallValue = calculateTeamTotalScore(team.id, gameState.currentRound, gameState).totalScore;
 
                 return (
                   <div
@@ -140,34 +151,36 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                       </div>
 
                       {/* Results as Badges */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="outline" className="text-sm px-2.5 py-1">
                           Combo {teamRoundData.combination}-{teamRoundData.position}
                         </Badge>
                         <Badge variant="secondary" className="text-sm px-2.5 py-1">
                           <ShoppingCart className="h-3.5 w-3.5 mr-1" />
-                          {totalRegionalSales}
+                          {totalRegionalSales} sold
                         </Badge>
                         <Badge variant="secondary" className="text-sm px-2.5 py-1">
                           <PackageX className="h-3.5 w-3.5 mr-1" />
-                          {lostProducts}
+                          {lostProducts} unsold
                         </Badge>
-                        <Badge variant="secondary" className="text-sm px-2.5 py-1">
-                          Revenue: ${teamRoundData.revenue.toLocaleString()}
+                        <Badge variant="secondary" className="text-sm px-2.5 py-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                          Revenue: ${(teamRoundData.revenue || 0).toLocaleString()}
                         </Badge>
-                        <Badge variant="secondary" className="text-sm px-2.5 py-1">
-                          Control: ${teamRoundData.controlValue}
+                        <Badge variant="secondary" className="text-sm px-2.5 py-1 text-amber-600 dark:text-amber-400 font-semibold">
+                          Control: +{roundControl} pts
                         </Badge>
-                        <Badge variant="secondary" className="text-sm px-2.5 py-1">
-                          Current: ${teamRoundData.totalMoney.toLocaleString()}
-                        </Badge>
-                        <Badge variant="default" className="text-sm px-2.5 py-1 font-bold">
-                          Overall: ${overallValue.toLocaleString()}
+                        {patentBonus > 0 && (
+                          <Badge variant="secondary" className="text-sm px-2.5 py-1 text-purple-600 dark:text-purple-400 font-semibold">
+                            Patent: +{patentBonus} pts
+                          </Badge>
+                        )}
+                        <Badge variant="default" className="text-sm px-2.5 py-1 font-bold bg-blue-600 text-white">
+                          Total Score: {overallValue.toLocaleString()} pts
                         </Badge>
                       </div>
 
-                      {/* Amend Button */}
-                      {onEditTeamData && (
+                      {/* Amend Button - Facilitator / Admin only */}
+                      {currentRole !== 'STUDENT' && onEditTeamData && (
                         <Button
                           size="sm"
                           variant="outline"

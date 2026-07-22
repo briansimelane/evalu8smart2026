@@ -6,6 +6,8 @@ import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useSession } from '@/contexts/SessionContext';
+import { REGION_CUSTOMERS } from '@/data/customers';
+import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
 
 export interface GameContextType {
@@ -36,6 +38,7 @@ export interface GameContextType {
   isRegionFull: (regionName: string) => boolean;
   updateCombinations: (data: Combination[] | null) => void;
   getCombinations: () => Combination[];
+  recalculateControlPoints: () => void;
 }
 
 export const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -982,6 +985,107 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [gameState]);
 
+  const recalculateControlPoints = useCallback(() => {
+    if (!gameState) return;
+
+    mutateGameState(prev => {
+      if (!prev) return prev;
+
+      const updatedRounds = prev.rounds.map(round => {
+        const teamControlPoints: Record<string, Record<string, number>> = {};
+        const teamControlTotals: Record<string, number> = {};
+
+        prev.teams.forEach(t => {
+          teamControlPoints[t.id] = {};
+          teamControlTotals[t.id] = 0;
+        });
+
+        REGIONS.forEach(region => {
+          const regionData = REGION_CUSTOMERS.find(r => r.region === region);
+          if (!regionData) return;
+
+          const teamSales: Array<{ teamId: string; salesCount: number; leftmostPosition: number }> = [];
+
+          prev.teams.forEach(team => {
+            const teamData = round.teamData[team.id];
+            if (!teamData || !teamData.customersSold || teamData.customersSold.length === 0) return;
+
+            const soldInRegion = teamData.customersSold.filter(customerId =>
+              regionData.customers.some(c => c.id === customerId)
+            );
+
+            if (soldInRegion.length > 0) {
+              let leftmostPosition = Infinity;
+              soldInRegion.forEach(customerId => {
+                const customer = regionData.customers.find(c => c.id === customerId);
+                if (customer && customer.position < leftmostPosition) {
+                  leftmostPosition = customer.position;
+                }
+              });
+
+              teamSales.push({
+                teamId: team.id,
+                salesCount: soldInRegion.length,
+                leftmostPosition: leftmostPosition === Infinity ? 999 : leftmostPosition
+              });
+            }
+          });
+
+          if (teamSales.length === 0) return;
+
+          teamSales.sort((a, b) => {
+            if (b.salesCount !== a.salesCount) return b.salesCount - a.salesCount;
+            return a.leftmostPosition - b.leftmostPosition;
+          });
+
+          const regionLogisticsData = prev.regionLogistics[region];
+          const teamsPresentCount = regionLogisticsData?.teamsPresent.length || 0;
+
+          if (teamSales.length > 0) {
+            const firstTeamId = teamSales[0].teamId;
+            const firstPoints = getControlPointsForRegion(region, teamsPresentCount, 'first');
+            teamControlPoints[firstTeamId][region] = firstPoints;
+            teamControlTotals[firstTeamId] += firstPoints;
+          }
+
+          if (teamSales.length > 1) {
+            const secondTeamId = teamSales[1].teamId;
+            const secondPoints = getControlPointsForRegion(region, teamsPresentCount, 'second');
+            teamControlPoints[secondTeamId][region] = secondPoints;
+            teamControlTotals[secondTeamId] += secondPoints;
+          }
+        });
+
+        const newTeamData = { ...round.teamData };
+        prev.teams.forEach(team => {
+          const td = newTeamData[team.id];
+          if (!td) return;
+
+          const newControlValue = teamControlTotals[team.id] || 0;
+          const newRegionControl = teamControlPoints[team.id] || {};
+
+          newTeamData[team.id] = {
+            ...td,
+            regionControlPoints: newRegionControl,
+            controlValue: newControlValue,
+            totalMoney: (td.revenue || 0) + newControlValue
+          };
+        });
+
+        return {
+          ...round,
+          teamData: newTeamData
+        };
+      });
+
+      return {
+        ...prev,
+        rounds: updatedRounds,
+        updatedAt: new Date()
+      };
+    });
+  }, [gameState]);
+
   if (!isLoaded) {
     return <div className="min-h-screen flex items-center justify-center bg-[#0D1117] text-white">Loading Game State...</div>;
   }
@@ -1016,6 +1120,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         isRegionFull,
         getCombinations,
         updateCombinations,
+        recalculateControlPoints,
       }}
     >
       {children}

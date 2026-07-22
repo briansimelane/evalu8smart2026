@@ -5,13 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Package, Wrench, Microscope, Truck, ShoppingCart, PackageX, TrendingUp, ChevronDown, ChevronRight, MapPin, Award, Download, Plus, Minus, CheckCircle, XCircle, FlaskConical, Wifi, Battery, Gamepad2, MapPinned, Nfc, Radio, Trophy, Medal, Box, Users } from 'lucide-react';
 import { TEAM_COLORS } from '@/data/combinations';
 import { Button } from '@/components/ui/button';
-import { useState, useRef } from 'react';
+import { useState, useRef, Fragment } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useReactToPrint } from 'react-to-print';
 import { IconType } from '@/data/improvements';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { useSession } from '@/contexts/SessionContext';
+import { calculateTeamTotalScore, getControlPointsForTeamInRound, getInitialScore, getRegionalControlBreakdownForTeamInRound, getTeamPatentPoints } from '@/types/game';
 
 export const SimulationReport = () => {
   const { gameState, getTechnologyCostForTeam } = useGame();
@@ -252,7 +253,13 @@ export const SimulationReport = () => {
                       </TableHead>
                       <TableHead className="text-right">
                         <div className="flex flex-col items-end gap-1">
-                          <span className="text-xs font-semibold">Current Money</span>
+                          <span className="text-xs font-semibold">Round Score</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <div className="flex flex-col items-end gap-1">
+                          <Award className="h-4 w-4 text-purple-500" />
+                          <span className="text-xs">Patent Bonus</span>
                         </div>
                       </TableHead>
                       <TableHead className="text-right font-bold">
@@ -264,15 +271,29 @@ export const SimulationReport = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {gameState.rounds
-                      .filter(round => round.teamData[team.id])
-                      .sort((a, b) => a.roundNumber - b.roundNumber)
-                      .map(round => {
+                    {(() => {
+                      const teamRounds = gameState.rounds
+                        .filter(round => round.teamData && round.teamData[team.id])
+                        .sort((a, b) => a.roundNumber - b.roundNumber);
+
+                      if (teamRounds.length === 0) {
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={14} className="text-center py-6 text-muted-foreground text-sm">
+                              No round performance submitted yet for {team.name}.
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+
+                      return teamRounds.map(round => {
                         const data = round.teamData[team.id];
                         const totalCustomersSold = data.customersSold?.length || 0;
                         const lostProducts = data.productsProduced - totalCustomersSold;
-                        const overallValue = cumulativeMoney + data.totalMoney;
-                        cumulativeMoney = overallValue;
+                        const roundControl = getControlPointsForTeamInRound(round, team.id, gameState);
+                        const patentBonus = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber);
+                        const scoreBreakdown = calculateTeamTotalScore(team.id, round.roundNumber, gameState);
+                        const overallValue = scoreBreakdown.totalScore;
                         const isExpanded = expandedRounds[`${team.id}-${round.roundNumber}`];
 
                         // Get improvement cards available to this team in this round
@@ -283,8 +304,8 @@ export const SimulationReport = () => {
                         );
 
                         return (
-                          <>
-                            <TableRow key={round.roundNumber} className="cursor-pointer hover:bg-muted/50 print:h-6" onClick={() => toggleRound(team.id, round.roundNumber)}>
+                          <Fragment key={round.roundNumber}>
+                            <TableRow className="cursor-pointer hover:bg-muted/50 print:h-6" onClick={() => toggleRound(team.id, round.roundNumber)}>
                               <TableCell className="font-medium">
                                 <div className="flex items-center gap-2">
                                   {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -303,19 +324,22 @@ export const SimulationReport = () => {
                               </TableCell>
                               <TableCell className="text-center">{totalCustomersSold}</TableCell>
                               <TableCell className="text-center">{lostProducts}</TableCell>
-                              <TableCell className="text-right">${data.revenue.toLocaleString()}</TableCell>
-                              <TableCell className="text-right">${data.controlValue}</TableCell>
-                              <TableCell className="text-right">${data.totalMoney.toLocaleString()}</TableCell>
+                              <TableCell className="text-right">${(data.revenue || 0).toLocaleString()}</TableCell>
+                              <TableCell className="text-right">+{roundControl} pts</TableCell>
+                              <TableCell className="text-right font-medium">{((data.revenue || 0) + roundControl).toLocaleString()} pts</TableCell>
+                              <TableCell className="text-right font-medium text-purple-600 dark:text-purple-400">
+                                {patentBonus > 0 ? `+${patentBonus} pts` : '-'}
+                              </TableCell>
                               <TableCell className="text-right font-bold">
                                 <div className="flex items-center justify-end gap-1">
                                   <TrendingUp className="h-3 w-3 text-green-500" />
-                                  ${overallValue.toLocaleString()}
+                                  {overallValue.toLocaleString()} pts
                                 </div>
                               </TableCell>
                             </TableRow>
                             {isExpanded && (
                               <TableRow>
-                                <TableCell colSpan={13} className="bg-muted/20 p-4 print:p-2">
+                                <TableCell colSpan={14} className="bg-muted/20 p-4 print:p-2">
                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:gap-2 print:grid-cols-3">
                                     {/* Customers Sold */}
                                     <Card className="print:shadow-none print:border-border/50">
@@ -418,12 +442,12 @@ export const SimulationReport = () => {
                                       </CardHeader>
                                       <CardContent className="print:p-3 print:pt-0">
                                         <div className="space-y-2 print:space-y-1">
-                           {availableCards.map(card => (
-                                             <div key={card.id} className="flex items-center gap-2">
-                                               <div className="flex items-center gap-2">
-                                                 {renderIconEffect(card.icon1 as IconType)}
-                                                 {renderIconEffect(card.icon2 as IconType)}
-                                               </div>
+                                          {availableCards.map(card => (
+                                            <div key={card.id} className="flex items-center gap-2">
+                                              <div className="flex items-center gap-2">
+                                                {renderIconEffect(card.icon1 as IconType)}
+                                                {renderIconEffect(card.icon2 as IconType)}
+                                              </div>
                                               {card.isInitial && (
                                                 <Badge variant="secondary" className="text-xs">Initial</Badge>
                                               )}
@@ -447,55 +471,23 @@ export const SimulationReport = () => {
                                       <CardContent className="print:p-3 print:pt-0">
                                         <div className="space-y-2 print:space-y-1">
                                           {gameState.teamLogisticsProgress?.[team.id]?.regionsWithPresence?.map(region => {
-                                            const regionData = gameState.regionLogistics[region];
-                                            // Get customers sold in this region - match by region name
-                                            const regionCustomers = data.customersSold?.filter((customerId: string) => {
-                                              const customer = getCustomerDetails(customerId);
-                                              return customer && REGION_CUSTOMERS.find(r => r.region === region)?.customers.some(c => c.id === customerId);
-                                            }) || [];
-                                            
+                                            const soldInRegion = data.customersSold?.filter((cid: string) => {
+                                              const regionData = REGION_CUSTOMERS.find(r => r.region === region);
+                                              return regionData?.customers.some(c => c.id === cid);
+                                            })?.length || 0;
+
                                             return (
-                                              <div key={region} className="flex items-center gap-2 flex-wrap">
-                                                <div className="flex items-center gap-2">
+                                              <div key={region} className="flex items-center justify-between text-xs">
+                                                <div className="flex items-center gap-1.5">
                                                   <CheckCircle className="h-3 w-3 text-green-500" />
-                                                  <span className="text-sm">{region}</span>
-                                                  <Badge variant="outline" className="text-xs">
-                                                    Cost: {regionData?.logisticsCost || '?'}
-                                                  </Badge>
+                                                  <span className="font-medium">{region}</span>
                                                 </div>
-                                                
-                                                {/* Customer sales details */}
-                                                {regionCustomers.length > 0 && (
-                                                  <div className="flex items-center gap-1.5 ml-2">
-                                                    <span className="text-xs text-muted-foreground">Sales:</span>
-                                                    {regionCustomers.map((customerId: string) => {
-                                                      const customer = getCustomerDetails(customerId);
-                                                      if (!customer) return null;
-                                                      
-                                                      if (customer.type === 'price') {
-                                                        return (
-                                                          <Badge key={customerId} className="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-0.5">
-                                                            ${customer.price}
-                                                          </Badge>
-                                                        );
-                                                      } else {
-                                                        return (
-                                                          <Badge key={customerId} className="bg-purple-500 hover:bg-purple-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
-                                                            {getTechnologyIcon(customer.technology || '')}
-                                                            <span>{customer.technology}</span>
-                                                          </Badge>
-                                                        );
-                                                      }
-                                                    })}
-                                                  </div>
-                                                )}
+                                                <Badge variant="outline" className="text-xs font-semibold">
+                                                  {soldInRegion} sold
+                                                </Badge>
                                               </div>
                                             );
                                           })}
-                                          {(!gameState.teamLogisticsProgress?.[team.id]?.regionsWithPresence || 
-                                            gameState.teamLogisticsProgress[team.id].regionsWithPresence.length === 0) && (
-                                            <p className="text-sm text-muted-foreground">No regional presence yet</p>
-                                          )}
                                           
                                           {/* In Progress */}
                                           {Object.entries(gameState.teamLogisticsProgress?.[team.id]?.regionInvestments || {})
@@ -524,51 +516,37 @@ export const SimulationReport = () => {
                                        <CardHeader className="pb-3 print:pb-1 print:pt-3 print:px-3">
                                          <CardTitle className="text-sm flex items-center gap-2">
                                            <Trophy className="h-4 w-4 text-amber-500" />
-                                           Control Points
+                                           Control Points ({roundControl} pts)
                                          </CardTitle>
                                        </CardHeader>
                                        <CardContent className="print:p-3 print:pt-0">
                                          <div className="space-y-2 print:space-y-1">
-                                           {data.regionControlPoints && Object.keys(data.regionControlPoints).length > 0 ? (
-                                             <>
-                                               {Object.entries(data.regionControlPoints)
-                                                 .filter(([_, points]) => points > 0)
-                                                 .map(([region, points]) => {
-                                                   // Check if this team was first or second in this region
-                                                   const regionLogistics = gameState.regionLogistics[region];
-                                                   const teamsPresent = regionLogistics?.teamsPresent.length || 0;
-                                                   const firstPlacePoints = getControlPointsForRegion(region, teamsPresent, 'first');
-                                                   const isFirstPlace = points === firstPlacePoints;
-                                                   
-                                                   return (
-                                                     <div key={region} className="flex items-center justify-between p-2 bg-background rounded border">
-                                                       <div className="flex items-center gap-2">
-                                                         {isFirstPlace ? (
-                                                           <Trophy className="h-4 w-4 text-amber-500" />
-                                                         ) : (
-                                                           <Medal className="h-4 w-4 text-slate-500" />
-                                                         )}
-                                                         <span className="text-sm font-medium">{region}</span>
-                                                         <Badge variant="outline" className="text-xs">
-                                                           {teamsPresent} team{teamsPresent !== 1 ? 's' : ''}
-                                                         </Badge>
-                                                       </div>
-                                                       <Badge className={isFirstPlace ? 'bg-amber-500 hover:bg-amber-600' : 'bg-slate-500 hover:bg-slate-600'}>
-                                                         +{points}
-                                                       </Badge>
-                                                     </div>
-                                                   );
-                                                 })}
-                                               <div className="flex items-center justify-between pt-2 border-t">
-                                                 <span className="text-sm font-semibold">Total Control</span>
-                                                 <Badge variant="default" className="text-base">
-                                                   {data.controlValue}
+                                           {(() => {
+                                             const breakdown = getRegionalControlBreakdownForTeamInRound(round, team.id, gameState);
+                                             if (breakdown.length === 0) {
+                                               return <p className="text-xs text-muted-foreground">No regional control points earned in this round</p>;
+                                             }
+                                             return breakdown.map(detail => (
+                                               <div key={detail.region} className="flex items-center justify-between p-2 bg-background rounded border text-xs">
+                                                 <div className="flex items-center gap-1.5">
+                                                   <Trophy className={`h-3.5 w-3.5 ${detail.rank === 'first' ? 'text-amber-500' : 'text-slate-400'}`} />
+                                                   <span className="font-semibold">{detail.region}</span>
+                                                   <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                                     {detail.rank === 'first' ? '1st Place' : '2nd Place'}
+                                                   </Badge>
+                                                 </div>
+                                                 <Badge className={detail.rank === 'first' ? 'bg-amber-500 text-white' : 'bg-slate-500 text-white'}>
+                                                   +{detail.points} pts
                                                  </Badge>
                                                </div>
-                                             </>
-                                           ) : (
-                                             <p className="text-sm text-muted-foreground">No control points earned</p>
-                                           )}
+                                             ));
+                                           })()}
+                                           <div className="flex items-center justify-between pt-2 border-t mt-2">
+                                             <span className="text-xs font-bold">Total Round Control</span>
+                                             <Badge variant="default" className="text-sm bg-amber-500 text-white">
+                                               +{roundControl} pts
+                                             </Badge>
+                                           </div>
                                          </div>
                                        </CardContent>
                                      </Card>
@@ -585,38 +563,38 @@ export const SimulationReport = () => {
                                         <div className="space-y-2 print:space-y-1">
                                           <p className="text-xs font-medium mb-2">Technologies:</p>
                                           <div className="space-y-1">
-            {Object.values(gameState.technologies).map(tech => {
-              const teamProgress = gameState.teamResearchProgress?.[team.id];
-              const invested = teamProgress?.technologyInvestments?.[tech.name] || 0;
-              const cost = getTechnologyCostForTeam ? getTechnologyCostForTeam(team.id, tech.name) : tech.researchCost;
-              const isCompleted = teamProgress?.completedTechnologies?.includes(tech.name) || invested >= cost;
-              const hasPatent = gameState.patents?.[tech.name] === team.id;
+                                            {Object.values(gameState.technologies).map(tech => {
+                                              const teamProgress = gameState.teamResearchProgress?.[team.id];
+                                              const invested = teamProgress?.technologyInvestments?.[tech.name] || 0;
+                                              const cost = getTechnologyCostForTeam ? getTechnologyCostForTeam(team.id, tech.name) : tech.researchCost;
+                                              const isCompleted = teamProgress?.completedTechnologies?.includes(tech.name) || invested >= cost;
+                                              const hasPatent = gameState.patents?.[tech.name] === team.id;
 
-              return (
-                <div key={tech.name} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5">
-                    {getTechnologyIcon(tech.name)}
-                    <span className="text-muted-foreground">{tech.name}</span>
-                    {hasPatent && (
-                      <Badge variant="default" className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
-                        Patent: {tech.maxPoints}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {isCompleted ? (
-                      <CheckCircle className="h-3 w-3 text-green-500" />
-                    ) : (
-                      <div className="flex items-center gap-0.5">
-                        <XCircle className="h-3 w-3 text-destructive" />
-                        <FlaskConical className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-muted-foreground">{invested} / {cost}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                                              return (
+                                                <div key={tech.name} className="flex items-center justify-between text-xs">
+                                                  <div className="flex items-center gap-1.5">
+                                                    {getTechnologyIcon(tech.name)}
+                                                    <span className="text-muted-foreground">{tech.name}</span>
+                                                    {hasPatent && (
+                                                      <Badge variant="default" className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
+                                                        Patent: {tech.maxPoints}
+                                                      </Badge>
+                                                    )}
+                                                  </div>
+                                                  <div className="flex items-center gap-1">
+                                                    {isCompleted ? (
+                                                      <CheckCircle className="h-3 w-3 text-green-500" />
+                                                    ) : (
+                                                      <div className="flex items-center gap-0.5">
+                                                        <XCircle className="h-3 w-3 text-destructive" />
+                                                        <FlaskConical className="h-3 w-3 text-muted-foreground" />
+                                                        <span className="text-muted-foreground">{invested} / {cost}</span>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
                                           </div>
                                         </div>
                                       </CardContent>
@@ -625,9 +603,10 @@ export const SimulationReport = () => {
                                 </TableCell>
                               </TableRow>
                             )}
-                          </>
+                          </Fragment>
                         );
-                      })}
+                      });
+                    })()}
                   </TableBody>
                 </Table>
               </div>

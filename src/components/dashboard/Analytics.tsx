@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useGame } from '@/contexts/GameContext';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TEAM_COLORS } from '@/data/combinations';
+import { getControlPointsForTeamInRound, getTeamPatentPoints } from '@/types/game';
 
 // Distinct colors for each Round / Period
 const ROUND_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
@@ -101,7 +102,10 @@ export const Analytics = () => {
     gameState.rounds.forEach(round => {
       const td = round.teamData[team.id];
       dataPoint[`R${round.roundNumber} Revenue`] = td ? td.revenue : 0;
-      dataPoint[`R${round.roundNumber} Control`] = td ? (td.controlValue ?? 0) : 0;
+      dataPoint[`R${round.roundNumber} Control`] = getControlPointsForTeamInRound(round, team.id, gameState);
+      if (round.roundNumber >= 5) {
+        dataPoint['Patent Bonus'] = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber);
+      }
     });
 
     return dataPoint;
@@ -117,6 +121,12 @@ export const Analytics = () => {
       key: `R${round.roundNumber} Control`,
       color: CONTROL_COLORS[idx % CONTROL_COLORS.length]
     });
+    if (round.roundNumber >= 5) {
+      scoreSegments.push({
+        key: 'Patent Bonus',
+        color: '#a855f7'
+      });
+    }
   });
 
   return (

@@ -14,9 +14,10 @@ import { ControlPhase } from './dashboard/ControlPhase';
 import { SimulationReport } from './dashboard/SimulationReport';
 import { LogisticsPhase } from './dashboard/LogisticsPhase';
 import { FinancialsPhase } from './dashboard/FinancialsPhase';
+import { SummaryMap } from './dashboard/SummaryMap';
 import { GameSettingsDialog } from './dashboard/GameSettingsDialog';
 import { TeamSubmissionStatus } from './dashboard/TeamSubmissionStatus';
-import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut } from 'lucide-react';
+import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -149,7 +150,9 @@ export const Dashboard = () => {
                       <SelectContent>
                         <SelectItem value="planning">Planning</SelectItem>
                         <SelectItem value="production">Production</SelectItem>
-                        <SelectItem value="improvement">Improvement</SelectItem>
+                        <SelectItem value="improvement" disabled={gameState.currentRound >= 5}>
+                          Improvement {gameState.currentRound >= 5 ? '(Skipped)' : ''}
+                        </SelectItem>
                         <SelectItem value="innovation">Research</SelectItem>
                         <SelectItem value="expansion">Logistics</SelectItem>
                         <SelectItem value="sales">Sales</SelectItem>
@@ -237,7 +240,12 @@ export const Dashboard = () => {
                 <Package className="h-4 w-4" />
                 <span className="hidden sm:inline">Production</span>
               </TabsTrigger>
-              <TabsTrigger value="improvement" className="gap-2 py-2">
+              <TabsTrigger 
+                value="improvement" 
+                disabled={gameState.currentRound >= 5} 
+                className="gap-2 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={gameState.currentRound >= 5 ? "Improvement phase is skipped in Round 5 (Final Round)" : undefined}
+              >
                 <Wrench className="h-4 w-4 text-yellow-600" />
                 <span className="hidden sm:inline">Improvement</span>
               </TabsTrigger>
@@ -260,10 +268,14 @@ export const Dashboard = () => {
             </TabsList>
 
             {/* Bottom Row - Data Views */}
-            <TabsList className="grid w-full grid-cols-5 gap-1 h-auto p-2">
+            <TabsList className="grid w-full grid-cols-6 gap-1 h-auto p-2">
               <TabsTrigger value="state" className="gap-2 py-2">
                 <LayoutDashboard className="h-4 w-4" />
                 <span className="hidden sm:inline">Current State</span>
+              </TabsTrigger>
+              <TabsTrigger value="summary-map" className="gap-2 py-2">
+                <Globe className="h-4 w-4 text-emerald-500" />
+                <span className="hidden sm:inline">Summary Map</span>
               </TabsTrigger>
               <TabsTrigger value="scoreboard" className="gap-2 py-2">
                 <Award className="h-4 w-4" />
@@ -310,7 +322,7 @@ export const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="control" className="space-y-4">
-            <ControlPhase />
+            <ControlPhase onEndGame={() => setActiveTab('summary-map')} />
           </TabsContent>
 
           {/* Data View Tabs */}
@@ -328,6 +340,10 @@ export const Dashboard = () => {
                       <CurrentState onEditTeamData={handleEditTeamData} />
                     </GameContext.Provider>
                   )}
+                </TabsContent>
+
+                <TabsContent value="summary-map" className="space-y-4">
+                  <SummaryMap />
                 </TabsContent>
 
                 <TabsContent value="scoreboard" className="space-y-4">
