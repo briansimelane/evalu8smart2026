@@ -1,9 +1,36 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useGame } from '@/contexts/GameContext';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { TEAM_COLORS } from '@/data/combinations';
 
 // Distinct colors for each Round / Period
 const ROUND_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+const REVENUE_COLORS = ['#10b981', '#14b8a6', '#059669', '#34d399', '#6ee7b7'];
+const CONTROL_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef'];
+
+const COLOR_SCORES: Record<string, number> = {
+  green: 3,
+  blue: 4,
+  black: 5,
+  yellow: 6,
+  red: 7
+};
+
+const colorNameFromHex = (hex: string): string | null => {
+  const found = TEAM_COLORS.find(c => c.value.toLowerCase() === (hex || '').toLowerCase());
+  return found ? found.name.toLowerCase() : null;
+};
+
+const getInitialScore = (team: { name: string; color: string }): number => {
+  const byColor = colorNameFromHex(team.color || '');
+  if (byColor && COLOR_SCORES[byColor] !== undefined) return COLOR_SCORES[byColor];
+
+  const teamName = (team.name || '').toLowerCase();
+  for (const key of Object.keys(COLOR_SCORES)) {
+    if (teamName.includes(key)) return COLOR_SCORES[key];
+  }
+  return 0;
+};
 
 export const Analytics = () => {
   const { gameState } = useGame();
@@ -62,6 +89,34 @@ export const Analytics = () => {
       dataPoint[`Round ${round.roundNumber}`] = allocated;
     });
     return dataPoint;
+  });
+
+  // Score breakdown stacked by Team (Starting Value + Revenue per round + Control per round)
+  const scoreByTeamData = gameState.teams.map(team => {
+    const dataPoint: Record<string, any> = {
+      teamName: team.name,
+      'Starting Value': getInitialScore(team)
+    };
+
+    gameState.rounds.forEach(round => {
+      const td = round.teamData[team.id];
+      dataPoint[`R${round.roundNumber} Revenue`] = td ? td.revenue : 0;
+      dataPoint[`R${round.roundNumber} Control`] = td ? (td.controlValue ?? 0) : 0;
+    });
+
+    return dataPoint;
+  });
+
+  const scoreSegments: { key: string; color: string }[] = [];
+  gameState.rounds.forEach((round, idx) => {
+    scoreSegments.push({
+      key: `R${round.roundNumber} Revenue`,
+      color: REVENUE_COLORS[idx % REVENUE_COLORS.length]
+    });
+    scoreSegments.push({
+      key: `R${round.roundNumber} Control`,
+      color: CONTROL_COLORS[idx % CONTROL_COLORS.length]
+    });
   });
 
   return (
@@ -149,31 +204,60 @@ export const Analytics = () => {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Research Investment</CardTitle>
-          <CardDescription>Cumulative research icons allocated per team by round</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={researchByTeamData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis dataKey="teamName" />
-              <YAxis label={{ value: 'Research Icons', angle: -90, position: 'insideLeft' }} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-              <Legend />
-              {gameState.rounds.map((round, idx) => (
-                <Bar
-                  key={round.roundNumber}
-                  dataKey={`Round ${round.roundNumber}`}
-                  stackId="teamStack"
-                  fill={ROUND_COLORS[idx % ROUND_COLORS.length]}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Research Investment</CardTitle>
+            <CardDescription>Cumulative research icons allocated per team by round</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={researchByTeamData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="teamName" />
+                <YAxis label={{ value: 'Research Icons', angle: -90, position: 'insideLeft' }} />
+                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                <Legend />
+                {gameState.rounds.map((round, idx) => (
+                  <Bar
+                    key={round.roundNumber}
+                    dataKey={`Round ${round.roundNumber}`}
+                    stackId="teamStack"
+                    fill={ROUND_COLORS[idx % ROUND_COLORS.length]}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Cumulative Score & Value Breakdown</CardTitle>
+            <CardDescription>Starting value + Revenue & Control per round (Stacked to total score)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={scoreByTeamData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="teamName" />
+                <YAxis label={{ value: 'Total Points', angle: -90, position: 'insideLeft' }} />
+                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                <Legend />
+                <Bar dataKey="Starting Value" stackId="scoreStack" fill="#64748b" />
+                {scoreSegments.map((segment) => (
+                  <Bar
+                    key={segment.key}
+                    dataKey={segment.key}
+                    stackId="scoreStack"
+                    fill={segment.color}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
