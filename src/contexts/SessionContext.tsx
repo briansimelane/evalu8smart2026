@@ -408,9 +408,10 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
           currentPinInDb = snap.data().ceoPin || '';
         }
 
-        // If seat is already claimed with a PIN, verify the current PIN
+        // If seat already has a PIN in DB, verify the attempted PIN (either currentPin or newPin)
         if (currentPinInDb) {
-          if (!currentPin || currentPinInDb !== currentPin) {
+          const pinAttempt = currentPin || newPin;
+          if (!pinAttempt || pinAttempt.trim() !== currentPinInDb.trim()) {
             return null; // Invalid PIN
           }
         }
