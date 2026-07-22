@@ -97,7 +97,7 @@ export const Analytics = () => {
         <Card>
           <CardHeader>
             <CardTitle>Production Volume</CardTitle>
-            <CardDescription>Units produced per round</CardDescription>
+            <CardDescription>Units produced per round (Stacked)</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>
@@ -108,7 +108,7 @@ export const Analytics = () => {
                 <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
                 <Legend />
                 {gameState.teams.map(team => (
-                  <Bar key={team.id} dataKey={team.name} fill={team.color} />
+                  <Bar key={team.id} dataKey={team.name} fill={team.color} stackId="a" />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -146,7 +146,7 @@ export const Analytics = () => {
       <Card>
         <CardHeader>
           <CardTitle>Research Investment</CardTitle>
-          <CardDescription>Research icons allocated per round</CardDescription>
+          <CardDescription>Research icons allocated per round (Stacked)</CardDescription>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
@@ -157,7 +157,7 @@ export const Analytics = () => {
               <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
               <Legend />
               {gameState.teams.map(team => (
-                <Bar key={team.id} dataKey={team.name} fill={team.color} />
+                <Bar key={team.id} dataKey={team.name} fill={team.color} stackId="a" />
               ))}
             </BarChart>
           </ResponsiveContainer>
