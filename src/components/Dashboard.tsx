@@ -81,15 +81,16 @@ export const Dashboard = () => {
 
   if (!gameState) return null;
 
-  const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
+  const realActiveRound = gameState.currentRound;
+  const currentRoundData = gameState.rounds.find(r => r.roundNumber === realActiveRound);
   const submittedTeamDataMap = currentRoundData?.teamData || {};
   const allTeamsSubmitted = gameState.teams.length > 0 && gameState.teams.every(t => !!submittedTeamDataMap[t.id]);
 
-  const isStudentRestricted = currentRole === 'STUDENT' && !allTeamsSubmitted;
-  const effectiveRound = isStudentRestricted ? Math.max(0, gameState.currentRound - 1) : gameState.currentRound;
+  const isDataRestricted = !allTeamsSubmitted;
+  const effectiveRound = isDataRestricted ? Math.max(0, realActiveRound - 1) : realActiveRound;
 
   const getRestrictedGameState = () => {
-    if (!isStudentRestricted) return gameState;
+    if (!isDataRestricted) return gameState;
     const prevRounds = gameState.rounds.filter(r => r.roundNumber <= effectiveRound);
     return {
       ...gameState,
@@ -103,7 +104,7 @@ export const Dashboard = () => {
   const restrictedGameContextValue = {
     ...gameContext,
     gameState: restrictedGameState,
-    getCurrentRound: () => (!isStudentRestricted ? gameState.currentRound : effectiveRound)
+    getCurrentRound: () => (!isDataRestricted ? realActiveRound : effectiveRound)
   };
 
   return (
@@ -314,9 +315,6 @@ export const Dashboard = () => {
 
           {/* Data View Tabs */}
           {(() => {
-            const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
-            const submittedTeamDataMap = currentRoundData?.teamData || {};
-            const allTeamsSubmitted = gameState.teams.length > 0 && gameState.teams.every(t => !!submittedTeamDataMap[t.id]);
             const isPlaceholderMode = effectiveRound === 0 && !allTeamsSubmitted;
 
             return (
@@ -326,7 +324,7 @@ export const Dashboard = () => {
                     renderPhasePlaceholder("Current State")
                   ) : (
                     <GameContext.Provider value={restrictedGameContextValue}>
-                      <TeamSubmissionStatus tabName="Current State" isCompact />
+                      <TeamSubmissionStatus tabName="Current State" isCompact realRound={realActiveRound} />
                       <CurrentState onEditTeamData={handleEditTeamData} />
                     </GameContext.Provider>
                   )}
@@ -337,7 +335,7 @@ export const Dashboard = () => {
                     renderPhasePlaceholder("Scoreboard")
                   ) : (
                     <GameContext.Provider value={restrictedGameContextValue}>
-                      <TeamSubmissionStatus tabName="Scoreboard" isCompact />
+                      <TeamSubmissionStatus tabName="Scoreboard" isCompact realRound={realActiveRound} />
                       <Scoreboard onEditTeamData={handleEditTeamData} />
                     </GameContext.Provider>
                   )}
@@ -348,7 +346,7 @@ export const Dashboard = () => {
                     renderPhasePlaceholder("Analytics")
                   ) : (
                     <GameContext.Provider value={restrictedGameContextValue}>
-                      <TeamSubmissionStatus tabName="Analytics" isCompact />
+                      <TeamSubmissionStatus tabName="Analytics" isCompact realRound={realActiveRound} />
                       <Analytics />
                     </GameContext.Provider>
                   )}
@@ -359,7 +357,7 @@ export const Dashboard = () => {
                     renderPhasePlaceholder("Financials")
                   ) : (
                     <GameContext.Provider value={restrictedGameContextValue}>
-                      <TeamSubmissionStatus tabName="Financials" isCompact />
+                      <TeamSubmissionStatus tabName="Financials" isCompact realRound={realActiveRound} />
                       <FinancialsPhase />
                     </GameContext.Provider>
                   )}
@@ -370,7 +368,7 @@ export const Dashboard = () => {
                     renderPhasePlaceholder("Simulation Report")
                   ) : (
                     <GameContext.Provider value={restrictedGameContextValue}>
-                      <TeamSubmissionStatus tabName="Simulation Report" isCompact />
+                      <TeamSubmissionStatus tabName="Simulation Report" isCompact realRound={realActiveRound} />
                       <SimulationReport />
                     </GameContext.Provider>
                   )}

@@ -9,19 +9,20 @@ import { CheckCircle2, Clock, Crown, User, Users, ArrowRight } from 'lucide-reac
 interface TeamSubmissionStatusProps {
   tabName: string;
   isCompact?: boolean;
+  realRound?: number;
 }
 
-export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabName, isCompact = false }) => {
+export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabName, isCompact = false, realRound }) => {
   const { gameState } = useGame();
   const { currentRole, currentTeamId, currentClassTeams, selectTeam } = useSession();
 
   if (!gameState) return null;
 
-  const currentRound = gameState.currentRound;
+  const activeRoundNumber = realRound !== undefined ? realRound : gameState.currentRound;
   const activePhase = gameState.currentPhase || 'planning';
   
-  // Find current round data from gameState
-  const currentRoundData = gameState.rounds.find(r => r.roundNumber === currentRound);
+  // Find target round data from gameState
+  const currentRoundData = gameState.rounds.find(r => r.roundNumber === activeRoundNumber);
   const submittedTeamDataMap = currentRoundData?.teamData || {};
 
   // Combine teams from gameState
@@ -50,16 +51,16 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
   if (allSubmitted) return null;
 
   if (isCompact) {
-    const prevRound = currentRound - 1;
+    const prevRound = activeRoundNumber - 1;
     return (
       <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between text-xs max-w-5xl mx-auto shadow-sm">
         <div className="flex items-center gap-2">
           <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
           <span>
             {prevRound > 0 ? (
-              <>Showing <strong>Round {prevRound}</strong> results while Round {currentRound} decisions are being submitted.</>
+              <>Showing <strong>Round {prevRound}</strong> results while Round {activeRoundNumber} decisions are being submitted.</>
             ) : (
-              <>Round {currentRound} results will unlock once all teams submit plans.</>
+              <>Round {activeRoundNumber} results will unlock once all teams submit plans.</>
             )}
           </span>
         </div>
