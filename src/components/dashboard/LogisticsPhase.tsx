@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 import { useToast } from '@/hooks/use-toast';
 import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
@@ -177,7 +178,7 @@ export const LogisticsPhase = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Warning if not all teams have submitted plans */}
       {!allTeamsHavePlans && (
         <Alert variant="destructive">
@@ -190,8 +191,8 @@ export const LogisticsPhase = () => {
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold flex items-center gap-2">
-            <Truck className="h-8 w-8 text-cyan-500" />
+          <h2 className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2 flex-wrap">
+            <GameIcon type="logistics" size="lg" />
             Logistics Phase - Round {currentRound}
           </h2>
           <p className="text-muted-foreground mt-1">
@@ -212,16 +213,16 @@ export const LogisticsPhase = () => {
           <div className="space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Trophy className="h-4 w-4 text-amber-500" />
+                <Trophy className="h-4 w-4 text-warning" />
                 <span>Play Order & Team Logistics Icons</span>
               </h3>
               {activeTurnTeam ? (
-                <Badge className="bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 text-xs font-bold gap-1.5 animate-pulse">
-                  <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
+                <Badge className="bg-primary/15 text-cyan-700 dark:text-cyan-300 border border-primary/30 text-xs font-bold gap-1.5 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
                   Current Turn: {activeTurnTeam.name}
                 </Badge>
               ) : (
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-bold gap-1">
+                <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
                   <CheckCircle className="h-3 w-3" />
                   Logistics Complete
                 </Badge>
@@ -239,9 +240,9 @@ export const LogisticsPhase = () => {
                     key={team.id}
                     className={`p-2.5 rounded-lg border flex flex-col justify-between space-y-1 text-xs transition-all ${
                       isActiveTurn
-                        ? 'ring-2 ring-cyan-500 bg-cyan-500/10 border-cyan-500/80 shadow-md animate-pulse'
+                        ? 'ring-2 ring-primary bg-primary/10 border-primary/80 shadow-md animate-pulse'
                         : team.id === selectedTeam
-                        ? 'ring-2 ring-blue-500 bg-blue-500/5 shadow-sm border-blue-500/50'
+                        ? 'ring-2 ring-primary bg-primary/5 shadow-sm border-primary/50'
                         : 'bg-card/60 border-border'
                     }`}
                   >
@@ -251,14 +252,14 @@ export const LogisticsPhase = () => {
                         <span className="truncate">{index + 1}. {team.name}</span>
                       </div>
                       {isActiveTurn && (
-                        <Badge className="bg-cyan-600 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                        <Badge className="bg-primary text-white text-[9px] px-1 py-0 font-extrabold uppercase">
                           Turn
                         </Badge>
                       )}
                     </div>
                     <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
-                      <span className="font-semibold text-cyan-600 dark:text-cyan-400 flex items-center gap-1">
-                        <Truck className="h-3.5 w-3.5" />
+                      <span className="font-semibold flex items-center gap-1">
+                        <GameIcon type="logistics" size="xs" />
                         {icons} Icons
                       </span>
                       <span>{spent}/{icons} spent</span>
@@ -357,9 +358,9 @@ export const LogisticsPhase = () => {
                   <Card
                     key={region.name}
                     className={`${
-                      status === 'present' ? 'border-green-500 bg-green-500/5' :
-                      status === 'available' ? 'border-blue-500 bg-blue-500/5' :
-                      status === 'in-progress' ? 'border-yellow-500 bg-yellow-500/5' :
+                      status === 'present' ? 'border-success bg-success/5' :
+                      status === 'available' ? 'border-primary bg-primary/5' :
+                      status === 'in-progress' ? 'border-warning bg-warning/5' :
                       'border-muted bg-muted/20'
                     }`}
                   >
@@ -395,7 +396,7 @@ export const LogisticsPhase = () => {
                                   {region.teamsPresent.length}/{region.maxTeams} teams
                                 </span>
                                 <span className="flex items-center gap-1">
-                                  <Trophy className="h-3 w-3 text-amber-500" />
+                                  <Trophy className="h-3 w-3 text-warning" />
                                   Control: {getControlPointsForRegion(region.name, region.teamsPresent.length, 'first')} / {getControlPointsForRegion(region.name, region.teamsPresent.length, 'second')}
                                 </span>
                               </div>
@@ -495,7 +496,7 @@ export const LogisticsPhase = () => {
                                       : `Value Customer - Requires ${customer.technology}`}
                                   >
                                     <div className={`w-9 h-9 flex items-center justify-center rounded-md opacity-50 ${
-                                      customer.type === 'price' ? 'bg-red-600' : 'bg-purple-600'
+                                      customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'
                                     }`}>
                                       {customer.type === 'price' ? (
                                         <span className="text-white font-bold text-xs">{customer.price}</span>
@@ -697,7 +698,7 @@ export const LogisticsPhase = () => {
                                       : `Value Customer - Requires ${customer.technology}`}
                                   >
                                     <div className={`w-9 h-9 flex items-center justify-center rounded-md opacity-50 ${
-                                      customer.type === 'price' ? 'bg-red-600' : 'bg-purple-600'
+                                      customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'
                                     }`}>
                                       {customer.type === 'price' ? (
                                         <span className="text-white font-bold text-xs">{customer.price}</span>

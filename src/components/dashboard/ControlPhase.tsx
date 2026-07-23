@@ -6,6 +6,7 @@ import { useGame } from '@/contexts/GameContext';
 import { REGIONS } from '@/data/combinations';
 import { toast } from 'sonner';
 import { Save, AlertTriangle, Trophy, Medal } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 import { Badge } from '@/components/ui/badge';
 import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
@@ -104,13 +105,15 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
         return a.leftmostPosition - b.leftmostPosition;
       });
 
-      // Count teams that actually made sales in this region (not just logistics presence)
-      const teamsWithSales = teamSales.length;
+      // Count teams present in this region (logistics presence)
+      const regionLogisticsData = gameState.regionLogistics?.[region];
+      const teamsPresentCount = regionLogisticsData?.teamsPresent?.length || 0;
+      const teamsCountForControl = teamsPresentCount > 0 ? teamsPresentCount : teamSales.length;
 
       const result: RegionControlResult = { region };
 
       if (teamSales.length > 0) {
-        const firstPoints = getControlPointsForRegion(region, teamsWithSales, 'first');
+        const firstPoints = getControlPointsForRegion(region, teamsCountForControl, 'first');
         result.firstPlace = {
           teamId: teamSales[0].teamId,
           teamName: teamSales[0].teamName,
@@ -121,7 +124,7 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
       }
 
       if (teamSales.length > 1) {
-        const secondPoints = getControlPointsForRegion(region, teamsWithSales, 'second');
+        const secondPoints = getControlPointsForRegion(region, teamsCountForControl, 'second');
         result.secondPlace = {
           teamId: teamSales[1].teamId,
           teamName: teamSales[1].teamName,
@@ -208,15 +211,18 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Round {currentRound} Control - Regional Control Points</CardTitle>
+        <CardTitle className="text-base sm:text-xl font-bold flex items-center gap-2 flex-wrap tracking-tight">
+          <GameIcon type="control" size="md" />
+          <span>Round {currentRound} Control - Regional Control Points</span>
+        </CardTitle>
         <CardDescription>
           Control is determined by the number of products sold in each region. First and second place teams earn control points.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4">
         {currentRole === 'STUDENT' && !controlAlreadyCalculated && (
           <Alert>
-            <AlertTriangle className="h-4 w-4 text-blue-500" />
+            <AlertTriangle className="h-4 w-4 text-primary" />
             <AlertDescription>
               Waiting for the facilitator to calculate and apply control points for Round {currentRound}.
             </AlertDescription>
@@ -259,15 +265,15 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                 });
 
                 return (
-                  <div className="p-4 bg-amber-500/10 border-2 border-amber-500/30 rounded-xl space-y-3">
+                  <div className="p-4 bg-warning/10 border-2 border-warning/30 rounded-xl space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Trophy className="h-5 w-5 text-amber-500 animate-pulse" />
+                        <Trophy className="h-5 w-5 text-warning animate-pulse" />
                         <h3 className="font-bold text-sm text-foreground">
                           {myTeamObj?.name || 'Your Team'}'s Allocated Control Points — Round {currentRound}
                         </h3>
                       </div>
-                      <Badge className="bg-amber-600 text-white font-extrabold text-xs px-2.5 py-1">
+                      <Badge className="bg-warning text-white font-extrabold text-xs px-2.5 py-1">
                         +{myTotalPointsThisRound} Control Points
                       </Badge>
                     </div>
@@ -281,7 +287,7 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                         {myWins.map(w => (
                           <div key={w.region} className="flex items-center justify-between p-2 bg-card rounded-lg border text-xs">
                             <span className="font-medium text-foreground">{w.region} ({w.place} Place)</span>
-                            <Badge variant="outline" className="text-[10px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                            <Badge variant="outline" className="text-[10px] font-bold bg-warning/10 text-warning dark:text-warning border-warning/30">
                               +{w.points} pts
                             </Badge>
                           </div>
@@ -304,15 +310,15 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                   const isMySecond = result.secondPlace?.teamId === currentTeamId && currentRole === 'STUDENT';
 
                   return (
-                    <Card key={result.region} className={`border-primary/20 ${(isMyFirst || isMySecond) ? 'ring-2 ring-amber-500/50 bg-amber-500/[0.02]' : ''}`}>
+                    <Card key={result.region} className={`border-primary/20 ${(isMyFirst || isMySecond) ? 'ring-2 ring-warning/50 bg-warning/[0.02]' : ''}`}>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center justify-between">
                           <span className="flex items-center gap-2">
-                            <Trophy className="h-4 w-4 text-amber-500" />
+                            <Trophy className="h-4 w-4 text-warning" />
                             {result.region}
                           </span>
                           {(isMyFirst || isMySecond) && (
-                            <Badge className="bg-amber-600 text-white text-[10px]">
+                            <Badge className="bg-warning text-white text-[10px]">
                               Your Team ({isMyFirst ? '1st' : '2nd'})
                             </Badge>
                           )}
@@ -320,9 +326,9 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                       </CardHeader>
                       <CardContent className="space-y-3">
                         {result.firstPlace ? (
-                          <div className={`flex items-center justify-between p-3 border rounded-lg ${result.firstPlace.teamId === currentTeamId && currentRole === 'STUDENT' ? 'bg-amber-500/20 border-amber-500/50 font-bold' : 'bg-amber-500/10 border-amber-500/20'}`}>
+                          <div className={`flex items-center justify-between p-3 border rounded-lg ${result.firstPlace.teamId === currentTeamId && currentRole === 'STUDENT' ? 'bg-warning/20 border-warning/50 font-bold' : 'bg-warning/10 border-warning/20'}`}>
                             <div className="flex items-center gap-3">
-                              <Trophy className="h-5 w-5 text-amber-500" />
+                              <Trophy className="h-5 w-5 text-warning" />
                               <div className="flex items-center gap-2">
                                 <div
                                   className="w-4 h-4 rounded-full"
@@ -334,7 +340,7 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                                 {result.firstPlace.sales} sales
                               </Badge>
                             </div>
-                            <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold">
+                            <Badge className="bg-warning hover:bg-warning text-white font-bold">
                               +{result.firstPlace.points} points
                             </Badge>
                           </div>
@@ -396,9 +402,9 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                       recalculateControlPoints();
                       toast.success("Control points recalculated & repaired across all rounds!");
                     }}
-                    className="w-full border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 font-semibold"
+                    className="w-full border-warning/40 text-warning dark:text-amber-300 hover:bg-warning/10 font-semibold"
                   >
-                    <Trophy className="mr-2 h-4 w-4 text-amber-500" />
+                    <Trophy className="mr-2 h-4 w-4 text-warning" />
                     Recalculate & Repair All Control Points
                   </Button>
                 )}
@@ -413,7 +419,7 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                     if (onEndGame) onEndGame();
                   }}
                   size="lg"
-                  className="w-full bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-extrabold shadow-xl gap-2 text-lg py-6"
+                  className="w-full bg-gradient-to-r from-warning via-warning to-warning hover:from-warning hover:to-amber-800 text-white font-extrabold shadow-xl gap-2 text-lg py-6"
                 >
                   <Trophy className="h-6 w-6 text-yellow-200 animate-bounce" />
                   End Game — View Summary Map

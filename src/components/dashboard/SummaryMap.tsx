@@ -7,20 +7,13 @@ import { useGame } from '@/contexts/GameContext';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { TEAM_COLORS } from '@/data/combinations';
 import { Trophy, Medal, Truck, DollarSign, Package, Globe, Microscope, Users, Sparkles, CheckCircle } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 import { getControlPointsForRegion } from '@/data/control';
-import { getControlPointsForTeamInRound, getTeamPatentPoints } from '@/types/game';
+import { getControlPointsForTeamInRound, getTeamPatentPoints, getInitialScore } from '@/types/game';
 
 interface SummaryMapProps {
   initialRound?: number;
 }
-
-const COLOR_SCORES: Record<string, number> = {
-  green: 3,
-  blue: 4,
-  black: 5,
-  yellow: 6,
-  red: 7
-};
 
 export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
   const { gameState } = useGame();
@@ -34,68 +27,6 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
 
   const activeRoundNumber = Math.min(selectedRound, maxAvailableRound);
   const roundData = gameState.rounds.find(r => r.roundNumber === activeRoundNumber);
-
-  const colorNameFromHex = (hex: string): string => {
-    const found = TEAM_COLORS.find(c => c.value.toLowerCase() === (hex || '').toLowerCase());
-    return found ? found.name.toLowerCase() : '';
-  };
-
-  const getInitialScore = (team: typeof gameState.teams[0]): number => {
-    const byColor = colorNameFromHex(team.color || '');
-    if (byColor && COLOR_SCORES[byColor] !== undefined) return COLOR_SCORES[byColor];
-    const teamName = (team.name || '').toLowerCase();
-    for (const key of Object.keys(COLOR_SCORES)) {
-      if (teamName.includes(key)) return COLOR_SCORES[key];
-    }
-    return 0;
-  };
-
-  const getControlPointsForTeamInRound = (roundNum: number, teamId: string): number => {
-    const rd = gameState.rounds.find(r => r.roundNumber === roundNum);
-    if (!rd) return 0;
-
-    let totalPoints = 0;
-
-    REGION_CUSTOMERS.forEach(({ region, customers }) => {
-      const regionLogisticsData = gameState.regionLogistics[region];
-      const teamsPresent = regionLogisticsData?.teamsPresent || [];
-
-      const teamSales: Array<{ teamId: string; salesCount: number; leftmostPos: number }> = [];
-
-      gameState.teams.forEach(t => {
-        const tData = rd.teamData[t.id];
-        if (!tData || !tData.customersSold) return;
-
-        const soldInRegion = tData.customersSold.filter(cid => customers.some(c => c.id === cid));
-        if (soldInRegion.length > 0) {
-          let minPos = Infinity;
-          soldInRegion.forEach(cid => {
-            const cust = customers.find(c => c.id === cid);
-            if (cust && cust.position < minPos) minPos = cust.position;
-          });
-
-          teamSales.push({
-            teamId: t.id,
-            salesCount: soldInRegion.length,
-            leftmostPos: minPos === Infinity ? 999 : minPos,
-          });
-        }
-      });
-
-      teamSales.sort((a, b) => {
-        if (b.salesCount !== a.salesCount) return b.salesCount - a.salesCount;
-        return a.leftmostPos - b.leftmostPos;
-      });
-
-      if (teamSales[0] && teamSales[0].teamId === teamId) {
-        totalPoints += getControlPointsForRegion(region, teamsPresent.length, 'first');
-      } else if (teamSales[1] && teamSales[1].teamId === teamId) {
-        totalPoints += getControlPointsForRegion(region, teamsPresent.length, 'second');
-      }
-    });
-
-    return totalPoints;
-  };
 
   // Team scores up to the selected round
   const teamStandings = useMemo(() => {
@@ -244,13 +175,13 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
   }, [regionalBreakdown]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header with Round Dropdown */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-card rounded-xl border shadow-sm">
         <div>
-          <h2 className="text-2xl font-extrabold flex items-center gap-2 text-foreground">
-            <Globe className="h-7 w-7 text-emerald-500" />
-            End of Round Summary Map
+          <h2 className="text-lg sm:text-2xl md:text-3xl font-extrabold flex items-center gap-2 flex-wrap text-foreground tracking-tight">
+            <Globe className="h-6 w-6 sm:h-7 sm:w-7 text-success shrink-0" />
+            <span>End of Round Summary Map</span>
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             Complete overview of Sales, Regional Control, Technology, and Logistics for Round {activeRoundNumber}
@@ -281,36 +212,36 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
 
       {/* Round Key Metrics Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="bg-emerald-500/10 border-emerald-500/20">
+        <Card className="bg-success/10 border-success/20">
           <CardContent className="p-4 flex items-center gap-3">
-            <DollarSign className="h-8 w-8 text-emerald-500" />
+            <DollarSign className="h-8 w-8 text-success" />
             <div>
               <p className="text-xs text-muted-foreground font-semibold">Total Revenue (R{activeRoundNumber})</p>
-              <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+              <p className="text-xl font-black text-success dark:text-success">
                 ${totalRoundRevenue.toLocaleString()}
               </p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-blue-500/10 border-blue-500/20">
+        <Card className="bg-primary/10 border-primary/20">
           <CardContent className="p-4 flex items-center gap-3">
-            <Package className="h-8 w-8 text-blue-500" />
+            <GameIcon type="production" size="lg" />
             <div>
               <p className="text-xs text-muted-foreground font-semibold">Total Sales Units</p>
-              <p className="text-xl font-black text-blue-600 dark:text-blue-400">
+              <p className="text-xl font-black text-primary dark:text-primary">
                 {totalRoundSales} units
               </p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-amber-500/10 border-amber-500/20">
+        <Card className="bg-warning/10 border-warning/20">
           <CardContent className="p-4 flex items-center gap-3">
-            <Trophy className="h-8 w-8 text-amber-500" />
+            <Trophy className="h-8 w-8 text-warning" />
             <div>
               <p className="text-xs text-muted-foreground font-semibold">Active Leader</p>
-              <p className="text-xl font-black text-amber-600 dark:text-amber-400 truncate">
+              <p className="text-xl font-black text-warning dark:text-warning truncate">
                 {teamStandings[0]?.team.name || 'N/A'}
               </p>
             </div>
@@ -319,10 +250,10 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
 
         <Card className="bg-purple-500/10 border-purple-500/20">
           <CardContent className="p-4 flex items-center gap-3">
-            <Microscope className="h-8 w-8 text-purple-500" />
+            <GameIcon type="research" size="lg" />
             <div>
               <p className="text-xs text-muted-foreground font-semibold">Max Techs Unlocked</p>
-              <p className="text-xl font-black text-purple-600 dark:text-purple-400">
+              <p className="text-xl font-black text-muted-foreground dark:text-purple-400">
                 {Math.max(...teamStandings.map(t => t.techProgress.length), 0)} Techs
               </p>
             </div>
@@ -333,18 +264,18 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
       {/* Regional Summary Grid */}
       <div className="space-y-4">
         <h3 className="text-lg font-bold flex items-center gap-2 text-foreground">
-          <Globe className="h-5 w-5 text-cyan-500" />
+          <Globe className="h-5 w-5 text-primary" />
           Regional Map & Performance Breakdown — Round {activeRoundNumber}
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {regionalBreakdown.map(({ region, customers, teamsPresent, salesDetails, firstPlace, secondPlace, customerStatus }) => {
             return (
-              <Card key={region} className="border-border/80 shadow-md hover:border-cyan-500/50 transition-colors flex flex-col">
+              <Card key={region} className="border-border/80 shadow-md hover:border-primary/50 transition-colors flex flex-col">
                 <CardHeader className="pb-3 border-b border-border/40 bg-muted/30">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base font-bold flex items-center gap-2">
-                      <Truck className="h-4 w-4 text-cyan-500" />
+                      <GameIcon type="logistics" size="xs" />
                       {region}
                     </CardTitle>
                     <Badge variant="outline" className="text-xs font-semibold">
@@ -361,14 +292,14 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                     </span>
 
                     {firstPlace ? (
-                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-xs">
+                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-warning/15 border border-warning/30 text-xs">
                         <div className="flex items-center gap-2 truncate">
-                          <Trophy className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                          <Trophy className="h-4 w-4 text-warning flex-shrink-0" />
                           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: firstPlace.teamColor }} />
                           <span className="font-bold truncate">{firstPlace.teamName}</span>
                           <span className="text-muted-foreground text-[11px]">({firstPlace.unitsSold} sales)</span>
                         </div>
-                        <Badge className="bg-amber-500 text-white font-black text-[10px]">
+                        <Badge className="bg-warning text-white font-black text-[10px]">
                           +{firstPlace.points} pts
                         </Badge>
                       </div>
@@ -406,7 +337,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                               <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.teamColor }} />
                               <span className="font-medium truncate">{s.teamName}</span>
                             </div>
-                            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            <span className="font-semibold text-success dark:text-success">
                               {s.unitsSold} units (${s.revenue.toLocaleString()})
                             </span>
                           </div>
@@ -428,13 +359,13 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                           key={customer.id}
                           variant={buyerTeam ? "default" : "outline"}
                           className={`text-[10px] gap-1 px-1.5 py-0.5 ${
-                            buyerTeam ? 'border-emerald-500/50' : 'opacity-60'
+                            buyerTeam ? 'border-success/50' : 'opacity-60'
                           }`}
                           style={buyerTeam ? { backgroundColor: buyerTeam.color + '25', borderColor: buyerTeam.color, color: 'inherit' } : undefined}
                           title={buyerTeam ? `Sold to ${buyerTeam.name}` : `Unsold customer`}
                         >
                           {customer.type === 'price' ? `$${customer.price}` : customer.technology}
-                          {buyerTeam && <CheckCircle className="h-3 w-3 text-emerald-500" />}
+                          {buyerTeam && <CheckCircle className="h-3 w-3 text-success" />}
                         </Badge>
                       ))}
                     </div>
@@ -450,7 +381,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
       <Card className="border-border shadow-sm">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-amber-500" />
+            <Trophy className="h-5 w-5 text-warning" />
             Cumulative Standings — Round {activeRoundNumber}
           </CardTitle>
           <CardDescription>
@@ -460,14 +391,68 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
         <CardContent>
           <div className="mb-4 bg-muted/60 p-3 rounded-lg border text-xs text-muted-foreground flex flex-wrap items-center justify-between gap-2">
             <span className="font-semibold text-foreground flex items-center gap-1.5">
-              <Sparkles className="h-4 w-4 text-amber-500" />
+              <Sparkles className="h-4 w-4 text-warning" />
               Total Score Formula:
             </span>
             <code className="bg-background px-2 py-1 rounded border text-foreground font-mono">
               Total Score = Starting Value + Round Score (Revenue + Control) + Prior Revenue + Prior Control + Patent Bonus
             </code>
           </div>
-          <div className="overflow-x-auto">
+          {/* Mobile Cards View (<640px) */}
+          <div className="space-y-3 block sm:hidden">
+            {teamStandings.map((item, idx) => (
+              <div
+                key={item.team.id}
+                className={`p-3.5 rounded-xl border ${
+                  idx === 0 ? 'bg-warning/10 border-warning/40 shadow-sm' : 'bg-card border-border'
+                }`}
+              >
+                <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className={idx === 0 ? "bg-warning text-warning-foreground font-black text-xs px-2 py-0.5" : "bg-muted text-muted-foreground font-bold text-xs px-2 py-0.5"}>
+                      #{idx + 1}
+                    </Badge>
+                    <span className="w-3 h-3 rounded-full shrink-0 border" style={{ backgroundColor: item.team.color }} />
+                    <span className="font-bold text-sm">{item.team.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">Total Score</span>
+                    <span className="text-base font-black text-primary">{item.totalScore.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5 pt-2 text-xs">
+                  <div className="bg-muted/40 p-1.5 rounded-lg">
+                    <span className="text-[10px] text-muted-foreground block">Round Rev</span>
+                    <span className="font-bold text-success">${item.roundRevenue.toLocaleString()}</span>
+                  </div>
+                  <div className="bg-muted/40 p-1.5 rounded-lg">
+                    <span className="text-[10px] text-muted-foreground block">Round Ctrl</span>
+                    <span className="font-bold text-warning">+{item.roundControl} pts</span>
+                  </div>
+                  <div className="bg-muted/40 p-1.5 rounded-lg">
+                    <span className="text-[10px] text-muted-foreground block">Round Score</span>
+                    <span className="font-bold text-primary">{item.roundScore.toLocaleString()} pts</span>
+                  </div>
+                  <div className="bg-muted/40 p-1.5 rounded-lg">
+                    <span className="text-[10px] text-muted-foreground block">Start Value</span>
+                    <span className="font-medium text-muted-foreground">{item.startValue} pts</span>
+                  </div>
+                  <div className="bg-muted/40 p-1.5 rounded-lg">
+                    <span className="text-[10px] text-muted-foreground block">Prior Rev</span>
+                    <span className="font-medium">${item.cumulativeRevenue.toLocaleString()}</span>
+                  </div>
+                  <div className="bg-muted/40 p-1.5 rounded-lg">
+                    <span className="text-[10px] text-muted-foreground block">Prior Ctrl/Pat.</span>
+                    <span className="font-medium">+{item.cumulativeControl + item.patentBonus} pts</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View (>=640px) */}
+          <div className="hidden sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -477,17 +462,17 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                   <TableHead className="text-right">Round Price</TableHead>
                   <TableHead className="text-right">Round Revenue</TableHead>
                   <TableHead className="text-right">Round Control</TableHead>
-                  <TableHead className="text-right font-bold text-cyan-600 dark:text-cyan-400">Round Score</TableHead>
+                  <TableHead className="text-right font-bold text-primary dark:text-cyan-400">Round Score</TableHead>
                   <TableHead className="text-right">Starting Value</TableHead>
                   <TableHead className="text-right" title="Revenue from rounds prior to current round">Prior Revenue</TableHead>
                   <TableHead className="text-right" title="Control points from rounds prior to current round">Prior Control</TableHead>
-                  <TableHead className="text-right font-semibold text-purple-600 dark:text-purple-400">Patent Bonus</TableHead>
+                  <TableHead className="text-right font-semibold text-muted-foreground dark:text-purple-400">Patent Bonus</TableHead>
                   <TableHead className="text-right font-black">Total Score</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {teamStandings.map((item, idx) => (
-                  <TableRow key={item.team.id} className={idx === 0 ? 'bg-amber-500/10 font-semibold' : ''}>
+                  <TableRow key={item.team.id} className={idx === 0 ? 'bg-warning/10 font-semibold' : ''}>
                     <TableCell className="font-bold">#{idx + 1}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -497,13 +482,13 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                     </TableCell>
                     <TableCell className="text-right">{item.roundSales} units</TableCell>
                     <TableCell className="text-right">${item.roundPrice}</TableCell>
-                    <TableCell className="text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                    <TableCell className="text-right font-semibold text-success dark:text-success">
                       ${item.roundRevenue.toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-right font-semibold text-amber-600 dark:text-amber-400">
+                    <TableCell className="text-right font-semibold text-warning dark:text-warning">
                       +{item.roundControl} pts
                     </TableCell>
-                    <TableCell className="text-right font-bold text-cyan-600 dark:text-cyan-400">
+                    <TableCell className="text-right font-bold text-primary dark:text-cyan-400">
                       {item.roundScore.toLocaleString()} pts
                     </TableCell>
                     <TableCell className="text-right font-medium text-slate-500 dark:text-slate-400">
@@ -511,7 +496,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                     </TableCell>
                     <TableCell className="text-right">${item.cumulativeRevenue.toLocaleString()}</TableCell>
                     <TableCell className="text-right">+{item.cumulativeControl} pts</TableCell>
-                    <TableCell className="text-right font-semibold text-purple-600 dark:text-purple-400">
+                    <TableCell className="text-right font-semibold text-muted-foreground dark:text-purple-400">
                       +{item.patentBonus} pts
                     </TableCell>
                     <TableCell className="text-right font-black text-lg text-primary">

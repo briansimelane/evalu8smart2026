@@ -22,28 +22,28 @@ export const CeoClaimBar: React.FC = () => {
     const activeTeamObj = teamsList.find(t => t.id === currentTeamId);
 
     return (
-      <div className="w-full bg-slate-900 border border-purple-800/40 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 mb-6 shadow-xl text-white relative overflow-hidden">
+      <div className="w-full bg-card border border-border rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 mb-6 shadow-md text-foreground relative overflow-hidden">
         <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-500" />
         
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
-            <ShieldCheck className="h-5 w-5 text-purple-400" />
+          <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+            <ShieldCheck className="h-5 w-5 text-purple-600 dark:text-purple-400" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-400">Facilitator Control Mode</span>
-              <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-mono">Full Edit & View Access</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">Facilitator Control Mode</span>
+              <span className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-semibold">Full Edit & View Access</span>
             </div>
-            <p className="text-sm font-semibold text-slate-200 mt-0.5 flex items-center gap-2">
+            <p className="text-sm font-semibold text-foreground mt-0.5 flex items-center gap-2">
               {activeTeamObj ? (
                 <>
-                  <span>Viewing & Editing:</span>
+                  <span className="text-muted-foreground">Viewing & Editing:</span>
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold text-white shadow-sm" style={{ backgroundColor: activeTeamObj.color }}>
                     {activeTeamObj.name}
                   </span>
                 </>
               ) : (
-                <span className="text-slate-400">Viewing: <strong className="text-white">All Teams Overview</strong> (Select a team to focus inputs)</span>
+                <span className="text-muted-foreground">Viewing: <strong className="text-foreground">All Teams Overview</strong> (Select a team to focus inputs)</span>
               )}
             </p>
           </div>
@@ -51,15 +51,15 @@ export const CeoClaimBar: React.FC = () => {
 
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-medium">Team Focus:</span>
+            <span className="text-xs text-muted-foreground font-semibold">Team Focus:</span>
             <Select
               value={currentTeamId || 'all'}
               onValueChange={(val) => selectTeam(val === 'all' ? null : val)}
             >
-              <SelectTrigger className="w-[180px] h-8 bg-slate-800 border-slate-700 text-white text-xs font-semibold">
+              <SelectTrigger className="w-[180px] h-8 bg-background border-border text-foreground text-xs font-semibold">
                 <SelectValue placeholder="Select Team" />
               </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+              <SelectContent className="bg-popover border-border text-popover-foreground">
                 <SelectItem value="all" className="text-xs font-semibold">-- View All Teams --</SelectItem>
                 {teamsList.map((t) => (
                   <SelectItem key={t.id} value={t.id} className="text-xs font-medium">
@@ -72,16 +72,6 @@ export const CeoClaimBar: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(currentRole === 'ADMIN' ? '/admin' : '/facilitator/classes')}
-            className="h-8 border-purple-500/40 text-purple-300 hover:bg-purple-950/60 text-xs font-semibold gap-1.5"
-          >
-            <LayoutDashboard className="h-3.5 w-3.5" />
-            All Games
-          </Button>
         </div>
       </div>
     );
@@ -93,19 +83,19 @@ export const CeoClaimBar: React.FC = () => {
 
   if (!team) {
     return (
-      <div className="w-full bg-slate-900 border border-red-800/60 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 mb-6 shadow-xl text-white">
+      <div className="w-full bg-card border border-destructive/40 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 mb-6 shadow-md text-foreground">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-            <ShieldAlert className="h-5 w-5 text-red-400" />
+          <div className="w-10 h-10 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+            <ShieldAlert className="h-5 w-5 text-destructive" />
           </div>
           <div>
-            <h4 className="font-semibold text-red-300">Team Lookup Error</h4>
-            <p className="text-xs text-slate-400">
+            <h4 className="font-semibold text-destructive">Team Lookup Error</h4>
+            <p className="text-xs text-muted-foreground">
               Your team ({currentTeamId}) could not be located in this class session. Please log out and re-enter your team access code, or contact your facilitator.
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={logout} className="border-red-800/40 text-red-300 hover:bg-red-950/60">
+        <Button variant="outline" size="sm" onClick={logout} className="border-border hover:bg-muted text-foreground">
           Logout
         </Button>
       </div>

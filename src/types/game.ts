@@ -159,8 +159,11 @@ export const getTeamPatentPoints = (
   return points;
 };
 
+import { getTeamColorName } from '@/data/combinations';
+
 export const COLOR_SCORES: Record<string, number> = {
   green: 3,
+  purple: 3,
   blue: 4,
   black: 5,
   yellow: 6,
@@ -168,17 +171,11 @@ export const COLOR_SCORES: Record<string, number> = {
 };
 
 export const getInitialScore = (team: { name: string; color: string }): number => {
-  const teamName = (team.name || '').toLowerCase();
-  for (const key of Object.keys(COLOR_SCORES)) {
-    if (teamName.includes(key)) return COLOR_SCORES[key];
+  if (!team) return 0;
+  const colorName = getTeamColorName(team.color, team.name).toLowerCase();
+  if (COLOR_SCORES[colorName] !== undefined) {
+    return COLOR_SCORES[colorName];
   }
-  const colorHex = (team.color || '').toLowerCase();
-  if (colorHex.includes('10b981') || colorHex.includes('green')) return 3;
-  if (colorHex.includes('3b82f6') || colorHex.includes('blue')) return 4;
-  if (colorHex.includes('1e293b') || colorHex.includes('black')) return 5;
-  if (colorHex.includes('f59e0b') || colorHex.includes('yellow')) return 6;
-  if (colorHex.includes('ef4444') || colorHex.includes('red')) return 7;
-
   return 0;
 };
 

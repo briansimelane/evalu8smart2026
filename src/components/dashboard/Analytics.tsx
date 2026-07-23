@@ -1,37 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useGame } from '@/contexts/GameContext';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { TEAM_COLORS } from '@/data/combinations';
-import { getControlPointsForTeamInRound, getTeamPatentPoints } from '@/types/game';
+import { getControlPointsForTeamInRound, getTeamPatentPoints, getInitialScore } from '@/types/game';
 
 // Distinct colors for each Round / Period
 const ROUND_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 const REVENUE_COLORS = ['#10b981', '#14b8a6', '#059669', '#34d399', '#6ee7b7'];
 const CONTROL_COLORS = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef'];
-
-const COLOR_SCORES: Record<string, number> = {
-  green: 3,
-  blue: 4,
-  black: 5,
-  yellow: 6,
-  red: 7
-};
-
-const colorNameFromHex = (hex: string): string | null => {
-  const found = TEAM_COLORS.find(c => c.value.toLowerCase() === (hex || '').toLowerCase());
-  return found ? found.name.toLowerCase() : null;
-};
-
-const getInitialScore = (team: { name: string; color: string }): number => {
-  const byColor = colorNameFromHex(team.color || '');
-  if (byColor && COLOR_SCORES[byColor] !== undefined) return COLOR_SCORES[byColor];
-
-  const teamName = (team.name || '').toLowerCase();
-  for (const key of Object.keys(COLOR_SCORES)) {
-    if (teamName.includes(key)) return COLOR_SCORES[key];
-  }
-  return 0;
-};
 
 export const Analytics = () => {
   const { gameState } = useGame();
@@ -130,7 +105,7 @@ export const Analytics = () => {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle>Revenue Trends</CardTitle>
@@ -159,7 +134,7 @@ export const Analytics = () => {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
             <CardTitle>Production Volume</CardTitle>
@@ -214,7 +189,7 @@ export const Analytics = () => {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
             <CardTitle>Research Investment</CardTitle>

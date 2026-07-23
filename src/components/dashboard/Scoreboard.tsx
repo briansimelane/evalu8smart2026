@@ -2,7 +2,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useGame } from '@/contexts/GameContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trophy, Package, Wrench, Microscope, Truck, ShoppingCart, PackageX } from 'lucide-react';
+import { Trophy, ShoppingCart, PackageX } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 import { TEAM_COLORS } from '@/data/combinations';
 import { calculateTeamTotalScore, getControlPointsForTeamInRound, getTeamPatentPoints } from '@/types/game';
 import { toast } from 'sonner';
@@ -20,32 +21,6 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
   if (!gameState) return null;
 
   const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
-
-  // Initial team scores (Round 0) - based on selected team color (with name fallback)
-  const COLOR_SCORES: Record<string, number> = {
-    green: 3,
-    blue: 4,
-    black: 5,
-    yellow: 6,
-    red: 7
-  };
-
-  const colorNameFromHex = (hex: string): string | null => {
-    const found = TEAM_COLORS.find(c => c.value.toLowerCase() === (hex || '').toLowerCase());
-    return found ? found.name.toLowerCase() : null;
-  };
-
-  const getInitialScore = (team: typeof gameState.teams[0]): number => {
-    const byColor = colorNameFromHex(team.color || '');
-    if (byColor && COLOR_SCORES[byColor] !== undefined) return COLOR_SCORES[byColor];
-
-    // Fallback: infer from team name if it contains the color
-    const teamName = (team.name || '').toLowerCase();
-    for (const key of Object.keys(COLOR_SCORES)) {
-      if (teamName.includes(key)) return COLOR_SCORES[key];
-    }
-    return 0;
-  };
 
   const getPreviousRoundValue = (teamId: string): number => {
     const team = gameState.teams.find(t => t.id === teamId);
@@ -69,8 +44,8 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
   };
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-3xl font-bold">Team Scoreboard</h2>
+    <div className="space-y-4">
+      <h2 className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight">Team Scoreboard</h2>
       
       <Card>
         <CardContent className="pt-6">
@@ -129,23 +104,23 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                       {/* Input Details with Icons */}
                       <div className="flex items-center gap-3">
                          <div className="flex items-center gap-1.5">
-                           <span className="font-bold text-red-500 text-lg">$</span>
-                           <span className="text-base font-medium">{teamRoundData.price}</span>
+                           <GameIcon type="price" size="sm" />
+                           <span className="text-base font-medium">${teamRoundData.price}</span>
                          </div>
                         <div className="flex items-center gap-1.5">
-                          <Package className="h-5 w-5 text-black dark:text-white" />
+                          <GameIcon type="production" size="sm" />
                           <span className="text-base font-medium">{teamRoundData.productsProduced}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <Wrench className="h-5 w-5 text-yellow-500" />
+                          <GameIcon type="improvement" size="sm" />
                           <span className="text-base font-medium">{teamRoundData.improvementCards}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <Microscope className="h-5 w-5 text-purple-500" />
+                          <GameIcon type="research" size="sm" />
                           <span className="text-base font-medium">{teamRoundData.researchIcons}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <Truck className="h-5 w-5 text-blue-500" />
+                          <GameIcon type="logistics" size="sm" />
                           <span className="text-base font-medium">{teamRoundData.logisticsIcons}</span>
                         </div>
                       </div>
@@ -163,18 +138,18 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                           <PackageX className="h-3.5 w-3.5 mr-1" />
                           {lostProducts} unsold
                         </Badge>
-                        <Badge variant="secondary" className="text-sm px-2.5 py-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <Badge variant="secondary" className="text-sm px-2.5 py-1 text-success dark:text-success font-semibold">
                           Revenue: ${(teamRoundData.revenue || 0).toLocaleString()}
                         </Badge>
-                        <Badge variant="secondary" className="text-sm px-2.5 py-1 text-amber-600 dark:text-amber-400 font-semibold">
+                        <Badge variant="secondary" className="text-sm px-2.5 py-1 text-warning dark:text-warning font-semibold">
                           Control: +{roundControl} pts
                         </Badge>
                         {patentBonus > 0 && (
-                          <Badge variant="secondary" className="text-sm px-2.5 py-1 text-purple-600 dark:text-purple-400 font-semibold">
+                          <Badge variant="secondary" className="text-sm px-2.5 py-1 text-muted-foreground dark:text-purple-400 font-semibold">
                             Patent: +{patentBonus} pts
                           </Badge>
                         )}
-                        <Badge variant="default" className="text-sm px-2.5 py-1 font-bold bg-blue-600 text-white">
+                        <Badge variant="default" className="text-sm px-2.5 py-1 font-bold bg-primary text-white">
                           Total Score: {overallValue.toLocaleString()} pts
                         </Badge>
                       </div>

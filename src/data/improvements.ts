@@ -61,11 +61,11 @@ export const INITIAL_IMPROVEMENT_CARDS: Record<string, ImprovementCardData> = {
 };
 
 export const AVAILABLE_IMPROVEMENT_CARDS: ImprovementCardData[] = [
+  { id: 5, icon1: 'Price and Product', icon2: 'Product' },
   { id: 1, icon1: 'Research', icon2: 'Research' },
   { id: 2, icon1: 'Logistic', icon2: 'Price Plus' },
   { id: 3, icon1: 'Research', icon2: 'Price Plus' },
   { id: 4, icon1: 'Logistic', icon2: 'Research' },
-  { id: 5, icon1: 'Price and Product', icon2: 'Product' },
   { id: 6, icon1: 'Price and Product', icon2: 'Product' },
   { id: 7, icon1: 'Logistic', icon2: 'Price Plus' },
   { id: 8, icon1: 'Research', icon2: 'Price Plus' },

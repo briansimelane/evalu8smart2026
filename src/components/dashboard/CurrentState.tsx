@@ -8,6 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useState } from 'react';
 import { TEAM_COLORS } from '@/data/combinations';
 import { toast } from 'sonner';
+import { GameIcon } from './GameIcon';
+import { getInitialScore } from '@/types/game';
 
 interface CurrentStateProps {
   onEditTeamData?: (roundNumber: number, teamId: string) => void;
@@ -35,31 +37,6 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
 
   const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
 
-  // Initial team scores (Round 0) - based on selected team color (with name fallback)
-  const COLOR_SCORES: Record<string, number> = {
-    green: 3,
-    blue: 4,
-    black: 5,
-    yellow: 6,
-    red: 7
-  };
-
-  const colorNameFromHex = (hex: string): string | null => {
-    const found = TEAM_COLORS.find(c => c.value.toLowerCase() === (hex || '').toLowerCase());
-    return found ? found.name.toLowerCase() : null;
-  };
-
-  const getInitialScore = (team: typeof gameState.teams[0]): number => {
-    const byColor = colorNameFromHex(team.color || '');
-    if (byColor && COLOR_SCORES[byColor] !== undefined) return COLOR_SCORES[byColor];
-
-    // Fallback: infer from team name if it contains the color
-    const teamName = (team.name || '').toLowerCase();
-    for (const key of Object.keys(COLOR_SCORES)) {
-      if (teamName.includes(key)) return COLOR_SCORES[key];
-    }
-    return 0;
-  };
   const getPreviousRoundValue = (teamId: string): number => {
     const team = gameState.teams.find(t => t.id === teamId);
     if (!team) return 0;
@@ -82,8 +59,8 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
   };
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-3xl font-bold">State: Round {gameState.currentRound}</h2>
+    <div className="space-y-4">
+      <h2 className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight">State: Round {gameState.currentRound}</h2>
 
       <Card>
         <CardHeader>
@@ -102,103 +79,164 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
             </div>
             <CollapsibleContent>
               <CardContent className="pt-6">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-base">Team</TableHead>
-                      <TableHead className="text-center text-base">
-                        <div className="flex items-center justify-center gap-1">
-                          <span className="font-bold text-red-500 text-base">$</span>
-                          Price
-                        </div>
-                      </TableHead>
-                      <TableHead className="text-center text-base">
-                        <div className="flex items-center justify-center gap-1">
-                          <Package className="h-4 w-4" />
-                          Products
-                        </div>
-                      </TableHead>
-                      <TableHead className="text-center text-base">
-                        <div className="flex items-center justify-center gap-1">
-                          <Wrench className="h-4 w-4 text-yellow-500" />
-                          Improvement
-                        </div>
-                      </TableHead>
-                      <TableHead className="text-center text-base">
-                        <div className="flex items-center justify-center gap-1">
-                          <Microscope className="h-4 w-4 text-purple-500" />
-                          Research
-                        </div>
-                      </TableHead>
-                      <TableHead className="text-center text-base">
-                        <div className="flex items-center justify-center gap-1">
-                          <Truck className="h-4 w-4 text-cyan-400" />
-                          Logistics
-                        </div>
-                      </TableHead>
-                      <TableHead className="text-center text-base">Previous Round Value</TableHead>
-                      <TableHead className="text-center text-base">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(() => {
-                      let teamsToDisplay = [...gameState.teams];
-                      
-                      if (isSorted) {
-                        teamsToDisplay.sort((a, b) => {
-                          const aData = currentRoundData?.teamData[a.id];
-                          const bData = currentRoundData?.teamData[b.id];
-                          
-                          if (!aData || !bData) return 0;
-                          
-                          // Primary sort: by price (lowest first)
-                          if (aData.price !== bData.price) {
-                            return aData.price - bData.price;
-                          }
-                          
-                          // Secondary sort: by previous round value (lowest first)
-                          return getPreviousRoundValue(a.id) - getPreviousRoundValue(b.id);
-                        });
-                      }
-                      
-                      return teamsToDisplay.map((team, index) => {
-                        const teamRoundData = currentRoundData?.teamData[team.id];
-                        if (!teamRoundData) return null;
-
-                        return (
-                          <TableRow key={team.id} className={index % 2 === 0 ? "bg-muted/50" : ""}>
-                            <TableCell className="py-1 text-base">
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-3 h-3 rounded-full border"
-                                  style={{ backgroundColor: team.color }}
-                                />
-                                <span className="font-medium">{team.name}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.price}</TableCell>
-                            <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.productsProduced}</TableCell>
-                            <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.improvementCards}</TableCell>
-                            <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.researchIcons}</TableCell>
-                            <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.logisticsIcons}</TableCell>
-                            <TableCell className="text-center font-semibold py-1 text-base">${getPreviousRoundValue(team.id).toLocaleString()}</TableCell>
-                            <TableCell className="text-center py-1">
-                              {onEditTeamData && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => onEditTeamData(gameState.currentRound, team.id)}
-                                >
-                                  Amend
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
+                {/* Mobile Cards View (<640px) */}
+                <div className="space-y-3 block sm:hidden">
+                  {(() => {
+                    let teamsToDisplay = [...gameState.teams];
+                    if (isSorted) {
+                      teamsToDisplay.sort((a, b) => {
+                        const aData = currentRoundData?.teamData[a.id];
+                        const bData = currentRoundData?.teamData[b.id];
+                        if (!aData || !bData) return 0;
+                        if (aData.price !== bData.price) return aData.price - bData.price;
+                        return getPreviousRoundValue(a.id) - getPreviousRoundValue(b.id);
                       });
-                    })()}
-                  </TableBody>
-                </Table>
+                    }
+                    return teamsToDisplay.map(team => {
+                      const teamRoundData = currentRoundData?.teamData[team.id];
+                      if (!teamRoundData) return null;
+                      return (
+                        <div key={team.id} className="p-3.5 rounded-xl border border-border bg-card shadow-sm space-y-2.5">
+                          <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="w-3 h-3 rounded-full border border-border shrink-0" style={{ backgroundColor: team.color }} />
+                              <span className="font-bold text-sm">{team.name}</span>
+                            </div>
+                            <span className="text-xs text-muted-foreground font-semibold">
+                              Prev: ${getPreviousRoundValue(team.id).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-5 gap-1 text-center pt-1">
+                            <div className="flex flex-col items-center p-1 bg-muted/40 rounded-lg">
+                              <GameIcon type="price" size="xs" />
+                              <span className="text-[10px] text-muted-foreground mt-0.5">Price</span>
+                              <span className="text-xs font-bold">${teamRoundData.price}</span>
+                            </div>
+                            <div className="flex flex-col items-center p-1 bg-muted/40 rounded-lg">
+                              <GameIcon type="production" size="xs" />
+                              <span className="text-[10px] text-muted-foreground mt-0.5">Prod</span>
+                              <span className="text-xs font-bold">{teamRoundData.productsProduced}</span>
+                            </div>
+                            <div className="flex flex-col items-center p-1 bg-muted/40 rounded-lg">
+                              <GameIcon type="improvement" size="xs" />
+                              <span className="text-[10px] text-muted-foreground mt-0.5">Imp</span>
+                              <span className="text-xs font-bold">{teamRoundData.improvementCards}</span>
+                            </div>
+                            <div className="flex flex-col items-center p-1 bg-muted/40 rounded-lg">
+                              <GameIcon type="research" size="xs" />
+                              <span className="text-[10px] text-muted-foreground mt-0.5">Res</span>
+                              <span className="text-xs font-bold">{teamRoundData.researchIcons}</span>
+                            </div>
+                            <div className="flex flex-col items-center p-1 bg-muted/40 rounded-lg">
+                              <GameIcon type="logistics" size="xs" />
+                              <span className="text-[10px] text-muted-foreground mt-0.5">Log</span>
+                              <span className="text-xs font-bold">{teamRoundData.logisticsIcons}</span>
+                            </div>
+                          </div>
+                          {onEditTeamData && (
+                            <div className="pt-1 flex justify-end">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => onEditTeamData(gameState.currentRound, team.id)}
+                                className="h-8 text-xs font-semibold gap-1 text-primary"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                                Amend Plan
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+
+                {/* Desktop Table View (>=640px) */}
+                <div className="hidden sm:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-base">Team</TableHead>
+                        <TableHead className="text-center text-base">
+                          <div className="flex items-center justify-center gap-1">
+                            <GameIcon type="price" size="xs" showLabel label="Price" />
+                          </div>
+                        </TableHead>
+                        <TableHead className="text-center text-base">
+                          <div className="flex items-center justify-center gap-1">
+                            <GameIcon type="production" size="xs" showLabel label="Products" />
+                          </div>
+                        </TableHead>
+                        <TableHead className="text-center text-base">
+                          <div className="flex items-center justify-center gap-1">
+                            <GameIcon type="improvement" size="xs" showLabel label="Improvement" />
+                          </div>
+                        </TableHead>
+                        <TableHead className="text-center text-base">
+                          <div className="flex items-center justify-center gap-1">
+                            <GameIcon type="research" size="xs" showLabel label="Research" />
+                          </div>
+                        </TableHead>
+                        <TableHead className="text-center text-base">
+                          <div className="flex items-center justify-center gap-1">
+                            <GameIcon type="logistics" size="xs" showLabel label="Logistics" />
+                          </div>
+                        </TableHead>
+                        <TableHead className="text-center text-base">Previous Round Value</TableHead>
+                        <TableHead className="text-center text-base">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(() => {
+                        let teamsToDisplay = [...gameState.teams];
+                        if (isSorted) {
+                          teamsToDisplay.sort((a, b) => {
+                            const aData = currentRoundData?.teamData[a.id];
+                            const bData = currentRoundData?.teamData[b.id];
+                            if (!aData || !bData) return 0;
+                            if (aData.price !== bData.price) return aData.price - bData.price;
+                            return getPreviousRoundValue(a.id) - getPreviousRoundValue(b.id);
+                          });
+                        }
+                        return teamsToDisplay.map((team, index) => {
+                          const teamRoundData = currentRoundData?.teamData[team.id];
+                          if (!teamRoundData) return null;
+                          return (
+                            <TableRow key={team.id} className={index % 2 === 0 ? "bg-muted/50" : ""}>
+                              <TableCell className="py-1 text-base">
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full border"
+                                    style={{ backgroundColor: team.color }}
+                                  />
+                                  <span className="font-medium">{team.name}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.price}</TableCell>
+                              <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.productsProduced}</TableCell>
+                              <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.improvementCards}</TableCell>
+                              <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.researchIcons}</TableCell>
+                              <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.logisticsIcons}</TableCell>
+                              <TableCell className="text-center font-semibold py-1 text-base">${getPreviousRoundValue(team.id).toLocaleString()}</TableCell>
+                              <TableCell className="text-center py-1">
+                                {onEditTeamData && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => onEditTeamData(gameState.currentRound, team.id)}
+                                  >
+                                    Amend
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        });
+                      })()}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </CollapsibleContent>
           </Collapsible>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Save, RotateCcw, DollarSign, Package, Wrench, Microscope, Truck } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 import {
   Dialog,
   DialogContent,
@@ -131,11 +132,11 @@ export function GameSettingsDialog() {
                 <thead className="bg-muted text-muted-foreground text-xs">
                   <tr>
                     <th className="px-4 py-3 text-center w-24 uppercase font-bold tracking-wider">Pos</th>
-                    <th className="px-4 py-3 text-center" title="Price Effect"><DollarSign className="h-5 w-5 mx-auto text-red-500" /></th>
-                    <th className="px-4 py-3 text-center" title="Products"><Package className="h-5 w-5 mx-auto text-black dark:text-white" /></th>
-                    <th className="px-4 py-3 text-center" title="Improve Yield"><Wrench className="h-5 w-5 mx-auto text-yellow-500" /></th>
-                    <th className="px-4 py-3 text-center" title="Research Yield"><Microscope className="h-5 w-5 mx-auto text-purple-500" /></th>
-                    <th className="px-4 py-3 text-center" title="Logistics Yield"><Truck className="h-5 w-5 mx-auto text-blue-500" /></th>
+                    <th className="px-4 py-3 text-center" title="Price Effect"><GameIcon type="price" size="xs" className="mx-auto" /></th>
+                    <th className="px-4 py-3 text-center" title="Products"><GameIcon type="production" size="xs" className="mx-auto" /></th>
+                    <th className="px-4 py-3 text-center" title="Improve Yield"><GameIcon type="improvement" size="xs" className="mx-auto" /></th>
+                    <th className="px-4 py-3 text-center" title="Research Yield"><GameIcon type="research" size="xs" className="mx-auto" /></th>
+                    <th className="px-4 py-3 text-center" title="Logistics Yield"><GameIcon type="logistics" size="xs" className="mx-auto" /></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">

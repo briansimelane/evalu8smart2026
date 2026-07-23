@@ -6,6 +6,7 @@ import { useGame } from '@/contexts/GameContext';
 import { REGION_CUSTOMERS, Customer } from '@/data/customers';
 import { toast } from 'sonner';
 import { Save, AlertTriangle, CheckCircle2, Package, Microscope, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Trophy, Users, Target, TrendingUp } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
@@ -287,32 +288,35 @@ export const SalesPhase = () => {
   const regionSalesStatus = getRegionSalesStatus();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {true && (
         <Card>
           <CardHeader>
-            <CardTitle>Round {currentRound} Sales - Sell to Customers</CardTitle>
+            <CardTitle className="text-base sm:text-xl font-bold flex items-center gap-2 flex-wrap tracking-tight">
+              <GameIcon type="sales" size="md" />
+              <span>Round {currentRound} Sales - Sell to Customers</span>
+            </CardTitle>
             <CardDescription>
               {selectedTeam && teamName 
                 ? `Selling for ${teamName} - Select customers to sell to` 
                 : 'Select a team to begin sales'}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4">
             {/* Play Order, Products & Technologies Overview */}
             <div className="space-y-2">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Trophy className="h-4 w-4 text-amber-500" />
+                  <Trophy className="h-4 w-4 text-warning" />
                   <span>Play Order & Team Inventory (Products & Technologies)</span>
                 </h3>
                 {activeSalesTeam ? (
-                  <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-bold gap-1.5 animate-pulse">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  <Badge className="bg-success/15 text-success dark:text-emerald-300 border border-success/30 text-xs font-bold gap-1.5 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-success animate-ping" />
                     Current Turn: {activeSalesTeam.name}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-bold gap-1">
+                  <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
                     <CheckCircle2 className="h-3 w-3" />
                     Sales Complete
                   </Badge>
@@ -331,9 +335,9 @@ export const SalesPhase = () => {
                       key={team.id}
                       className={`p-2.5 rounded-lg border flex flex-col justify-between space-y-1.5 text-xs transition-all ${
                         isActiveTurn
-                          ? 'ring-2 ring-emerald-500 bg-emerald-500/10 border-emerald-500/80 shadow-md animate-pulse'
+                          ? 'ring-2 ring-success bg-success/10 border-success/80 shadow-md animate-pulse'
                           : team.id === selectedTeam
-                          ? 'ring-2 ring-blue-500 bg-blue-500/5 shadow-sm border-blue-500/50'
+                          ? 'ring-2 ring-primary bg-primary/5 shadow-sm border-primary/50'
                           : 'bg-card/60 border-border'
                       }`}
                     >
@@ -343,19 +347,19 @@ export const SalesPhase = () => {
                           <span className="truncate">{index + 1}. {team.name}</span>
                         </div>
                         {isActiveTurn && (
-                          <Badge className="bg-emerald-500 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                          <Badge className="bg-success text-white text-[9px] px-1 py-0 font-extrabold uppercase">
                             Turn
                           </Badge>
                         )}
                       </div>
 
                       <div className="space-y-1 text-[11px] pt-1 border-t border-border/50">
-                        <div className="flex justify-between items-center font-semibold text-emerald-600 dark:text-emerald-400">
-                          <span className="flex items-center gap-1"><Package className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Products:</span>
+                        <div className="flex justify-between items-center font-semibold">
+                          <span className="flex items-center gap-1"><GameIcon type="production" size="xs" /> Products:</span>
                           <span>{products}</span>
                         </div>
-                        <div className="flex justify-between items-center text-purple-600 dark:text-purple-400">
-                          <span className="flex items-center gap-1"><Microscope className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" /> Techs ({techs.length}):</span>
+                        <div className="flex justify-between items-center text-muted-foreground">
+                          <span className="flex items-center gap-1"><GameIcon type="research" size="xs" /> Techs ({techs.length}):</span>
                           <span className="truncate text-[10px] font-mono">{techs.length > 0 ? techs.join(', ') : 'None'}</span>
                         </div>
                       </div>
@@ -383,8 +387,8 @@ export const SalesPhase = () => {
             )}
 
             {currentRole === 'STUDENT' && allTeamsHavePlans && !isSalesSubmitted && !isMyTurn && activeSalesTeam && (
-              <Alert className="border-amber-500/50 bg-amber-500/10">
-                <AlertTriangle className="h-4 w-4 text-amber-600 animate-pulse" />
+              <Alert className="border-warning/50 bg-warning/10">
+                <AlertTriangle className="h-4 w-4 text-warning animate-pulse" />
                 <AlertDescription className="text-amber-800 dark:text-amber-200">
                   <strong>It is not your turn yet.</strong> The active turn belongs to <strong>{activeSalesTeam.name}</strong>. Please wait for them to finish their sales.
                 </AlertDescription>
@@ -392,8 +396,8 @@ export const SalesPhase = () => {
             )}
 
             {currentRole === 'STUDENT' && allTeamsHavePlans && isSalesSubmitted && (
-              <Alert className="border-emerald-500/50 bg-emerald-500/10">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <Alert className="border-success/50 bg-success/10">
+                <CheckCircle2 className="h-4 w-4 text-success" />
                 <AlertDescription className="text-emerald-800 dark:text-emerald-200">
                   <strong>Your sales have been submitted.</strong> You sold {totalProductsToSell} products for a total of ${calculatedRevenue.toLocaleString()} revenue. Waiting for other teams to complete their sales.
                 </AlertDescription>
@@ -433,11 +437,11 @@ export const SalesPhase = () => {
                       <CardHeader className="pb-3">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <CardTitle className="text-base flex items-center gap-2">
-                            <Package className="h-4 w-4 text-cyan-500" />
+                            <GameIcon type="production" size="xs" />
                             Team Summary ({teamName})
                           </CardTitle>
                           {eligibleCustomerCounts.totalEligible > 0 && (
-                            <Badge variant="outline" className="bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold self-start sm:self-auto">
+                            <Badge variant="outline" className="bg-success/10 border-success/30 text-success dark:text-emerald-300 font-bold self-start sm:self-auto">
                               Fulfillment Rate: {demandFulfillmentRate.toFixed(1)}%
                             </Badge>
                           )}
@@ -447,7 +451,7 @@ export const SalesPhase = () => {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                           <div>
                             <span className="text-muted-foreground flex items-center gap-1">
-                              <span className="font-bold text-red-500 text-sm">$</span>
+                              <span className="font-bold text-destructive text-sm">$</span>
                               Price:
                             </span>
                             <div className="font-semibold text-lg">${selectedTeamData.price}</div>
@@ -472,37 +476,37 @@ export const SalesPhase = () => {
                         <div className="pt-3 border-t border-border/50 grid grid-cols-2 md:grid-cols-4 gap-3 bg-card/60 p-3 rounded-lg border">
                           <div>
                             <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
-                              <Users className="h-3.5 w-3.5 text-red-500" />
+                              <Users className="h-3.5 w-3.5 text-destructive" />
                               Eligible Price Customers:
                             </span>
-                            <div className="font-bold text-base text-red-600 dark:text-red-400">
+                            <div className="font-bold text-base text-destructive dark:text-destructive">
                               {eligibleCustomerCounts.priceCount}
                             </div>
                           </div>
                           <div>
                             <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
-                              <Users className="h-3.5 w-3.5 text-purple-500" />
+                              <Users className="h-3.5 w-3.5 text-muted-foreground" />
                               Eligible Value Customers:
                             </span>
-                            <div className="font-bold text-base text-purple-600 dark:text-purple-400">
+                            <div className="font-bold text-base text-muted-foreground dark:text-purple-400">
                               {eligibleCustomerCounts.valueCount}
                             </div>
                           </div>
                           <div>
                             <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
-                              <Target className="h-3.5 w-3.5 text-blue-500" />
+                              <Target className="h-3.5 w-3.5 text-primary" />
                               Total Eligible Sales Units:
                             </span>
-                            <div className="font-bold text-base text-blue-600 dark:text-blue-400">
+                            <div className="font-bold text-base text-primary dark:text-primary">
                               {eligibleCustomerCounts.totalEligible} units
                             </div>
                           </div>
                           <div>
                             <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
-                              <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+                              <TrendingUp className="h-3.5 w-3.5 text-success" />
                               Demand Fulfillment Rate:
                             </span>
-                            <div className="font-bold text-base text-emerald-600 dark:text-emerald-400">
+                            <div className="font-bold text-base text-success dark:text-success">
                               {demandFulfillmentRate.toFixed(1)}%
                             </div>
                           </div>
@@ -577,7 +581,7 @@ export const SalesPhase = () => {
                                           : `Value Customer - Requires ${customer.technology}`}
                                       >
                                         <div className={`w-full h-full flex items-center justify-center rounded-lg ${
-                                          customer.type === 'price' ? 'bg-red-600' : 'bg-purple-600'
+                                          customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'
                                         }`}>
                                           {customer.type === 'price' ? (
                                             <span className="text-white font-bold text-sm">{customer.price}</span>
@@ -752,7 +756,7 @@ export const SalesPhase = () => {
                                 : `Value Customer - Requires ${customer.technology}${soldTo ? ` - Sold to ${soldToTeam?.name}` : ''}`}
                             >
                               <div className={`w-9 h-9 flex items-center justify-center rounded-md ${
-                                customer.type === 'price' ? 'bg-red-600' : 'bg-purple-600'
+                                customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'
                               } ${!soldTo ? 'opacity-50' : ''}`}>
                                 {customer.type === 'price' ? (
                                   <span className="text-white font-bold text-xs">{customer.price}</span>

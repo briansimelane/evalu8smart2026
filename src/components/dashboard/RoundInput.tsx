@@ -12,6 +12,7 @@ import { ICON_EFFECTS } from '@/data/improvements';
 import { TeamRoundData } from '@/types/game';
 import { toast } from 'sonner';
 import { Save, AlertTriangle, Package } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 
 export interface RoundInputRef {
   loadTeamData: (roundNumber: number, teamId: string) => void;
@@ -202,7 +203,7 @@ export const RoundInput = forwardRef<RoundInputRef>((props, ref) => {
           </CardDescription>
         )}
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4">
         {teamsWithPlans.length > 0 && (
           <Card className="bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5 border-primary/20">
             <CardHeader>
@@ -222,7 +223,7 @@ export const RoundInput = forwardRef<RoundInputRef>((props, ref) => {
                     <div className="text-xs text-muted-foreground mb-2 text-center font-medium">
                       {team!.name}
                     </div>
-                    <Package className="h-12 w-12 mb-2" style={{ color: '#000000' }} />
+                    <GameIcon type="production" size="xl" className="mb-2" />
                     <div className="text-3xl font-bold text-foreground">
                       {teamData.productsProduced}
                     </div>

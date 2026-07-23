@@ -53,9 +53,9 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
   if (isCompact) {
     const prevRound = activeRoundNumber - 1;
     return (
-      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between text-xs max-w-5xl mx-auto shadow-sm">
+      <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg flex items-center justify-between text-xs max-w-5xl mx-auto shadow-sm">
         <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
+          <Clock className="h-4 w-4 text-warning dark:text-warning flex-shrink-0 animate-pulse" />
           <span>
             {prevRound > 0 ? (
               <>Showing <strong>Round {prevRound}</strong> results while Round {activeRoundNumber} decisions are being submitted.</>
@@ -64,7 +64,7 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
             )}
           </span>
         </div>
-        <Badge variant="outline" className="bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/40 text-[10px] font-bold">
+        <Badge variant="outline" className="bg-warning/20 text-warning dark:text-warning border-warning/40 text-[10px] font-bold">
           Submissions Pending ({submittedCount}/{totalTeams})
         </Badge>
       </div>
@@ -79,33 +79,33 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
       {/* Header Banner */}
       <Card className="bg-card border-border shadow-md overflow-hidden relative">
         <div className={`absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r ${
-          allSubmitted ? 'from-emerald-500 to-teal-500' : 'from-amber-500 via-blue-500 to-indigo-500'
+          allSubmitted ? 'from-success to-teal-500' : 'from-warning via-primary to-indigo-500'
         }`} />
         
         <CardHeader className="pb-3">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20 font-bold text-xs">
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-bold text-xs">
                   Round {currentRound}
                 </Badge>
                 <Badge variant="secondary" className="text-xs uppercase font-semibold">
                   {activePhase === 'innovation' ? 'Research Phase' : activePhase === 'expansion' ? 'Logistics Phase' : `${activePhase} Phase`}
                 </Badge>
                 {allSubmitted ? (
-                  <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold gap-1">
+                  <Badge className="bg-success/20 text-success dark:text-success border border-success/30 text-xs font-bold gap-1">
                     <CheckCircle2 className="h-3 w-3" />
                     All Submissions In
                   </Badge>
                 ) : (
-                  <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-xs font-bold gap-1 animate-pulse">
+                  <Badge className="bg-warning/20 text-warning dark:text-warning border border-warning/30 text-xs font-bold gap-1 animate-pulse">
                     <Clock className="h-3 w-3" />
                     Submissions Pending ({submittedCount}/{totalTeams})
                   </Badge>
                 )}
               </div>
               <CardTitle className="text-xl font-extrabold text-foreground flex items-center gap-2">
-                <Users className="h-5 w-5 text-blue-600" />
+                <Users className="h-5 w-5 text-primary" />
                 Team Decision & Submission Status
               </CardTitle>
               <CardDescription className="text-sm mt-1">
@@ -118,11 +118,11 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
               <div className="flex-1 space-y-1">
                 <div className="flex justify-between text-xs font-bold">
                   <span className="text-muted-foreground">Progress</span>
-                  <span className="text-blue-600">{submittedCount}/{totalTeams} Teams</span>
+                  <span className="text-primary">{submittedCount}/{totalTeams} Teams</span>
                 </div>
                 <div className="w-full bg-muted rounded-full h-2 overflow-hidden border border-border">
                   <div 
-                    className="bg-gradient-to-r from-blue-500 to-emerald-500 h-full transition-all duration-500"
+                    className="bg-gradient-to-r from-primary to-success h-full transition-all duration-500"
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
@@ -136,14 +136,14 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
           <div className="px-6 pb-2">
             <div className={`p-3 rounded-lg border text-sm flex items-center justify-between gap-3 ${
               myTeam.hasSubmitted 
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300' 
-                : 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
+                ? 'bg-success/10 border-success/30 text-emerald-800 dark:text-emerald-300' 
+                : 'bg-warning/10 border-warning/30 text-amber-800 dark:text-amber-300'
             }`}>
               <div className="flex items-center gap-2.5">
                 {myTeam.hasSubmitted ? (
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                  <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
                 ) : (
-                  <Clock className="h-5 w-5 text-amber-600 flex-shrink-0 animate-spin" />
+                  <Clock className="h-5 w-5 text-warning flex-shrink-0 animate-spin" />
                 )}
                 <div>
                   <span className="font-bold">{myTeam.name}: </span>
@@ -168,7 +168,7 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
                   key={team.id}
                   className={`p-3.5 rounded-xl border transition-all ${
                     team.hasSubmitted
-                      ? 'bg-card border-emerald-500/40 shadow-sm'
+                      ? 'bg-card border-success/40 shadow-sm'
                       : 'bg-card border-border hover:border-slate-400'
                   }`}
                 >
@@ -184,12 +184,12 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
                     </div>
 
                     {team.hasSubmitted ? (
-                      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-[11px] font-bold gap-1">
+                      <Badge className="bg-success/15 text-success dark:text-success border border-success/30 text-[11px] font-bold gap-1">
                         <CheckCircle2 className="h-3 w-3" />
                         Submitted
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 text-[11px] font-bold gap-1">
+                      <Badge variant="outline" className="bg-warning/10 text-warning dark:text-warning border-warning/30 text-[11px] font-bold gap-1">
                         <Clock className="h-3 w-3" />
                         Pending
                       </Badge>
@@ -200,7 +200,7 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
                     <div className="flex items-center gap-1.5 text-muted-foreground">
                       {team.ceoName ? (
                         <>
-                          <Crown className="h-3.5 w-3.5 text-emerald-600" />
+                          <Crown className="h-3.5 w-3.5 text-success" />
                           <span>CEO: <strong className="text-foreground font-semibold">{team.ceoName}</strong></span>
                         </>
                       ) : (
@@ -216,7 +216,7 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
                         size="sm"
                         variant="ghost"
                         onClick={() => selectTeam(team.id)}
-                        className="h-6 px-2 text-[11px] text-blue-600 hover:text-blue-700 hover:bg-blue-50 font-semibold gap-1"
+                        className="h-6 px-2 text-[11px] text-primary hover:text-primary hover:bg-blue-50 font-semibold gap-1"
                       >
                         Select
                         <ArrowRight className="h-3 w-3" />

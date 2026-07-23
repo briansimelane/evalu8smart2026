@@ -34,7 +34,7 @@ export const PatentTracker = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle>Register Patent</CardTitle>

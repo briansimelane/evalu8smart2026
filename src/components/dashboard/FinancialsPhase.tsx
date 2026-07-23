@@ -22,19 +22,19 @@ function InfoPill({ formula, description }: InfoData) {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center justify-center p-0.5 ml-1 text-muted-foreground/60 hover:text-blue-500 transition-colors focus:outline-none"
+          className="inline-flex items-center justify-center p-0.5 ml-1 text-muted-foreground/60 hover:text-primary transition-colors focus:outline-none"
           title="View calculation breakdown"
         >
           <Info className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="right" align="start" className="w-80 p-3 text-xs shadow-xl border-blue-500/30 bg-card z-50">
+      <PopoverContent side="right" align="start" className="w-80 p-3 text-xs shadow-xl border-primary/30 bg-card z-50">
         <div className="space-y-2">
           <div className="font-bold text-foreground flex items-center gap-1.5 text-[11px]">
-            <Info className="h-3.5 w-3.5 text-blue-500" />
+            <Info className="h-3.5 w-3.5 text-primary" />
             <span>Calculation Breakdown</span>
           </div>
-          <div className="p-2 bg-blue-500/10 text-blue-700 dark:text-blue-300 rounded-md font-mono text-[11px] border border-blue-500/20">
+          <div className="p-2 bg-primary/10 text-primary dark:text-blue-300 rounded-md font-mono text-[11px] border border-primary/20">
             Formula: {formula}
           </div>
           <p className="text-muted-foreground text-[11px] leading-relaxed">
@@ -128,8 +128,8 @@ function TableRow({
         </td>
         {cells.map((cell, i) => {
           const colorClass =
-            cell.highlight === 'positive' ? (cell.value >= 0 ? 'text-green-400' : 'text-red-400')
-              : cell.highlight === 'negative' ? 'text-red-400/80' : '';
+            cell.highlight === 'positive' ? (cell.value >= 0 ? 'text-green-400' : 'text-destructive')
+              : cell.highlight === 'negative' ? 'text-destructive/80' : '';
           return (
             <td key={i} className={`py-1.5 px-3 text-right font-mono text-sm whitespace-nowrap ${bold ? 'font-bold' : ''} ${colorClass}`}>
               {fmt(cell.value)}
@@ -152,7 +152,7 @@ function RatioCard({ label, value, description, icon: Icon, positive }: {
           <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{label}</span>
           <Icon className="h-4 w-4 text-muted-foreground" />
         </div>
-        <p className={`text-2xl font-bold ${positive === undefined ? '' : positive ? 'text-green-400' : 'text-red-400'}`}>{value}</p>
+        <p className={`text-2xl font-bold ${positive === undefined ? '' : positive ? 'text-green-400' : 'text-destructive'}`}>{value}</p>
         <p className="text-[11px] text-muted-foreground mt-1">{description}</p>
       </CardContent>
     </Card>
@@ -234,7 +234,7 @@ export const FinancialsPhase = () => {
   const totalRevenue = teamData.reduce((s, d) => s + d.roundIS.revenue, 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* ── Header ── */}
       <Card>
         <CardHeader>
@@ -291,7 +291,55 @@ export const FinancialsPhase = () => {
               <CardDescription>All figures in $. Negative values shown as (amount).</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
+              {/* Mobile Card View (<640px) */}
+              <div className="space-y-3 block sm:hidden p-3">
+                {teamData.map(d => (
+                  <div key={d.team.id} className="p-3.5 rounded-xl border border-border bg-card shadow-sm space-y-2">
+                    <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full shrink-0 border" style={{ backgroundColor: d.team.color }} />
+                        <span className="font-bold text-sm">{d.team.name}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">EBIT</span>
+                        <span className={`text-sm font-black ${d.roundIS.operatingProfit >= 0 ? 'text-green-500' : 'text-destructive'}`}>
+                          {fmt(d.roundIS.operatingProfit)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">Revenue</span>
+                        <span className="font-bold">{fmt(d.roundIS.revenue)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">COGS</span>
+                        <span className="font-medium text-destructive">{fmt(-d.roundIS.cogs)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5 font-semibold border-t border-border/40 pt-1">
+                        <span>Gross Profit</span>
+                        <span className="text-green-500">{fmt(d.roundIS.grossProfit)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">Stock Loss</span>
+                        <span className="font-medium text-destructive">{fmt(-d.roundIS.stockLoss)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">R&D Expense</span>
+                        <span className="font-medium text-destructive">{fmt(-d.roundIS.researchExpense)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">Logistics Expense</span>
+                        <span className="font-medium text-destructive">{fmt(-d.roundIS.logisticsExpense)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table View (>=640px) */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border/50 bg-secondary/10">
@@ -326,19 +374,41 @@ export const FinancialsPhase = () => {
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               Income Ratios — {viewRound === 'all' ? 'Year to Date' : `Round ${viewRound}`}
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[...teamData]
-                .sort((a, b) => b.ytd.operatingProfit - a.ytd.operatingProfit)
-                .slice(0, 1)
-                .map(({ team: t, ytd }) => (
-                  // left intact for future extensions, using non-mutating sort via spread
-                  null
-                ))}
-            </div>
             {/* Ratio comparison table */}
             <Card>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                {/* Mobile Card View (<640px) */}
+                <div className="space-y-3 block sm:hidden p-3">
+                  {teamData.map(d => (
+                    <div key={d.team.id} className="p-3.5 rounded-xl border border-border bg-card shadow-sm space-y-2">
+                      <div className="flex items-center gap-2 border-b border-border/60 pb-2">
+                        <span className="w-3 h-3 rounded-full shrink-0 border" style={{ backgroundColor: d.team.color }} />
+                        <span className="font-bold text-sm">{d.team.name}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-muted/40 p-2 rounded-lg">
+                          <span className="text-[10px] text-muted-foreground block">Gross Margin</span>
+                          <span className="font-bold text-sm">{pct(d.roundIS.grossProfit, d.roundIS.revenue)}</span>
+                        </div>
+                        <div className="bg-muted/40 p-2 rounded-lg">
+                          <span className="text-[10px] text-muted-foreground block">EBIT %</span>
+                          <span className="font-bold text-sm">{pct(d.roundIS.operatingProfit, d.roundIS.revenue)}</span>
+                        </div>
+                        <div className="bg-muted/40 p-2 rounded-lg">
+                          <span className="text-[10px] text-muted-foreground block">R&D Intensity</span>
+                          <span className="font-bold text-sm">{pct(d.roundIS.researchExpense, d.roundIS.revenue)}</span>
+                        </div>
+                        <div className="bg-muted/40 p-2 rounded-lg">
+                          <span className="text-[10px] text-muted-foreground block">Market Share</span>
+                          <span className="font-bold text-sm">{pct(d.roundIS.revenue, totalRevenue)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table View (>=640px) */}
+                <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border/50 bg-secondary/10">
@@ -390,7 +460,58 @@ export const FinancialsPhase = () => {
               <CardDescription>YTD snapshot. All figures in dollars.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
+              {/* Mobile Card View (<640px) */}
+              <div className="space-y-3 block sm:hidden p-3">
+                {teamData.map(d => (
+                  <div key={d.team.id} className="p-3.5 rounded-xl border border-border bg-card shadow-sm space-y-2">
+                    <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full shrink-0 border" style={{ backgroundColor: d.team.color }} />
+                        <span className="font-bold text-sm">{d.team.name}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">Total Assets</span>
+                        <span className="text-sm font-black text-primary">{fmt(d.bs.totalAssets)}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase block pt-1">Assets</span>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">Cash & Equivalents</span>
+                        <span className="font-medium">{fmt(d.bs.cash)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">Technology Assets</span>
+                        <span className="font-medium">{fmt(d.bs.techAssets)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">Market Presence</span>
+                        <span className="font-medium">{fmt(d.bs.marketPresence)}</span>
+                      </div>
+
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase block pt-2 border-t border-border/40">Equity</span>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">Share Capital</span>
+                        <span className="font-medium">{fmt(d.bs.shareCapital)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-muted-foreground">Retained Earnings</span>
+                        <span className={`font-medium ${d.bs.retainedEarnings >= 0 ? 'text-green-500' : 'text-destructive'}`}>
+                          {fmt(d.bs.retainedEarnings)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-0.5 font-bold border-t border-border/40 pt-1">
+                        <span>Total Equity</span>
+                        <span className="text-primary">{fmt(d.bs.totalEquity)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table View (>=640px) */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border/50 bg-secondary/10">
@@ -431,7 +552,38 @@ export const FinancialsPhase = () => {
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Balance Sheet Ratios</h3>
             <Card>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                {/* Mobile Card View (<640px) */}
+                <div className="space-y-3 block sm:hidden p-3">
+                  {teamData.map(d => (
+                    <div key={d.team.id} className="p-3.5 rounded-xl border border-border bg-card shadow-sm space-y-2">
+                      <div className="flex items-center gap-2 border-b border-border/60 pb-2">
+                        <span className="w-3 h-3 rounded-full shrink-0 border" style={{ backgroundColor: d.team.color }} />
+                        <span className="font-bold text-sm">{d.team.name}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-muted/40 p-2 rounded-lg">
+                          <span className="text-[10px] text-muted-foreground block">ROA %</span>
+                          <span className="font-bold text-sm">{pct(d.ytd.operatingProfit, d.bs.totalAssets)}</span>
+                        </div>
+                        <div className="bg-muted/40 p-2 rounded-lg">
+                          <span className="text-[10px] text-muted-foreground block">ROE %</span>
+                          <span className="font-bold text-sm">{pct(d.ytd.operatingProfit, d.bs.totalEquity)}</span>
+                        </div>
+                        <div className="bg-muted/40 p-2 rounded-lg">
+                          <span className="text-[10px] text-muted-foreground block">Asset Turnover</span>
+                          <span className="font-bold text-sm">{ratio(d.ytd.revenue, d.bs.totalAssets)}</span>
+                        </div>
+                        <div className="bg-muted/40 p-2 rounded-lg">
+                          <span className="text-[10px] text-muted-foreground block">Intangibles %</span>
+                          <span className="font-bold text-sm">{pct(d.bs.techAssets + d.bs.marketPresence, d.bs.totalAssets)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table View (>=640px) */}
+                <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border/50 bg-secondary/10">

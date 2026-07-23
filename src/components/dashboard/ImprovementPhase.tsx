@@ -3,7 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/contexts/GameContext';
 import { Badge } from '@/components/ui/badge';
-import { FlaskConical, Truck, Package, TrendingUp, TrendingDown, Wrench, Shuffle, Microscope, CirclePlus, CircleMinus, AlertCircle, AlertTriangle, Trophy, CheckCircle2 } from 'lucide-react';
+import { FlaskConical, Truck, Package, TrendingUp, TrendingDown, Wrench, Shuffle, Microscope, CirclePlus, CircleMinus, AlertCircle, AlertTriangle, Trophy, CheckCircle2, Plus, Minus } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 import { AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
@@ -34,10 +35,10 @@ export const ImprovementPhase = () => {
 
   if (gameState.currentRound >= 5) {
     return (
-      <Card className="border-amber-500/40 bg-amber-500/10 max-w-4xl mx-auto my-8 shadow-md">
+      <Card className="border-warning/40 bg-warning/10 max-w-4xl mx-auto my-8 shadow-md">
         <CardContent className="pt-8 pb-8 text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center mx-auto">
-            <Wrench className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+          <div className="w-14 h-14 rounded-2xl bg-warning/20 border border-warning/30 flex items-center justify-center mx-auto">
+            <Wrench className="h-7 w-7 text-warning dark:text-warning" />
           </div>
           <h3 className="text-2xl font-bold text-amber-900 dark:text-amber-100">Improvement Phase Skipped (Final Round)</h3>
           <p className="text-sm text-amber-800/90 dark:text-amber-200/90 max-w-lg mx-auto leading-relaxed">
@@ -82,26 +83,38 @@ export const ImprovementPhase = () => {
   const getIconElement = (iconType: string) => {
     if (iconType === 'Price and Product') {
       return (
-        <>
-          <div className="relative inline-block">
-            <span className="font-bold text-red-500 text-3xl leading-none">$</span>
-            <CircleMinus className="h-4 w-4 text-red-500 absolute -bottom-1 -right-1" />
+        <div className="flex items-center gap-1">
+          <div className="relative inline-block" title="Price Decrease (-$1)">
+            <GameIcon type="price" size="lg" />
+            <div className="absolute -bottom-1 -right-1 w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full bg-black border border-red-500/80 flex items-center justify-center shadow-md">
+              <Minus className="h-3.5 w-3.5 text-red-500 stroke-[3]" />
+            </div>
           </div>
-          <Package className="h-8 w-8 text-black dark:text-white" />
-        </>
+          <GameIcon type="production" size="lg" />
+        </div>
       );
     }
     
     const iconMap: Record<string, JSX.Element> = {
-      'Research': <Microscope className="h-8 w-8 inline text-purple-500" />,
+      'Research': <GameIcon type="research" size="lg" />,
       'Price Plus': (
-        <div className="relative inline-block">
-          <span className="font-bold text-red-500 text-3xl leading-none">$</span>
-          <CirclePlus className="h-4 w-4 text-red-500 absolute -bottom-1 -right-1" />
+        <div className="relative inline-block" title="Price Increase (+$1)">
+          <GameIcon type="price" size="lg" />
+          <div className="absolute -bottom-1 -right-1 w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full bg-black border border-emerald-500/80 flex items-center justify-center shadow-md">
+            <Plus className="h-3.5 w-3.5 text-emerald-400 stroke-[3]" />
+          </div>
         </div>
       ),
-      'Product': <Package className="h-8 w-8 inline text-black dark:text-white" />,
-      'Logistic': <Truck className="h-8 w-8 inline text-blue-500" />,
+      'Price Minus': (
+        <div className="relative inline-block" title="Price Decrease (-$1)">
+          <GameIcon type="price" size="lg" />
+          <div className="absolute -bottom-1 -right-1 w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full bg-black border border-red-500/80 flex items-center justify-center shadow-md">
+            <Minus className="h-3.5 w-3.5 text-red-500 stroke-[3]" />
+          </div>
+        </div>
+      ),
+      'Product': <GameIcon type="production" size="lg" />,
+      'Logistic': <GameIcon type="logistics" size="lg" />,
     };
     return iconMap[iconType] || null;
   };
@@ -193,7 +206,7 @@ export const ImprovementPhase = () => {
   const isTeamAllocated = (teamId: string) => Object.values(allocations).includes(teamId);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Warning if not all teams have submitted plans */}
       {!allTeamsHavePlans && (
         <Alert variant="destructive">
@@ -207,7 +220,7 @@ export const ImprovementPhase = () => {
       {/* Waiting alert for students if plans are submitted but cards not allocated yet */}
       {allTeamsHavePlans && !(isAllocated || allocationsCompleted) && currentRole === 'STUDENT' && (
         <Alert>
-          <AlertTriangle className="h-4 w-4 text-blue-500" />
+          <AlertTriangle className="h-4 w-4 text-primary" />
           <AlertDescription>
             Waiting for the facilitator to allocate improvement cards for Round {gameState.currentRound}.
           </AlertDescription>
@@ -215,10 +228,10 @@ export const ImprovementPhase = () => {
       )}
 
       {gameState.currentRound === 4 && !(isAllocated || allocationsCompleted) && (
-        <Card className="border-amber-500/50 bg-amber-500/10">
+        <Card className="border-warning/50 bg-warning/10">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+              <AlertCircle className="h-5 w-5 text-warning flex-shrink-0" />
               <div>
                 <p className="font-semibold text-amber-900 dark:text-amber-100">Final Improvement Phase</p>
                 <p className="text-sm text-amber-800 dark:text-amber-200">This is Round 4 - the last improvement phase. There will be no improvement phase in Round 5.</p>
@@ -230,8 +243,8 @@ export const ImprovementPhase = () => {
       
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold flex items-center gap-2">
-            <Wrench className="h-8 w-8 text-yellow-500" />
+          <h2 className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2 flex-wrap">
+            <GameIcon type="improvement" size="lg" />
             Improvement Phase - Round {gameState.currentRound}
           </h2>
           <p className="text-muted-foreground mt-1">
@@ -251,7 +264,7 @@ export const ImprovementPhase = () => {
         const playOrder = calculatePlayOrder(gameState.currentRound);
         const activeTurnTeam = playOrder.find(t => {
           const count = currentRoundData?.teamData[t.id]?.improvementCards || 0;
-          const isDone = isTeamAllocated(t.id) || gameState.improvementCards.some(c => c.usedBy === t.id && c.allocatedInRound === gameState.currentRound);
+          const isDone = isTeamAllocated(t.id) || gameState.improvementCards.some(c => (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === gameState.currentRound);
           return count > 0 && !isDone;
         });
 
@@ -259,18 +272,18 @@ export const ImprovementPhase = () => {
           <div className="space-y-2 p-4 bg-card border border-border rounded-xl shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Trophy className="h-4 w-4 text-amber-500" />
+                <Trophy className="h-4 w-4 text-warning" />
                 <span>Turn Order & Improvement Points — Round {gameState.currentRound}</span>
               </h3>
               <div className="flex items-center gap-2">
                 {activeTurnTeam ? (
-                  <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold gap-1.5 animate-pulse">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  <Badge className="bg-success/15 text-success dark:text-success border border-success/30 text-xs font-bold gap-1.5 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-success animate-ping" />
                     Current Turn: {activeTurnTeam.name}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-bold gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
+                  <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
+                    <CheckCircle2 className="h-3 w-3 text-success" />
                     Improvements Complete
                   </Badge>
                 )}
@@ -284,7 +297,7 @@ export const ImprovementPhase = () => {
               {playOrder.map((team, index) => {
                 const teamData = currentRoundData?.teamData[team.id];
                 const improvementCount = teamData?.improvementCards || 0;
-                const isClaimedOrAllocated = isTeamAllocated(team.id) || gameState.improvementCards.some(c => c.usedBy === team.id && c.allocatedInRound === gameState.currentRound);
+                const isClaimedOrAllocated = isTeamAllocated(team.id) || gameState.improvementCards.some(c => (c.availableForTeam === team.id || c.usedBy === team.id) && c.allocatedInRound === gameState.currentRound);
                 const isActiveTurn = team.id === activeTurnTeam?.id;
 
                 return (
@@ -292,9 +305,9 @@ export const ImprovementPhase = () => {
                     key={team.id}
                     className={`p-2.5 rounded-lg border text-xs flex flex-col justify-between space-y-1.5 transition-all ${
                       isActiveTurn
-                        ? 'ring-2 ring-emerald-500 bg-emerald-500/10 border-emerald-500/80 shadow-md animate-pulse'
+                        ? 'ring-2 ring-success bg-success/10 border-success/80 shadow-md animate-pulse'
                         : team.id === currentTeamId && currentRole === 'STUDENT'
-                        ? 'ring-2 ring-yellow-500 bg-yellow-500/5 shadow-sm border-yellow-500/50'
+                        ? 'ring-2 ring-warning bg-warning/5 shadow-sm border-warning/50'
                         : 'bg-card border-border'
                     }`}
                   >
@@ -304,16 +317,20 @@ export const ImprovementPhase = () => {
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
                         <span className="truncate">{team.name}</span>
                       </div>
-                      {isActiveTurn && (
-                        <Badge className="bg-emerald-500 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                      {isActiveTurn ? (
+                        <Badge className="bg-success text-white text-[9px] px-1 py-0 font-extrabold uppercase">
                           Turn
                         </Badge>
-                      )}
+                      ) : (isClaimedOrAllocated || isAllocated || allocationsCompleted) && improvementCount > 0 ? (
+                        <Badge variant="outline" className="text-[9px] px-1 py-0 font-bold bg-success/10 text-success border-success/20">
+                          Done
+                        </Badge>
+                      ) : null}
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50">
                       <span className="flex items-center gap-1 text-muted-foreground">
-                        <Wrench className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
+                        <Wrench className="h-3.5 w-3.5 text-warning dark:text-yellow-400" />
                         {improvementCount} {improvementCount === 1 ? 'Card' : 'Cards'}
                       </span>
 
@@ -321,12 +338,13 @@ export const ImprovementPhase = () => {
                         <Badge variant="outline" className="text-[10px] py-0 px-1 font-normal bg-muted/40 text-muted-foreground border-border">
                           Skipped (0 Cards)
                         </Badge>
-                      ) : isClaimedOrAllocated ? (
-                        <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                      ) : (isClaimedOrAllocated || isAllocated || allocationsCompleted) ? (
+                        <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-success/10 text-success border-success/20 gap-0.5">
+                          <CheckCircle2 className="h-3 w-3 text-success inline" />
                           Claimed
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                        <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-warning/10 text-warning dark:text-warning border-warning/20">
                           Pending
                         </Badge>
                       )}
@@ -374,11 +392,11 @@ export const ImprovementPhase = () => {
                         <div className="flex items-center justify-between text-muted-foreground">
                           <span>Team Status:</span>
                           {isTeamAllocated(team.id) ? (
-                            <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 text-[10px] font-bold">
+                            <Badge className="bg-success/20 text-success dark:text-success border-success/30 text-[10px] font-bold">
                               Card Claimed
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 text-[10px] font-bold">
+                            <Badge variant="outline" className="bg-warning/10 text-warning dark:text-warning border-warning/30 text-[10px] font-bold">
                               Selecting Card...
                             </Badge>
                           )}
@@ -415,7 +433,7 @@ export const ImprovementPhase = () => {
                         {isMyTeam && activePhase === 'improvement' && !isReadOnly && (
                           <Button
                             size="sm"
-                            className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                            className="w-full mt-2 bg-success hover:bg-success text-white font-semibold"
                             disabled={!allocatedCardId}
                             onClick={() => {
                               if (allocatedCardId) {
@@ -521,7 +539,7 @@ export const ImprovementPhase = () => {
                               <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
                                 {getIconElement(card.icon1)}
                               </div>
-                              {card.icon2 && (
+                              {card.id > 0 && card.icon2 && card.icon2 !== 'None' && (
                                 <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
                                   {getIconElement(card.icon2)}
                                 </div>
@@ -549,7 +567,7 @@ export const ImprovementPhase = () => {
         <Card className="border-primary/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Wrench className="h-5 w-5 text-yellow-500" />
+              <Wrench className="h-5 w-5 text-warning" />
               Preview: Round {gameState.currentRound + 1} Improvement Cards
             </CardTitle>
             <CardDescription>
@@ -601,11 +619,11 @@ export const ImprovementPhase = () => {
                     />
                     <span className="text-sm font-medium">{team.name}</span>
                   </div>
-                  <div className="flex justify-center">
-                    <div className="flex items-center justify-center p-3 rounded-lg bg-white border-2 border-gray-300">
-                      <Package className="h-10 w-10 text-black dark:text-white" />
+                    <div className="flex justify-center">
+                      <div className="flex items-center justify-center p-3 rounded-lg bg-white border-2 border-gray-300">
+                        <GameIcon type="production" size="xl" />
+                      </div>
                     </div>
-                  </div>
                 </div>
               ))}
             </div>

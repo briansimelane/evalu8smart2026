@@ -7,7 +7,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useGame } from '@/contexts/GameContext';
 import { ICON_EFFECTS } from '@/data/improvements';
 import { toast } from 'sonner';
-import { Save, TrendingUp, TrendingDown, Package, FlaskConical, Truck, Box, Wrench, Microscope, CirclePlus, CircleMinus, CheckCircle2, Trophy } from 'lucide-react';
+import { Save, TrendingUp, TrendingDown, Package, FlaskConical, Truck, Box, Wrench, Microscope, CirclePlus, CircleMinus, CheckCircle2, Trophy, Plus, Minus } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 import { Badge } from '@/components/ui/badge';
 
 import { useSession } from '@/contexts/SessionContext';
@@ -46,32 +47,38 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const getIconElement = (iconType: string) => {
     if (iconType === 'Price and Product') {
       return (
-        <>
-          <div className="relative inline-block">
-            <span className="font-bold text-red-500 text-3xl leading-none">$</span>
-            <CircleMinus className="h-4 w-4 text-red-500 absolute -bottom-1 -right-1" />
+        <div className="flex items-center gap-1">
+          <div className="relative inline-block" title="Price Decrease (-$1)">
+            <GameIcon type="price" size="lg" />
+            <div className="absolute -bottom-1 -right-1 w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full bg-black border border-red-500/80 flex items-center justify-center shadow-md">
+              <Minus className="h-3.5 w-3.5 text-red-500 stroke-[3]" />
+            </div>
           </div>
-          <Package className="h-8 w-8 text-black dark:text-white" />
-        </>
+          <GameIcon type="production" size="lg" />
+        </div>
       );
     }
     
     const iconMap: Record<string, JSX.Element> = {
-      'Research': <Microscope className="h-8 w-8 inline text-purple-500" />,
+      'Research': <GameIcon type="research" size="lg" />,
       'Price Plus': (
-        <div className="relative inline-block">
-          <span className="font-bold text-red-500 text-3xl leading-none">$</span>
-          <CirclePlus className="h-4 w-4 text-red-500 absolute -bottom-1 -right-1" />
+        <div className="relative inline-block" title="Price Increase (+$1)">
+          <GameIcon type="price" size="lg" />
+          <div className="absolute -bottom-1 -right-1 w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full bg-black border border-emerald-500/80 flex items-center justify-center shadow-md">
+            <Plus className="h-3.5 w-3.5 text-emerald-400 stroke-[3]" />
+          </div>
         </div>
       ),
       'Price Minus': (
-        <div className="relative inline-block">
-          <span className="font-bold text-red-500 text-3xl leading-none">$</span>
-          <CircleMinus className="h-4 w-4 text-red-500 absolute -bottom-1 -right-1" />
+        <div className="relative inline-block" title="Price Decrease (-$1)">
+          <GameIcon type="price" size="lg" />
+          <div className="absolute -bottom-1 -right-1 w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full bg-black border border-red-500/80 flex items-center justify-center shadow-md">
+            <Minus className="h-3.5 w-3.5 text-red-500 stroke-[3]" />
+          </div>
         </div>
       ),
-      'Product': <Package className="h-8 w-8 inline text-black dark:text-white" />,
-      'Logistic': <Truck className="h-8 w-8 inline text-blue-500" />,
+      'Product': <GameIcon type="production" size="lg" />,
+      'Logistic': <GameIcon type="logistics" size="lg" />,
     };
     return iconMap[iconType] || <span className="text-xs">{iconType}</span>;
   };
@@ -279,17 +286,17 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
       <div className="space-y-2 mb-4 p-4 bg-card border border-border rounded-xl shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Trophy className="h-4 w-4 text-amber-500" />
+            <Trophy className="h-4 w-4 text-warning" />
             <span>Turn Order — Round {currentRound}</span>
           </h3>
           <div className="flex items-center gap-2">
             {activeTurnTeam ? (
-              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold gap-1.5 animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <Badge className="bg-success/15 text-success dark:text-success border border-success/30 text-xs font-bold gap-1.5 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-success animate-ping" />
                 Current Turn: {activeTurnTeam.name}
               </Badge>
             ) : (
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-bold gap-1">
+              <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
                 <CheckCircle2 className="h-3 w-3" />
                 All Teams Submitted
               </Badge>
@@ -313,9 +320,9 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                 onClick={() => currentRole !== 'STUDENT' && setSelectedTeam(team.id)}
                 className={`p-2.5 rounded-lg border text-xs flex flex-col justify-between space-y-1.5 transition-all ${
                   isActiveTurn
-                    ? 'ring-2 ring-emerald-500 bg-emerald-500/10 border-emerald-500/80 shadow-md animate-pulse'
+                    ? 'ring-2 ring-success bg-success/10 border-success/80 shadow-md animate-pulse'
                     : team.id === selectedTeam
-                    ? 'ring-2 ring-blue-500 bg-blue-500/5 shadow-sm border-blue-500/50'
+                    ? 'ring-2 ring-primary bg-primary/5 shadow-sm border-primary/50'
                     : 'bg-card hover:bg-muted/30 border-border'
                 } ${currentRole !== 'STUDENT' ? 'cursor-pointer' : ''}`}
               >
@@ -326,7 +333,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                     <span className="truncate">{team.name}</span>
                   </div>
                   {isActiveTurn && (
-                    <Badge className="bg-emerald-500 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                    <Badge className="bg-success text-white text-[9px] px-1 py-0 font-extrabold uppercase">
                       Turn
                     </Badge>
                   )}
@@ -335,11 +342,11 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                 <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
                   <span className="truncate">CEO: {ceoName ? <strong className="text-foreground font-semibold">{ceoName}</strong> : <span className="italic">Vacant</span>}</span>
                   {submittedData?.price !== undefined ? (
-                    <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                    <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-success/10 text-success border-success/20">
                       ${submittedData.price}
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-[10px] py-0 px-1 font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                    <Badge variant="outline" className="text-[10px] py-0 px-1 font-semibold bg-warning/10 text-warning dark:text-warning border-warning/20">
                       Pending
                     </Badge>
                   )}
@@ -363,12 +370,12 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     return (
       <div className="space-y-4">
         {renderPlayOrderSection()}
-        <Card className="border-emerald-500 bg-emerald-500/[0.02]">
-        <CardHeader className="border-b border-emerald-500/10">
+        <Card className="border-success bg-success/[0.02]">
+        <CardHeader className="border-b border-success/10">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-500 animate-pulse" />
+              <CardTitle className="text-success dark:text-success flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-success animate-pulse" />
                 Round {currentRound} Plan Submitted
               </CardTitle>
               <CardDescription>
@@ -380,7 +387,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                 variant="outline"
                 size="sm"
                 onClick={() => setIsEditingSubmittedPlan(true)}
-                className="border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                className="border-success/30 text-success dark:text-success hover:bg-success/10"
               >
                 <Wrench className="mr-1.5 h-3.5 w-3.5" />
                 Edit Plan
@@ -388,8 +395,8 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
             )}
           </div>
         </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <CardContent className="pt-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Strategy Choices */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Strategy Choices</h3>
@@ -408,7 +415,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                 </div>
                 <div className="flex justify-between items-center bg-card p-3 rounded-lg border border-border">
                   <span className="text-sm text-muted-foreground">Product Price Set</span>
-                  <span className="text-base font-bold text-emerald-600 font-mono">
+                  <span className="text-base font-bold text-success font-mono">
                     ${submittedPlan.price.toFixed(2)}
                   </span>
                 </div>
@@ -420,22 +427,22 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
               <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Plan Effects (This Round)</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-card p-3 rounded-lg border border-border flex flex-col items-center justify-center text-center">
-                  <Package className="h-5 w-5 text-blue-500 mb-1" />
+                  <GameIcon type="production" size="md" className="mb-1" />
                   <span className="text-xs text-muted-foreground">Products Produced</span>
                   <span className="text-lg font-bold text-foreground font-mono">{submittedPlan.productsProduced}</span>
                 </div>
                 <div className="bg-card p-3 rounded-lg border border-border flex flex-col items-center justify-center text-center">
-                  <Microscope className="h-5 w-5 text-purple-500 mb-1" />
+                  <GameIcon type="research" size="md" className="mb-1" />
                   <span className="text-xs text-muted-foreground">Research Points</span>
                   <span className="text-lg font-bold text-foreground font-mono">+{submittedPlan.researchIcons}</span>
                 </div>
                 <div className="bg-card p-3 rounded-lg border border-border flex flex-col items-center justify-center text-center">
-                  <Truck className="h-5 w-5 text-amber-500 mb-1" />
+                  <GameIcon type="logistics" size="md" className="mb-1" />
                   <span className="text-xs text-muted-foreground">Logistics Points</span>
                   <span className="text-lg font-bold text-foreground font-mono">+{submittedPlan.logisticsIcons}</span>
                 </div>
                 <div className="bg-card p-3 rounded-lg border border-border flex flex-col items-center justify-center text-center">
-                  <Wrench className="h-5 w-5 text-teal-500 mb-1" />
+                  <GameIcon type="improvement" size="md" className="mb-1" />
                   <span className="text-xs text-muted-foreground">Improvement Points</span>
                   <span className="text-lg font-bold text-foreground font-mono">+{submittedPlan.improvementCards}</span>
                 </div>
@@ -485,14 +492,15 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
       {renderPlayOrderSection()}
       <Card>
       <CardHeader>
-        <CardTitle>
-          {editingRound ? `Edit Round ${editingRound}` : `Round ${currentRound}`} Planning
+        <CardTitle className="text-base sm:text-xl font-bold flex items-center gap-2 flex-wrap tracking-tight">
+          <GameIcon type="planning" size="md" />
+          <span>{editingRound ? `Edit Round ${editingRound}` : `Round ${currentRound}`} Planning</span>
         </CardTitle>
         <CardDescription>
           Select your strategy: team, combination, position, and improvement cards
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="team">Select Team</Label>
@@ -558,38 +566,38 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
             <Card className="bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5 border-primary/20">
               <CardContent className="pt-6">
                 <div className="grid grid-cols-5 gap-4">
-                  <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.price ? 'scale-110 shadow-lg shadow-green-500/50 bg-green-500/10 border-green-500/50' : ''}`}>
-                    <span className="font-bold text-red-500 text-4xl leading-none">$</span>
+                  <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.price ? 'scale-110 shadow-lg shadow-red-500/50 bg-red-500/10 border-red-500/50' : ''}`}>
+                    <GameIcon type="price" size="xl" className="mb-2" />
                     <div className="text-sm text-muted-foreground mb-1">Price</div>
-                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.price ? 'scale-150 text-green-500' : ''}`}>
+                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.price ? 'scale-150 text-success' : ''}`}>
                       ${calculatedPrice}
                     </div>
                   </div>
                   <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.products ? 'scale-110 shadow-lg shadow-black/30 dark:shadow-white/30 bg-black/10 dark:bg-white/10 border-black/50 dark:border-white/50' : ''}`}>
-                    <Box className="h-10 w-10 mb-2" style={{ color: '#000000' }} />
+                    <GameIcon type="production" size="xl" className="mb-2" />
                     <div className="text-sm text-muted-foreground mb-1">Products</div>
                     <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.products ? 'scale-150 text-black dark:text-white' : ''}`}>
                       {productsAvailable}
                     </div>
                   </div>
-                  <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.improvement ? 'scale-110 shadow-lg shadow-orange-500/50 bg-orange-500/10 border-orange-500/50' : ''}`}>
-                    <Wrench className="h-10 w-10 mb-2 text-orange-500" />
+                  <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.improvement ? 'scale-110 shadow-lg shadow-yellow-500/50 bg-yellow-500/10 border-yellow-500/50' : ''}`}>
+                    <GameIcon type="improvement" size="xl" className="mb-2" />
                     <div className="text-sm text-muted-foreground mb-1">Improvement</div>
-                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.improvement ? 'scale-150 text-orange-500' : ''}`}>
+                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.improvement ? 'scale-150 text-yellow-500' : ''}`}>
                       {improvementPoints}
                     </div>
                   </div>
                   <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.research ? 'scale-110 shadow-lg shadow-purple-500/50 bg-purple-500/10 border-purple-500/50' : ''}`}>
-                    <Microscope className="h-10 w-10 mb-2 text-purple-500" />
+                    <GameIcon type="research" size="xl" className="mb-2" />
                     <div className="text-sm text-muted-foreground mb-1">Research</div>
-                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.research ? 'scale-150 text-purple-500' : ''}`}>
+                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.research ? 'scale-150 text-purple-400' : ''}`}>
                       {researchPoints}
                     </div>
                   </div>
                   <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.logistics ? 'scale-110 shadow-lg shadow-cyan-500/50 bg-cyan-500/10 border-cyan-500/50' : ''}`}>
-                    <Truck className="h-10 w-10 mb-2 text-cyan-500" />
+                    <GameIcon type="logistics" size="xl" className="mb-2" />
                     <div className="text-sm text-muted-foreground mb-1">Logistics</div>
-                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.logistics ? 'scale-150 text-cyan-500' : ''}`}>
+                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.logistics ? 'scale-150 text-cyan-400' : ''}`}>
                       {logisticsPoints}
                     </div>
                   </div>
@@ -665,17 +673,17 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
               <>
                 <Label className="flex items-center gap-2">
                   <span>Newly Allocated Cards - Usable Next Round</span>
-                  <span className="text-xs bg-amber-500/20 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded">Not Usable Yet</span>
+                  <span className="text-xs bg-warning/20 text-warning dark:text-warning px-2 py-0.5 rounded">Not Usable Yet</span>
                 </Label>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
                   {futureCards.map((card, index) => (
                     <Card 
                       key={`${card.id}-${index}`}
-                      className="opacity-60 border-amber-300/50 bg-amber-500/5"
+                      className="opacity-60 border-amber-300/50 bg-warning/5"
                     >
                       <CardHeader className="py-2 px-3">
                         <CardTitle className="text-xs flex items-center justify-end gap-2 mb-2">
-                          <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded">
+                          <span className="text-[10px] px-1.5 py-0.5 bg-warning/20 text-warning dark:text-warning rounded">
                             R{card.__allocatedRound}
                           </span>
                         </CardTitle>

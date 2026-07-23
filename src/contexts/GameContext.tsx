@@ -410,6 +410,13 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
     const shuffled = [...availablePool].sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.max(0, numEligibleTeams));
+    const hasPriceDecrease = selected.some(c => c.icon1 === 'Price and Product' || c.icon2 === 'Price and Product');
+    if (!hasPriceDecrease) {
+      const priceDecreaseCard = availablePool.find(c => c.icon1 === 'Price and Product' || c.icon2 === 'Price and Product');
+      if (priceDecreaseCard && selected.length > 0) {
+        selected[0] = priceDecreaseCard;
+      }
+    }
 
     // Persist pool for this round
     const selectedIds = selected.map(c => c.id);
@@ -446,6 +453,13 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
     const shuffled = [...availablePool].sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.max(0, numEligibleTeams));
+    const hasPriceDecrease = selected.some(c => c.icon1 === 'Price and Product' || c.icon2 === 'Price and Product');
+    if (!hasPriceDecrease) {
+      const priceDecreaseCard = availablePool.find(c => c.icon1 === 'Price and Product' || c.icon2 === 'Price and Product');
+      if (priceDecreaseCard && selected.length > 0) {
+        selected[0] = priceDecreaseCard;
+      }
+    }
     const selectedIds = selected.map(c => c.id);
 
     mutateGameState(prev => {
@@ -504,7 +518,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
             newCards.push({
               id: productCardId,
               icon1: 'Product',
-              icon2: 'Product',
+              icon2: undefined as any,
               availableForTeam: team.id,
               used: false,
               isInitial: false,
@@ -591,7 +605,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
             newCards.push({
               id: productCardId,
               icon1: 'Product',
-              icon2: 'None',
+              icon2: undefined as any,
               availableForTeam: t.id,
               used: false,
               isInitial: false,
@@ -673,6 +687,13 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
     const shuffled = [...availablePool].sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.max(0, numEligibleTeams));
+    const hasPriceDecrease = selected.some(c => c.icon1 === 'Price and Product' || c.icon2 === 'Price and Product');
+    if (!hasPriceDecrease) {
+      const priceDecreaseCard = availablePool.find(c => c.icon1 === 'Price and Product' || c.icon2 === 'Price and Product');
+      if (priceDecreaseCard && selected.length > 0) {
+        selected[0] = priceDecreaseCard;
+      }
+    }
     const selectedIds = selected.map(c => c.id);
 
     // Store the preview for next round

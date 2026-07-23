@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Microscope, Trophy, CheckCircle, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, AlertCircle } from 'lucide-react';
+import { GameIcon } from './GameIcon';
 import { toast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
@@ -241,21 +242,21 @@ export const ResearchPhase = () => {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {!allTeamsAllocated && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <Microscope className="h-6 w-6 text-purple-500" />
+                  <GameIcon type="research" size="md" />
                   Research & Development
                 </CardTitle>
                 <CardDescription>Round {gameState.currentRound} - Allocate research points to technologies</CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4">
             {/* Play Order & Research Icons Overview */}
             {(() => {
               const activeTurnTeam = playOrder.find(t => {
@@ -268,7 +269,7 @@ export const ResearchPhase = () => {
                 <div className="space-y-2">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                      <Trophy className="h-4 w-4 text-amber-500" />
+                      <Trophy className="h-4 w-4 text-warning" />
                       <span>Play Order & Team Research Icons</span>
                     </h3>
                     {activeTurnTeam ? (
@@ -277,7 +278,7 @@ export const ResearchPhase = () => {
                         Current Turn: {activeTurnTeam.name}
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs font-bold gap-1">
+                      <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
                         <CheckCircle className="h-3 w-3" />
                         Research Complete
                       </Badge>
@@ -297,7 +298,7 @@ export const ResearchPhase = () => {
                             isActiveTurn
                               ? 'ring-2 ring-purple-500 bg-purple-500/10 border-purple-500/80 shadow-md animate-pulse'
                               : team.id === selectedTeam
-                              ? 'ring-2 ring-blue-500 bg-blue-500/5 shadow-sm border-blue-500/50'
+                              ? 'ring-2 ring-primary bg-primary/5 shadow-sm border-primary/50'
                               : 'bg-card/60 border-border'
                           }`}
                         >
@@ -313,8 +314,8 @@ export const ResearchPhase = () => {
                             )}
                           </div>
                           <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
-                            <span className="font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1">
-                              <Microscope className="h-3.5 w-3.5" />
+                            <span className="font-semibold flex items-center gap-1">
+                              <GameIcon type="research" size="xs" />
                               {icons} Icons
                             </span>
                             <span>{spent}/{icons} spent</span>
@@ -420,9 +421,9 @@ export const ResearchPhase = () => {
                   <Card
                     key={tech.name}
                     className={`transition-all ${isCompleted
-                      ? 'border-green-500 bg-green-500/5'
+                      ? 'border-success bg-success/5'
                       : isPatentOwner
-                        ? 'border-yellow-500 bg-yellow-500/5'
+                        ? 'border-warning bg-warning/5'
                         : ''
                       }`}
                   >
@@ -433,7 +434,7 @@ export const ResearchPhase = () => {
                           <CardTitle className="text-base">{tech.name}</CardTitle>
                         </div>
                         {isCompleted && (
-                          <CheckCircle className="h-5 w-5 text-green-500" />
+                          <CheckCircle className="h-5 w-5 text-success" />
                         )}
                       </div>
                       <div className="space-y-1">
@@ -441,7 +442,7 @@ export const ResearchPhase = () => {
                           <span className="text-muted-foreground">Cost:</span>
                           {hasReducedCost ? (
                             <>
-                              <span className="font-bold text-green-600">{effectiveCost}</span>
+                              <span className="font-bold text-success">{effectiveCost}</span>
                               <span className="text-xs line-through text-muted-foreground">{tech.researchCost}</span>
                             </>
                           ) : (
@@ -572,7 +573,7 @@ export const ResearchPhase = () => {
                             <span className="text-muted-foreground">{remaining}</span>
                             <div className="flex items-center gap-1">
                               {isComplete ? (
-                                <Badge variant="outline" className="gap-1 text-xs bg-green-500/10 border-green-500">
+                                <Badge variant="outline" className="gap-1 text-xs bg-success/10 border-success">
                                   <CheckCircle className="h-3 w-3" />
                                   Complete
                                 </Badge>
@@ -586,7 +587,7 @@ export const ResearchPhase = () => {
                                 </Badge>
                               )}
                               {isPatentOwner && (
-                                <Trophy className="h-3 w-3 text-yellow-500" />
+                                <Trophy className="h-3 w-3 text-warning" />
                               )}
                             </div>
                           </div>
@@ -607,7 +608,7 @@ export const ResearchPhase = () => {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
-                <Microscope className="h-5 w-5" />
+                <GameIcon type="research" size="sm" />
                 All Technologies Status
               </CardTitle>
               <Badge variant="secondary">All Teams Allocated</Badge>
@@ -639,7 +640,7 @@ export const ResearchPhase = () => {
                 return (
                   <Card
                     key={tech.name}
-                    className={`${patentHolderTeam ? 'border-yellow-500 bg-yellow-500/5' : 'border-primary/30 bg-primary/5'
+                    className={`${patentHolderTeam ? 'border-warning bg-warning/5' : 'border-primary/30 bg-primary/5'
                       }`}
                   >
                     <CardContent className="pt-4 space-y-3">
