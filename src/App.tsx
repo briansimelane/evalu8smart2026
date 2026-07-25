@@ -21,6 +21,9 @@ const IndexRedirect = () => {
     return <Navigate to="/login" replace />;
   }
   if (currentRole === 'ADMIN') {
+    if (currentClassId) {
+      return <Navigate to={`/class/${currentClassId}`} replace />;
+    }
     return <Navigate to="/admin" replace />;
   }
   if (currentRole === 'FACILITATOR') {
@@ -69,6 +72,15 @@ const StudentDashboard = () => {
   return <Index />;
 };
 
+const SessionProviderWrapper = ({ children, roles }: { children: React.ReactNode; roles: string | string[] }) => {
+  const { currentRole } = useSession();
+  const allowed = Array.isArray(roles) ? roles.includes(currentRole || '') : currentRole === roles;
+  if (!allowed) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -81,12 +93,12 @@ const App = () => (
               <Route path="/" element={<IndexRedirect />} />
               <Route path="/login" element={<Login />} />
               <Route path="/facilitator/classes" element={
-                <SessionProviderWrapper role="FACILITATOR">
+                <SessionProviderWrapper roles={['FACILITATOR', 'ADMIN']}>
                   <FacilitatorHub />
                 </SessionProviderWrapper>
               } />
               <Route path="/admin" element={
-                <SessionProviderWrapper role="ADMIN">
+                <SessionProviderWrapper roles={['ADMIN']}>
                   <AdminHub />
                 </SessionProviderWrapper>
               } />
@@ -100,13 +112,5 @@ const App = () => (
     </TooltipProvider>
   </QueryClientProvider>
 );
-
-const SessionProviderWrapper = ({ children, role }: { children: React.ReactNode; role: string }) => {
-  const { currentRole } = useSession();
-  if (currentRole !== role) {
-    return <Navigate to="/login" replace />;
-  }
-  return <>{children}</>;
-};
 
 export default App;

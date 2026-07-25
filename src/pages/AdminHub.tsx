@@ -325,12 +325,12 @@ export const AdminHub: React.FC = () => {
                                 variant="outline"
                                 onClick={() => {
                                   selectClass(cls.id);
-                                  navigate('/facilitator/classes');
+                                  navigate(`/class/${cls.id}`);
                                 }}
-                                className="h-8 gap-1 text-xs"
+                                className="h-8 gap-1 text-xs font-semibold"
                               >
                                 <ExternalLink className="h-3.5 w-3.5" />
-                                Manage
+                                Enter Game
                               </Button>
 
                               {isLegacy && (
