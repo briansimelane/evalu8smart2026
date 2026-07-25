@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Trophy, ShoppingCart, PackageX } from 'lucide-react';
 import { GameIcon } from './GameIcon';
 import { TEAM_COLORS } from '@/data/combinations';
-import { calculateTeamTotalScore, getControlPointsForTeamInRound, getTeamPatentPoints } from '@/types/game';
+import { calculateTeamTotalScore, getControlPointsForTeamInRound, getTeamPatentPoints, getInitialScore } from '@/types/game';
 import { toast } from 'sonner';
 
 import { useSession } from '@/contexts/SessionContext';
@@ -83,7 +83,7 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                 const totalRegionalSales = teamRoundData.customersSold ? teamRoundData.customersSold.length : 0;
                 const lostProducts = Math.max(0, teamRoundData.productsProduced - totalRegionalSales);
                 const roundControl = getControlPointsForTeamInRound(currentRoundData, team.id, gameState);
-                const patentBonus = getTeamPatentPoints(team.id, gameState.patents, gameState.currentRound);
+                const patentBonus = getTeamPatentPoints(team.id, gameState.patents, gameState.currentRound, gameState.gameEnded, gameState.currentRound);
                 const overallValue = calculateTeamTotalScore(team.id, gameState.currentRound, gameState).totalScore;
 
                 return (
@@ -98,7 +98,16 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                           className="w-4 h-4 rounded-full border-2"
                           style={{ backgroundColor: team.color }}
                         />
-                        <div className="font-semibold text-lg">{team.name}</div>
+                        <div className="font-semibold text-lg flex items-center gap-1.5 flex-wrap">
+                          {team.name}
+                          {team.isBot && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 font-normal">🤖 Bot</span>}
+                          {gameState?.botThinking?.[team.id] && (
+                            <span className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 px-2 py-0.5 rounded animate-pulse font-normal flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                              Thinking...
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Input Details with Icons */}

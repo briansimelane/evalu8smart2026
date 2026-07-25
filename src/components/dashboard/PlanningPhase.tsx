@@ -135,8 +135,8 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     const usage = cardUsages[card.id] || 'none';
     
     if (usage === 'use') {
-      const icon1Effects = ICON_EFFECTS[card.icon1 as keyof typeof ICON_EFFECTS];
-      const icon2Effects = ICON_EFFECTS[card.icon2 as keyof typeof ICON_EFFECTS];
+      const icon1Effects = ICON_EFFECTS[card.icon1 as keyof typeof ICON_EFFECTS] || { priceEffect: 0, productEffect: 0, researchEffect: 0, logisticsEffect: 0 };
+      const icon2Effects = ICON_EFFECTS[card.icon2 as keyof typeof ICON_EFFECTS] || { priceEffect: 0, productEffect: 0, researchEffect: 0, logisticsEffect: 0 };
       improvementPriceEffect += icon1Effects.priceEffect + icon2Effects.priceEffect;
       
       // Special case: Product+Product cards should only grant 1 product total
@@ -159,7 +159,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     ? (editingRound ? gameState.teams : gameState.teams.filter(t => !teamsWithData.has(t.id)))
     : [];
 
-  const calculatedPrice = selectedComboData ? 5 + selectedComboData.price + improvementPriceEffect : 0;
+  const calculatedPrice = selectedComboData ? Math.max(2, Math.min(8, 5 + selectedComboData.price + improvementPriceEffect)) : 0;
   const productsAvailable = (selectedComboData?.products || 0) + improvementProductEffect;
   const improvementPoints = selectedComboData?.improve || 0;
   const researchPoints = (selectedComboData?.research || 0) + improvementResearchEffect;
@@ -298,7 +298,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
             ) : (
               <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
                 <CheckCircle2 className="h-3 w-3" />
-                All Teams Submitted
+                Planning Complete
               </Badge>
             )}
             <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground bg-muted/40 hidden md:inline-flex">
@@ -330,12 +330,21 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                   <div className="flex items-center gap-1.5 truncate">
                     <span className="text-muted-foreground font-mono text-[11px]">{index + 1}.</span>
                     <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
-                    <span className="truncate">{team.name}</span>
+                    <span className="truncate flex items-center gap-1">
+                      {team.name}
+                      {team.isBot && <span className="scale-90 text-[10px]">🤖</span>}
+                    </span>
                   </div>
                   {isActiveTurn && (
-                    <Badge className="bg-success text-white text-[9px] px-1 py-0 font-extrabold uppercase">
-                      Turn
-                    </Badge>
+                    gameState?.botThinking?.[team.id] ? (
+                      <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded animate-pulse font-bold flex items-center gap-1 shrink-0">
+                        Thinking...
+                      </span>
+                    ) : (
+                      <Badge className="bg-success text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                        Turn
+                      </Badge>
+                    )
                   )}
                 </div>
 

@@ -19,17 +19,29 @@ export const ImprovementPhase = () => {
   const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const { toast } = useToast();
-  const [availableCards, setAvailableCards] = useState<ImprovementCardData[]>([]);
   const [allocations, setAllocations] = useState<Record<number, string>>({});
   const [nextRoundCards, setNextRoundCards] = useState<ImprovementCardData[]>([]);
   const [isAllocated, setIsAllocated] = useState(false);
 
+  // Compute availableCards in real time from Firestore gameState
+  const availableCards = useMemo(() => {
+    if (!gameState) return [];
+    const poolIds = gameState.improvementPoolByRound?.[gameState.currentRound] || [];
+    return poolIds
+      .map(id => AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === id))
+      .filter(Boolean) as ImprovementCardData[];
+  }, [gameState?.improvementPoolByRound, gameState?.currentRound]);
+
+  // Facilitator initializes the card pool once on Firestore
   useEffect(() => {
-    if (gameState && availableCards.length === 0) {
-      const selected = selectRandomCards();
-      setAvailableCards(selected);
+    if (currentRole !== 'STUDENT' && gameState) {
+      const currentRound = gameState.currentRound;
+      const existingIds = gameState.improvementPoolByRound?.[currentRound] || [];
+      if (existingIds.length === 0) {
+        selectRandomCards();
+      }
     }
-  }, [gameState, availableCards.length, selectRandomCards]);
+  }, [gameState?.currentRound, currentRole, selectRandomCards]);
 
   if (!gameState) return null;
 
@@ -192,7 +204,6 @@ export const ImprovementPhase = () => {
 
   const handleReshuffle = () => {
     const selected = reshuffleRoundCards();
-    setAvailableCards(selected);
     setAllocations({});
     toast({
       title: "Cards Reshuffled",
@@ -311,16 +322,25 @@ export const ImprovementPhase = () => {
                         : 'bg-card border-border'
                     }`}
                   >
-                    <div className="flex items-center justify-between font-bold">
+                     <div className="flex items-center justify-between font-bold">
                       <div className="flex items-center gap-1.5 truncate">
                         <span className="text-muted-foreground font-mono text-[11px]">{index + 1}.</span>
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
-                        <span className="truncate">{team.name}</span>
+                        <span className="truncate flex items-center gap-1">
+                          {team.name}
+                          {team.isBot && <span className="scale-90 text-[10px]">🤖</span>}
+                        </span>
                       </div>
                       {isActiveTurn ? (
-                        <Badge className="bg-success text-white text-[9px] px-1 py-0 font-extrabold uppercase">
-                          Turn
-                        </Badge>
+                        gameState?.botThinking?.[team.id] ? (
+                          <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded animate-pulse font-bold flex items-center gap-1 shrink-0">
+                            Thinking...
+                          </span>
+                        ) : (
+                          <Badge className="bg-success text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                            Turn
+                          </Badge>
+                        )
                       ) : (isClaimedOrAllocated || isAllocated || allocationsCompleted) && improvementCount > 0 ? (
                         <Badge variant="outline" className="text-[9px] px-1 py-0 font-bold bg-success/10 text-success border-success/20">
                           Done

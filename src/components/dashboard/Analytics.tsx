@@ -79,7 +79,7 @@ export const Analytics = () => {
       dataPoint[`R${round.roundNumber} Revenue`] = td ? td.revenue : 0;
       dataPoint[`R${round.roundNumber} Control`] = getControlPointsForTeamInRound(round, team.id, gameState);
       if (round.roundNumber >= 5) {
-        dataPoint['Patent Bonus'] = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber);
+        dataPoint['Patent Bonus'] = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber, gameState.gameEnded, gameState.currentRound);
       }
     });
 

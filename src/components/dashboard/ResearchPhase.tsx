@@ -25,6 +25,7 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
 
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
+import { PATENT_POINTS, getPatentPointsForTech } from '@/types/game';
 
 export const ResearchPhase = () => {
   const { gameState, allocateResearch, getTeamResearchProgress, getTechnologyCostForTeam, calculatePlayOrder } = useGame();
@@ -305,12 +306,21 @@ export const ResearchPhase = () => {
                           <div className="flex items-center justify-between font-bold">
                             <div className="flex items-center gap-1.5 truncate">
                               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
-                              <span className="truncate">{index + 1}. {team.name}</span>
+                              <span className="truncate flex items-center gap-1">
+                                {index + 1}. {team.name}
+                                {team.isBot && <span className="scale-90 text-[10px]">🤖</span>}
+                              </span>
                             </div>
                             {isActiveTurn && (
-                              <Badge className="bg-purple-600 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
-                                Turn
-                              </Badge>
+                              gameState?.botThinking?.[team.id] ? (
+                                <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded animate-pulse font-bold flex items-center gap-1 shrink-0">
+                                  Thinking...
+                                </span>
+                              ) : (
+                                <Badge className="bg-purple-600 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                                  Turn
+                                </Badge>
+                              )
                             )}
                           </div>
                           <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
@@ -437,17 +447,23 @@ export const ResearchPhase = () => {
                           <CheckCircle className="h-5 w-5 text-success" />
                         )}
                       </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-muted-foreground">Cost:</span>
-                          {hasReducedCost ? (
-                            <>
-                              <span className="font-bold text-success">{effectiveCost}</span>
-                              <span className="text-xs line-through text-muted-foreground">{tech.researchCost}</span>
-                            </>
-                          ) : (
-                            <span className="font-bold">{effectiveCost}</span>
-                          )}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-sm flex-wrap gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-muted-foreground">Cost:</span>
+                            {hasReducedCost ? (
+                              <>
+                                <span className="font-bold text-success">{effectiveCost}</span>
+                                <span className="text-xs line-through text-muted-foreground">{tech.researchCost}</span>
+                              </>
+                            ) : (
+                              <span className="font-bold">{effectiveCost}</span>
+                            )}
+                          </div>
+                          <Badge variant="secondary" className="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-500/20 gap-1 px-2 py-0.5">
+                            <Trophy className="h-3 w-3 text-warning" />
+                            +{getPatentPointsForTech(tech.name)} Patent Pts
+                          </Badge>
                         </div>
                         {patentHolderTeam && (
                           <Badge
@@ -550,9 +566,10 @@ export const ResearchPhase = () => {
                   <AccordionTrigger>Research History for {selectedTeamObj?.name}</AccordionTrigger>
                   <AccordionContent>
                     <div className="space-y-2">
-                      <div className="grid grid-cols-5 gap-4 text-sm font-semibold text-muted-foreground border-b pb-2">
+                      <div className="grid grid-cols-6 gap-4 text-sm font-semibold text-muted-foreground border-b pb-2">
                         <span>Technology</span>
                         <span>Cost</span>
+                        <span>Patent Pts</span>
                         <span>Invested</span>
                         <span>Remaining</span>
                         <span>Status</span>
@@ -564,11 +581,13 @@ export const ResearchPhase = () => {
                         const isComplete = teamProgress.completedTechnologies.includes(tech.name);
                         const patentOwner = gameState.patents[tech.name];
                         const isPatentOwner = patentOwner === selectedTeam;
+                        const patentPts = getPatentPointsForTech(tech.name);
 
                         return (
-                          <div key={tech.name} className="grid grid-cols-5 gap-4 text-sm py-2 border-b">
+                          <div key={tech.name} className="grid grid-cols-6 gap-4 text-sm py-2 border-b items-center">
                             <span className="font-medium">{tech.name}</span>
                             <span>{cost}</span>
+                            <span className="font-semibold text-amber-600 dark:text-amber-400">+{patentPts} pts</span>
                             <span className="font-semibold">{invested}</span>
                             <span className="text-muted-foreground">{remaining}</span>
                             <div className="flex items-center gap-1">
@@ -611,7 +630,9 @@ export const ResearchPhase = () => {
                 <GameIcon type="research" size="sm" />
                 All Technologies Status
               </CardTitle>
-              <Badge variant="secondary">All Teams Allocated</Badge>
+              <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
+                Research Complete
+              </Badge>
             </div>
             <CardDescription>
               Complete overview of patents, completed research, and ongoing progress
@@ -650,8 +671,13 @@ export const ResearchPhase = () => {
                             <Icon className="h-5 w-5" />
                             <h4 className="font-semibold">{tech.name}</h4>
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            Cost: {tech.researchCost} research icons
+                          <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                            <span>Cost: {tech.researchCost} research icons</span>
+                            <span>•</span>
+                            <span className="font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                              <Trophy className="h-3 w-3" />
+                              +{getPatentPointsForTech(tech.name)} Patent Pts
+                            </span>
                           </div>
                         </div>
                       </div>

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGame } from '@/contexts/GameContext';
 import { REGION_CUSTOMERS, Customer } from '@/data/customers';
+import { getControlPointsForRegion } from '@/data/control';
 import { toast } from 'sonner';
 import { Save, AlertTriangle, CheckCircle2, Package, Microscope, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Trophy, Users, Target, TrendingUp } from 'lucide-react';
 import { GameIcon } from './GameIcon';
@@ -344,12 +345,21 @@ export const SalesPhase = () => {
                       <div className="flex items-center justify-between font-bold">
                         <div className="flex items-center gap-1.5 truncate">
                           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
-                          <span className="truncate">{index + 1}. {team.name}</span>
+                          <span className="truncate flex items-center gap-1">
+                            {index + 1}. {team.name}
+                            {team.isBot && <span className="scale-90 text-[10px]">🤖</span>}
+                          </span>
                         </div>
                         {isActiveTurn && (
-                          <Badge className="bg-success text-white text-[9px] px-1 py-0 font-extrabold uppercase">
-                            Turn
-                          </Badge>
+                          gameState?.botThinking?.[team.id] ? (
+                            <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded animate-pulse font-bold flex items-center gap-1 shrink-0">
+                              Thinking...
+                            </span>
+                          ) : (
+                            <Badge className="bg-success text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                              Turn
+                            </Badge>
+                          )
                         )}
                       </div>
 
@@ -547,10 +557,34 @@ export const SalesPhase = () => {
                         const regionData = REGION_CUSTOMERS.find(r => r.region === regionName);
                         if (!regionData) return null;
 
+                        const regionLogisticsData = gameState.regionLogistics?.[regionName];
+                        const teamsPresentCount = regionLogisticsData?.teamsPresent?.length || 0;
+                        const effectiveTeamsCount = Math.max(1, teamsPresentCount);
+                        const firstPlaceControl = getControlPointsForRegion(regionName, effectiveTeamsCount, 'first');
+                        const secondPlaceControl = getControlPointsForRegion(regionName, effectiveTeamsCount, 'second');
+
                         return (
                           <Card key={regionName}>
-                            <CardHeader>
-                              <CardTitle className="text-base">{regionName}</CardTitle>
+                            <CardHeader className="pb-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <CardTitle className="text-base flex items-center gap-2">
+                                  <MapPin className="h-4 w-4 text-primary" />
+                                  {regionName}
+                                </CardTitle>
+                                <div className="flex items-center gap-2 flex-wrap text-xs">
+                                  <span className="text-muted-foreground font-semibold">Potential Control:</span>
+                                  <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-bold gap-1">
+                                    <Trophy className="h-3 w-3 text-warning" />
+                                    1st Place: +{firstPlaceControl} pts
+                                  </Badge>
+                                  {secondPlaceControl > 0 && (
+                                    <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30 text-xs font-bold gap-1">
+                                      2nd Place: +{secondPlaceControl} pts
+                                    </Badge>
+                                  )}
+                                  <span className="text-xs text-muted-foreground italic">({teamsPresentCount} {teamsPresentCount === 1 ? 'team' : 'teams'} present)</span>
+                                </div>
+                              </div>
                             </CardHeader>
                             <CardContent>
                               <div className="flex flex-wrap gap-2">
@@ -653,6 +687,11 @@ export const SalesPhase = () => {
             {REGION_CUSTOMERS.map(({ region }) => {
               const regionStatus = regionSalesStatus[region];
               const hasSales = regionStatus.some(s => s.soldTo);
+              const regionLogisticsData = gameState.regionLogistics?.[region];
+              const teamsPresentCount = regionLogisticsData?.teamsPresent?.length || 0;
+              const effectiveTeamsCount = Math.max(1, teamsPresentCount);
+              const firstPlaceControl = getControlPointsForRegion(region, effectiveTeamsCount, 'first');
+              const secondPlaceControl = getControlPointsForRegion(region, effectiveTeamsCount, 'second');
 
               const isAnyTeamActiveInRegion = gameState.teams.some(team => {
                 const rd = gameState.regionLogistics[region];
@@ -661,8 +700,20 @@ export const SalesPhase = () => {
 
               return (
                 <Card key={region} className={hasSales ? 'border-primary/50 flex flex-col' : 'flex flex-col'}>
-                  <CardHeader className="pb-1.5 border-b border-border/40 mb-2 px-3 pt-3">
-                    <CardTitle className="text-sm">{region}</CardTitle>
+                  <CardHeader className="pb-2 border-b border-border/40 mb-2 px-3 pt-3">
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <CardTitle className="text-sm font-bold">{region}</CardTitle>
+                      <div className="flex items-center gap-1 text-[10px]">
+                        <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20 text-[10px] font-bold px-1.5 py-0">
+                          1st: +{firstPlaceControl} pts
+                        </Badge>
+                        {secondPlaceControl > 0 && (
+                          <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20 text-[10px] font-bold px-1.5 py-0">
+                            2nd: +{secondPlaceControl} pts
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent className="pt-0 px-3 pb-3 flex-1 flex flex-col gap-3">
                     {/* Team Intelligence Section */}

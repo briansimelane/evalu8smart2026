@@ -3,6 +3,9 @@ import { Combination } from '@/data/combinations';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 
+export type BotProfile = 'BALANCED' | 'RESEARCHER' | 'EXPANDER' | 'PRICE_FIGHTER';
+export type BotDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
+
 export interface Team {
   id: string;
   name: string;
@@ -10,6 +13,9 @@ export interface Team {
   ceoName?: string;
   ceoPin?: string;
   status?: string;
+  isBot?: boolean;
+  botProfile?: BotProfile;
+  botDifficulty?: BotDifficulty;
 }
 
 export type UserRole = 'ADMIN' | 'FACILITATOR' | 'STUDENT';
@@ -21,6 +27,9 @@ export interface ClassTeam {
   ceoName?: string;
   ceoPin?: string;
   updatedAt?: any;
+  isBot?: boolean;
+  botProfile?: BotProfile;
+  botDifficulty?: BotDifficulty;
 }
 
 export interface SimulationClass {
@@ -112,6 +121,8 @@ export interface TeamLogisticsProgress {
   regionInvestments: Record<string, number>; // region -> logistics points invested
 }
 
+export type GamePhase = 'planning' | 'production' | 'improvement' | 'innovation' | 'expansion' | 'sales' | 'control' | 'PLANNING' | 'PRODUCTION' | (string & {});
+
 export interface GameState {
   gameId: string;
   teams: Team[];
@@ -128,31 +139,71 @@ export interface GameState {
   teamLogisticsProgress: Record<string, TeamLogisticsProgress>; // teamId -> logistics progress
   logisticsAllocatedByRound: Record<number, Record<string, number>>; // roundNumber -> teamId -> icons spent
   combinationsData?: Combination[]; // custom combination overrides
-  currentPhase?: 'PLANNING' | 'PRODUCTION';
+  currentPhase?: GamePhase;
   createdAt: Date;
   updatedAt: Date;
+  botConfig?: {
+    enabled: boolean;
+    seed: number;
+  };
+  botThinking?: Record<string, boolean>;
+  botActionsLog?: Array<{
+    round: number;
+    phase: string;
+    teamId: string;
+    summary: string;
+    at: string;
+  }>;
+  gameEnded?: boolean;
 }
 
 export const PATENT_POINTS: Record<string, number> = {
   'GPS': 6,
   'Wifi': 6,
+  'WIFI': 6,
+  'Wi-Fi': 6,
   'Gaming': 8,
+  'GAMING': 8,
   'Battery': 8,
+  'BATTERY': 8,
   'NFC': 10,
   '4G': 12,
+};
+
+export const getPatentPointsForTech = (techName: string): number => {
+  if (!techName) return 0;
+  if (PATENT_POINTS[techName] !== undefined) return PATENT_POINTS[techName];
+  const upper = techName.toUpperCase();
+  if (PATENT_POINTS[upper] !== undefined) return PATENT_POINTS[upper];
+  const title = techName.charAt(0).toUpperCase() + techName.slice(1).toLowerCase();
+  if (PATENT_POINTS[title] !== undefined) return PATENT_POINTS[title];
+  return 0;
 };
 
 export const getTeamPatentPoints = (
   teamId: string,
   patents: Record<string, string> | undefined,
-  currentRound: number
+  targetRound: number,
+  gameEnded?: boolean,
+  currentRound?: number
 ): number => {
-  if (currentRound < 5 || !patents) return 0;
+  if (!patents) return 0;
+
+  // Patent bonus points are ONLY added to the final round (round 5) or the round in which the game was ended.
+  if (gameEnded) {
+    // If the game was ended, patent points are awarded ONLY for the round in which it was ended (currentRound or 5)
+    const endRound = currentRound || 5;
+    if (targetRound < endRound) return 0;
+  } else {
+    // If the game is ongoing, patent points are awarded ONLY if targetRound is the final round (round 5)
+    if (targetRound < 5) return 0;
+    if (currentRound !== undefined && targetRound < currentRound) return 0;
+  }
 
   let points = 0;
   Object.entries(patents).forEach(([tech, holderTeamId]) => {
-    if (holderTeamId === teamId && PATENT_POINTS[tech]) {
-      points += PATENT_POINTS[tech];
+    if (holderTeamId === teamId) {
+      points += getPatentPointsForTech(tech);
     }
   });
 
@@ -323,7 +374,7 @@ export const calculateTeamTotalScore = (
     }
   }
 
-  const patentBonus = getTeamPatentPoints(teamId, gameState.patents, targetRound);
+  const patentBonus = getTeamPatentPoints(teamId, gameState.patents, targetRound, gameState.gameEnded, gameState.currentRound);
   const totalScore = startValue + cumulativeRevenue + cumulativeControl + patentBonus;
 
   return {

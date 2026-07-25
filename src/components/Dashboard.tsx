@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { useGame, GameContext } from '@/contexts/GameContext';
@@ -17,7 +17,7 @@ import { FinancialsPhase } from './dashboard/FinancialsPhase';
 import { SummaryMap } from './dashboard/SummaryMap';
 import { GameSettingsDialog } from './dashboard/GameSettingsDialog';
 import { TeamSubmissionStatus } from './dashboard/TeamSubmissionStatus';
-import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -38,17 +38,99 @@ import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
 import { CeoClaimBar } from './CeoClaimBar';
 import { GameIcon } from './dashboard/GameIcon';
+import { useBotRunner } from '@/bots/useBotRunner';
+const PHASE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  planning: { bg: 'bg-indigo-500/10 dark:bg-indigo-950/20', text: 'text-indigo-600 dark:text-indigo-400', border: 'border-indigo-500/20' },
+  production: { bg: 'bg-emerald-500/10 dark:bg-emerald-950/20', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500/20' },
+  improvement: { bg: 'bg-amber-500/10 dark:bg-amber-950/20', text: 'text-amber-600 dark:text-amber-400', border: 'border-amber-500/20' },
+  innovation: { bg: 'bg-purple-500/10 dark:bg-purple-950/20', text: 'text-purple-600 dark:text-purple-400', border: 'border-purple-500/20' },
+  expansion: { bg: 'bg-rose-500/10 dark:bg-rose-950/20', text: 'text-rose-600 dark:text-rose-400', border: 'border-rose-500/20' },
+  sales: { bg: 'bg-sky-500/10 dark:bg-sky-950/20', text: 'text-sky-600 dark:text-sky-400', border: 'border-sky-500/20' },
+  control: { bg: 'bg-slate-500/10 dark:bg-slate-950/20', text: 'text-slate-600 dark:text-slate-400', border: 'border-slate-500/20' },
+};
+
+const PHASE_DISPLAY_NAMES: Record<string, string> = {
+  planning: 'Planning Phase',
+  production: 'Production Phase',
+  improvement: 'Improvement Phase',
+  innovation: 'Research Phase',
+  expansion: 'Logistics Phase',
+  sales: 'Sales Phase',
+  control: 'Control Phase',
+};
 
 export const Dashboard = () => {
   const navigate = useNavigate();
   const gameContext = useGame();
-  const { gameState, resetGame, advanceRound, updatePhase } = gameContext;
+  const { gameState, resetGame, advanceRound, updatePhase, calculatePlayOrder, endGame } = gameContext;
   const { currentRole, logout, activeClass } = useSession();
+  
+  // Automate bot actions client-side
+  useBotRunner();
   const [activeTab, setActiveTab] = useState('planning');
   const [isAnimatingRound, setIsAnimatingRound] = useState(false);
   const roundInputRef = useRef<{ loadTeamData: (roundNumber: number, teamId: string) => void }>(null);
   const planningPhaseRef = useRef<{ loadTeamPlan: (roundNumber: number, teamId: string) => void }>(null);
   const prevRoundRef = useRef(gameState?.currentRound);
+
+  // Compute active turn team globally for the ticker
+  const activeTurnTeam = useMemo(() => {
+    if (!gameState) return null;
+    const round = gameState.currentRound;
+    const rawPhase = (gameState.currentPhase || 'planning').toLowerCase();
+    const phase = rawPhase === 'innovation' ? 'research' : (rawPhase === 'expansion' ? 'logistics' : rawPhase);
+    const roundData = gameState.rounds.find(r => r.roundNumber === round);
+    const playOrder = calculatePlayOrder(round);
+
+    if (phase === 'planning') {
+      return playOrder.find(t => !roundData?.teamData[t.id]);
+    } else if (phase === 'improvement') {
+      return playOrder.find(t => {
+        const count = roundData?.teamData[t.id]?.improvementCards || 0;
+        const isDone = gameState.improvementCards.some(c => 
+          (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === round
+        );
+        return count > 0 && !isDone;
+      });
+    } else if (phase === 'research') {
+      return playOrder.find(t => {
+        const icons = roundData?.teamData[t.id]?.researchIcons || 0;
+        const spent = (gameState.researchAllocatedByRound || {})[round]?.[t.id] || 0;
+        return icons > 0 && spent < icons;
+      });
+    } else if (phase === 'logistics') {
+      return playOrder.find(t => {
+        const icons = roundData?.teamData[t.id]?.logisticsIcons || 0;
+        const spent = (gameState.logisticsAllocatedByRound || {})[round]?.[t.id] || 0;
+        return icons > 0 && spent < icons;
+      });
+    } else if (phase === 'sales') {
+      const activeSalesPlayOrder = playOrder.filter(team => {
+        const tData = roundData?.teamData[team.id];
+        return (tData?.productsProduced || 0) > 0;
+      });
+      return activeSalesPlayOrder.find(t => {
+        const tData = roundData?.teamData[t.id];
+        return !tData?.customersSold;
+      });
+    }
+    return null;
+  }, [gameState, calculatePlayOrder]);
+
+  const notificationText = useMemo(() => {
+    if (!gameState) return '';
+    const phaseName = PHASE_DISPLAY_NAMES[gameState.currentPhase || 'planning'] || 'Planning Phase';
+    let text = `${phaseName.toUpperCase()} (ROUND ${gameState.currentRound})`;
+    if (activeTurnTeam) {
+      text += `  •  ACTIVE TURN: ${activeTurnTeam.name.toUpperCase()}`;
+      if (gameState.botThinking?.[activeTurnTeam.id]) {
+        text += ' (THINKING...)';
+      }
+    } else {
+      text += `  •  ALL TEAMS COMPLETED`;
+    }
+    return text;
+  }, [gameState, activeTurnTeam]);
 
   // Trigger animation when round changes
   useEffect(() => {
@@ -59,12 +141,12 @@ export const Dashboard = () => {
     prevRoundRef.current = gameState?.currentRound;
   }, [gameState?.currentRound]);
 
-  // Automatically switch tabs for students when the facilitator changes the active phase
+  // Automatically switch tabs when the facilitator changes the active phase
   useEffect(() => {
-    if (currentRole === 'STUDENT' && gameState?.currentPhase) {
+    if (gameState?.currentPhase) {
       setActiveTab(gameState.currentPhase);
     }
-  }, [gameState?.currentPhase, currentRole]);
+  }, [gameState?.currentPhase]);
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
@@ -112,6 +194,12 @@ export const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {gameState.gameEnded && (
+        <div className="bg-gradient-to-r from-yellow-600 via-amber-600 to-yellow-600 text-white py-3 px-4 text-center font-display text-xs sm:text-sm font-black tracking-wide flex items-center justify-center gap-2 shadow-md animate-fade-in relative z-50">
+          <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-200 animate-bounce animate-duration-1000" />
+          <span>SIMULATION COMPLETED — FINAL RESULTS AND PATENT SCORE BONUSES ARE NOW ACTIVE</span>
+        </div>
+      )}
       <header className="border-b border-border bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/40">
         <div className="container mx-auto py-3">
           <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
@@ -182,6 +270,39 @@ export const Dashboard = () => {
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
+
+                         {/* End Game */}
+                        {!gameState.gameEnded && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                className="w-full justify-start gap-2 h-10 bg-red-600 hover:bg-red-700 text-white font-semibold"
+                              >
+                                <Trophy className="h-4 w-4" />
+                                End Game
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-card border-border text-foreground">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>End the Simulation?</AlertDialogTitle>
+                                <AlertDialogDescription className="text-muted-foreground">
+                                  Are you sure you want to end the game early? This will calculate final patent points and lock all player actions.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="border-border bg-background hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => {
+                                  endGame();
+                                  toast({
+                                    title: "Game Ended",
+                                    description: "The simulation has been completed. Patent points have been added to the final scores."
+                                  });
+                                }} className="bg-red-600 hover:bg-red-700 text-white">End Game</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
 
                         {/* 2. Reset Game */}
                         <AlertDialog>
@@ -257,6 +378,11 @@ export const Dashboard = () => {
                         <SelectItem value="control">Control</SelectItem>
                       </SelectContent>
                     </Select>
+                    {gameState.teams.some(t => t.isBot) && (
+                      <span className="text-xs text-muted-foreground italic flex items-center gap-1 ml-2">
+                        🤖 Bots active (automated client-side)
+                      </span>
+                    )}
                   </div>
 
                   {/* Desktop Action Buttons (Visible on md+) */}
@@ -286,6 +412,39 @@ export const Dashboard = () => {
                       </AlertDialogContent>
                     </AlertDialog>
                     
+                    {!gameState.gameEnded && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="bg-red-600 hover:bg-red-700 text-white font-semibold gap-1.5 shadow-sm text-xs"
+                          >
+                            <Trophy className="h-3.5 w-3.5" />
+                            End Game
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-card border-border text-foreground">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>End the Simulation?</AlertDialogTitle>
+                            <AlertDialogDescription className="text-muted-foreground">
+                              Are you sure you want to end the game early? This will calculate final patent points and lock all player actions.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel className="border-border bg-background hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => {
+                              endGame();
+                              toast({
+                                title: "Game Ended",
+                                description: "The simulation has been completed. Patent points have been added to the final scores."
+                              });
+                            }} className="bg-red-600 hover:bg-red-700 text-white">End Game</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="outline" size="sm" className="border-border hover:bg-destructive hover:text-white text-foreground transition-colors">
@@ -402,6 +561,22 @@ export const Dashboard = () => {
               </TabsTrigger>
             </TabsList>
           </div>
+
+          {/* Phase Notification Banner */}
+          {(() => {
+            const phaseColors = PHASE_COLORS[gameState.currentPhase || 'planning'] || PHASE_COLORS.planning;
+            return (
+              <div className="my-3">
+                <div className={`w-full border ${phaseColors.bg} ${phaseColors.border} ${phaseColors.text} py-2 px-4 font-display text-[10px] sm:text-xs font-black uppercase tracking-widest rounded-lg shadow-sm flex items-center justify-center gap-2 text-center animate-pulse`}>
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-current"></span>
+                  </span>
+                  <span>{notificationText}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Game Phase Tabs */}
           <TabsContent value="planning" className="space-y-4">

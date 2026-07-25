@@ -59,7 +59,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
       }
 
       const roundScore = roundRevenue + roundControl;
-      const patentBonus = getTeamPatentPoints(team.id, gameState.patents, activeRoundNumber);
+      const patentBonus = getTeamPatentPoints(team.id, gameState.patents, activeRoundNumber, gameState.gameEnded, gameState.currentRound);
       const totalScore = startValue + roundRevenue + roundControl + cumulativeRevenue + cumulativeControl + patentBonus;
       const techProgress = gameState.teamResearchProgress[team.id]?.completedTechnologies || [];
       const logisticsProgress = gameState.teamLogisticsProgress[team.id]?.regionsWithPresence || [];
@@ -93,6 +93,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
         teamId: string;
         teamName: string;
         teamColor: string;
+        isBot?: boolean;
         unitsSold: number;
         revenue: number;
         leftmostPos: number;
@@ -115,6 +116,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
             teamId: team.id,
             teamName: team.name,
             teamColor: team.color,
+            isBot: !!team.isBot,
             unitsSold: soldInRegion.length,
             revenue: soldInRegion.length * price,
             leftmostPos: minPos === Infinity ? 999 : minPos,
@@ -296,7 +298,10 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                         <div className="flex items-center gap-2 truncate">
                           <Trophy className="h-4 w-4 text-warning flex-shrink-0" />
                           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: firstPlace.teamColor }} />
-                          <span className="font-bold truncate">{firstPlace.teamName}</span>
+                          <span className="font-bold truncate flex items-center gap-1">
+                            {firstPlace.teamName}
+                            {firstPlace.isBot && <span className="scale-90 text-[10px]">🤖</span>}
+                          </span>
                           <span className="text-muted-foreground text-[11px]">({firstPlace.unitsSold} sales)</span>
                         </div>
                         <Badge className="bg-warning text-white font-black text-[10px]">
@@ -314,7 +319,10 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                         <div className="flex items-center gap-2 truncate">
                           <Medal className="h-4 w-4 text-slate-400 flex-shrink-0" />
                           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: secondPlace.teamColor }} />
-                          <span className="font-semibold truncate">{secondPlace.teamName}</span>
+                          <span className="font-semibold truncate flex items-center gap-1">
+                            {secondPlace.teamName}
+                            {secondPlace.isBot && <span className="scale-90 text-[10px]">🤖</span>}
+                          </span>
                           <span className="text-muted-foreground text-[11px]">({secondPlace.unitsSold} sales)</span>
                         </div>
                         <Badge className="bg-slate-500 text-white font-bold text-[10px]">

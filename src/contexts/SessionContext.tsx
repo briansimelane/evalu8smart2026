@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, deleteField } from 'firebase/firestore';
-import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress } from '@/types/game';
+import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, BotProfile, BotDifficulty } from '@/types/game';
 import { toast } from 'sonner';
 import { REGIONS, TECHNOLOGIES, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS } from '@/data/improvements';
 import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
+import { removeUndefined } from '@/lib/utils';
 
 interface SessionContextType {
   currentRole: UserRole | null;
@@ -29,6 +30,7 @@ interface SessionContextType {
   migrateLegacyClass: (classId: string) => Promise<boolean>;
   selectClass: (classId: string | null) => void;
   selectTeam: (teamId: string | null) => void;
+  convertTeamSeat: (classId: string, teamId: string, targetType: 'HUMAN' | 'BOT', profile?: BotProfile, difficulty?: BotDifficulty) => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -189,7 +191,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     // Find student team by code
     for (const cls of classes) {
       for (const [teamId, tCode] of Object.entries(cls.teamCodes || {})) {
-        if (tCode.toUpperCase() === trimmedCode) {
+        if (tCode.toUpperCase() !== 'BOT' && tCode.toUpperCase() === trimmedCode) {
           localStorage.setItem('evalu8_role', 'STUDENT');
           localStorage.setItem('evalu8_class_id', cls.id);
           localStorage.setItem('evalu8_team_id', teamId);
@@ -314,7 +316,8 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       teamLogisticsProgress,
       logisticsAllocatedByRound: {},
       createdAt: new Date().toISOString() as any,
-      updatedAt: new Date().toISOString() as any
+      updatedAt: new Date().toISOString() as any,
+      botConfig: teams.some(t => t.isBot) ? { enabled: true, seed: Math.floor(Math.random() * 1000000) } : null as any
     };
   };
 
@@ -337,18 +340,33 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     // Ensure teams have canonical team_1 ... team_N IDs
     const canonicalTeams: Team[] = teams.map((team, idx) => {
       const canonicalId = `team_${idx + 1}`;
-      teamCodes[canonicalId] = `TM${idx + 1}-${randAlpha4()}`;
+      const isBot = !!team.isBot;
+      if (isBot) {
+        teamCodes[canonicalId] = 'BOT';
+      } else {
+        teamCodes[canonicalId] = `TM${idx + 1}-${randAlpha4()}`;
+      }
       const regTeam: ClassTeam = {
         id: canonicalId,
         name: team.name,
         color: team.color,
         ceoName: '',
-        ceoPin: ''
+        ceoPin: '',
+        isBot: isBot,
+        ...(isBot ? {
+          botProfile: team.botProfile || 'BALANCED',
+          botDifficulty: team.botDifficulty || 'MEDIUM'
+        } : {})
       };
       teamRegistry.push(regTeam);
       return {
         ...team,
-        id: canonicalId
+        id: canonicalId,
+        isBot: isBot,
+        ...(isBot ? {
+          botProfile: team.botProfile || 'BALANCED',
+          botDifficulty: team.botDifficulty || 'MEDIUM'
+        } : {})
       };
     });
 
@@ -358,30 +376,33 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
     // 1. Identity Document: classes/{classId}
     const classDocRef = doc(db, 'classes', classId);
-    batch.set(classDocRef, {
+    batch.set(classDocRef, removeUndefined({
       id: classId,
       name,
       facilitatorCode,
       teamCodes,
       teamRegistry,
       createdAt: new Date().toISOString()
-    });
+    }));
 
     // 2. Game State Document: classes/{classId}/state/game
     const stateDocRef = doc(db, 'classes', classId, 'state', 'game');
-    batch.set(stateDocRef, { gameState: initialGameState });
+    batch.set(stateDocRef, removeUndefined({ gameState: initialGameState }));
 
     // 3. Per-Team CEO Subcollection Documents: classes/{classId}/teams/{teamId}
     canonicalTeams.forEach((team) => {
       const teamDocRef = doc(db, 'classes', classId, 'teams', team.id);
-      batch.set(teamDocRef, {
+      batch.set(teamDocRef, removeUndefined({
         id: team.id,
         name: team.name,
         color: team.color,
         ceoName: '',
         ceoPin: '',
+        isBot: !!team.isBot,
+        botProfile: team.botProfile || '',
+        botDifficulty: team.botDifficulty || '',
         updatedAt: serverTimestamp()
-      });
+      }));
     });
 
     await batch.commit();
@@ -400,9 +421,17 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const teamRef = doc(db, 'classes', currentClassId, 'teams', currentTeamId);
+      const classRef = doc(db, 'classes', currentClassId);
 
       const finalPin = await runTransaction(db, async (tx) => {
+        // 1. ALL READS FIRST
         const snap = await tx.get(teamRef);
+        const classSnap = await tx.get(classRef);
+
+        if (snap.exists() && snap.data().isBot) {
+          throw new Error("Cannot claim CEO seat for an automated Bot team!");
+        }
+
         let currentPinInDb = '';
         if (snap.exists()) {
           currentPinInDb = snap.data().ceoPin || '';
@@ -419,23 +448,22 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
         const calculatedPin = newPin || currentPinInDb;
         if (!calculatedPin) return null;
 
-        tx.set(teamRef, {
+        // 2. ALL WRITES AFTER READS
+        tx.set(teamRef, removeUndefined({
           id: currentTeamId,
           ceoName: name,
           ceoPin: calculatedPin,
           updatedAt: serverTimestamp()
-        }, { merge: true });
+        }), { merge: true });
 
         // Sync with teamRegistry on main class doc
-        const classRef = doc(db, 'classes', currentClassId);
-        const classSnap = await tx.get(classRef);
         if (classSnap.exists()) {
           const classData = classSnap.data() as SimulationClass;
           if (classData.teamRegistry) {
             const updatedRegistry = classData.teamRegistry.map(t =>
               t.id === currentTeamId ? { ...t, ceoName: name, ceoPin: calculatedPin } : t
             );
-            tx.update(classRef, { teamRegistry: updatedRegistry });
+            tx.update(classRef, removeUndefined({ teamRegistry: updatedRegistry }));
           }
         }
 
@@ -470,20 +498,23 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       const classRef = doc(db, 'classes', currentClassId);
 
       await runTransaction(db, async (tx) => {
-        tx.update(teamRef, {
+        // 1. ALL READS FIRST
+        const classSnap = await tx.get(classRef);
+
+        // 2. ALL WRITES AFTER READS
+        tx.update(teamRef, removeUndefined({
           ceoName: '',
           ceoPin: '',
           updatedAt: serverTimestamp()
-        });
+        }));
 
-        const classSnap = await tx.get(classRef);
         if (classSnap.exists()) {
           const classData = classSnap.data() as SimulationClass;
           if (classData.teamRegistry) {
             const updatedRegistry = classData.teamRegistry.map(t =>
               t.id === currentTeamId ? { ...t, ceoName: '', ceoPin: '' } : t
             );
-            tx.update(classRef, { teamRegistry: updatedRegistry });
+            tx.update(classRef, removeUndefined({ teamRegistry: updatedRegistry }));
           }
         }
       });
@@ -506,20 +537,23 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       const classRef = doc(db, 'classes', classId);
 
       await runTransaction(db, async (tx) => {
-        tx.update(teamRef, {
+        // 1. ALL READS FIRST
+        const classSnap = await tx.get(classRef);
+
+        // 2. ALL WRITES AFTER READS
+        tx.update(teamRef, removeUndefined({
           ceoName: '',
           ceoPin: '',
           updatedAt: serverTimestamp()
-        });
+        }));
 
-        const classSnap = await tx.get(classRef);
         if (classSnap.exists()) {
           const classData = classSnap.data() as SimulationClass;
           if (classData.teamRegistry) {
             const updatedRegistry = classData.teamRegistry.map(t =>
               t.id === teamId ? { ...t, ceoName: '', ceoPin: '' } : t
             );
-            tx.update(classRef, { teamRegistry: updatedRegistry });
+            tx.update(classRef, removeUndefined({ teamRegistry: updatedRegistry }));
           }
         }
       });
@@ -536,19 +570,22 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       const classRef = doc(db, 'classes', classId);
 
       await runTransaction(db, async (tx) => {
-        tx.update(teamRef, {
+        // 1. ALL READS FIRST
+        const classSnap = await tx.get(classRef);
+
+        // 2. ALL WRITES AFTER READS
+        tx.update(teamRef, removeUndefined({
           ceoPin: newPin,
           updatedAt: serverTimestamp()
-        });
+        }));
 
-        const classSnap = await tx.get(classRef);
         if (classSnap.exists()) {
           const classData = classSnap.data() as SimulationClass;
           if (classData.teamRegistry) {
             const updatedRegistry = classData.teamRegistry.map(t =>
               t.id === teamId ? { ...t, ceoPin: newPin } : t
             );
-            tx.update(classRef, { teamRegistry: updatedRegistry });
+            tx.update(classRef, removeUndefined({ teamRegistry: updatedRegistry }));
           }
         }
       });
@@ -615,6 +652,121 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const convertTeamSeat = async (
+    classId: string,
+    teamId: string,
+    targetType: 'HUMAN' | 'BOT',
+    profile: BotProfile = 'BALANCED',
+    difficulty: BotDifficulty = 'MEDIUM'
+  ): Promise<void> => {
+    try {
+      const classRef = doc(db, 'classes', classId);
+      const teamRef = doc(db, 'classes', classId, 'teams', teamId);
+      const stateRef = doc(db, 'classes', classId, 'state', 'game');
+
+      await runTransaction(db, async (tx) => {
+        const classSnap = await tx.get(classRef);
+        const stateSnap = await tx.get(stateRef);
+
+        if (!classSnap.exists()) throw new Error("Class not found");
+
+        const classData = classSnap.data() as SimulationClass;
+        const stateData = stateSnap.data() || {};
+        const gameState = stateData.gameState as GameState;
+
+        const randAlpha4 = () => {
+          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+          let result = '';
+          for (let i = 0; i < 4; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+          }
+          return result;
+        };
+
+        const newTeamCodes = { ...classData.teamCodes };
+        if (targetType === 'BOT') {
+          newTeamCodes[teamId] = 'BOT';
+        } else {
+          newTeamCodes[teamId] = `TM-${randAlpha4()}`;
+        }
+
+        const newTeamRegistry = classData.teamRegistry.map(t => {
+          if (t.id === teamId) {
+            const updatedTeam: ClassTeam = {
+              ...t,
+              isBot: targetType === 'BOT',
+              ceoName: '',
+              ceoPin: ''
+            };
+            if (targetType === 'BOT') {
+              updatedTeam.botProfile = profile;
+              updatedTeam.botDifficulty = difficulty;
+            } else {
+              delete updatedTeam.botProfile;
+              delete updatedTeam.botDifficulty;
+            }
+            return updatedTeam;
+          }
+          return t;
+        });
+
+        tx.update(classRef, removeUndefined({
+          teamCodes: newTeamCodes,
+          teamRegistry: newTeamRegistry
+        }));
+
+        const teamUpdates: any = {
+          isBot: targetType === 'BOT',
+          ceoName: '',
+          ceoPin: '',
+          updatedAt: serverTimestamp()
+        };
+        if (targetType === 'BOT') {
+          teamUpdates.botProfile = profile;
+          teamUpdates.botDifficulty = difficulty;
+        } else {
+          teamUpdates.botProfile = '';
+          teamUpdates.botDifficulty = '';
+        }
+        tx.set(teamRef, removeUndefined(teamUpdates), { merge: true });
+
+        if (gameState) {
+          const newTeams = gameState.teams.map(t => {
+            if (t.id === teamId) {
+              const updatedTeam: Team = {
+                ...t,
+                isBot: targetType === 'BOT',
+                ceoName: '',
+                ceoPin: ''
+              };
+              if (targetType === 'BOT') {
+                updatedTeam.botProfile = profile;
+                updatedTeam.botDifficulty = difficulty;
+              } else {
+                delete updatedTeam.botProfile;
+                delete updatedTeam.botDifficulty;
+              }
+              return updatedTeam;
+            }
+            return t;
+          });
+
+          const newBotConfig = gameState.botConfig || { enabled: true, seed: Math.floor(Math.random() * 1000000) };
+
+          tx.update(stateRef, removeUndefined({
+            'gameState.teams': newTeams,
+            'gameState.botConfig': newBotConfig
+          }));
+        }
+      });
+
+      toast.success(`Team converted to ${targetType === 'BOT' ? 'Bot' : 'Human'}.`);
+    } catch (err: any) {
+      console.error("Seat conversion error:", err);
+      toast.error(`Failed to convert team: ${err.message || err}`);
+    }
+  };
+
   const selectClass = (classId: string | null) => {
     setCurrentClassId(classId);
     if (classId) {
@@ -672,7 +824,8 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       facilitatorChangeCeoPin,
       migrateLegacyClass,
       selectClass,
-      selectTeam
+      selectTeam,
+      convertTeamSeat
     }}>
       {children}
     </SessionContext.Provider>

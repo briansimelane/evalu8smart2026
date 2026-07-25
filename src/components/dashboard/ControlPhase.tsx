@@ -26,7 +26,7 @@ interface ControlPhaseProps {
 }
 
 export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
-  const { gameState, addRoundData, getCurrentRound, recalculateControlPoints } = useGame();
+  const { gameState, addRoundData, getCurrentRound, recalculateControlPoints, endGame } = useGame();
   const { currentRole, currentTeamId } = useSession();
   const [controlCalculated, setControlCalculated] = useState(false);
   const [regionControlResults, setRegionControlResults] = useState<RegionControlResult[]>([]);
@@ -411,10 +411,13 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
               </div>
             )}
 
-            {currentRound >= 5 && (
+            {(currentRound >= 5 || gameState.gameEnded) && (
               <div className="pt-4 border-t border-border">
                 <Button
                   onClick={() => {
+                    if (!gameState.gameEnded) {
+                      endGame();
+                    }
                     toast.success("Game Ended! Displaying final Summary Map.");
                     if (onEndGame) onEndGame();
                   }}
@@ -422,7 +425,7 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                   className="w-full bg-gradient-to-r from-warning via-warning to-warning hover:from-warning hover:to-amber-800 text-white font-extrabold shadow-xl gap-2 text-lg py-6"
                 >
                   <Trophy className="h-6 w-6 text-yellow-200 animate-bounce" />
-                  End Game — View Summary Map
+                  {gameState.gameEnded ? "Game Ended — View Summary Map" : "End Game — View Summary Map"}
                 </Button>
               </div>
             )}

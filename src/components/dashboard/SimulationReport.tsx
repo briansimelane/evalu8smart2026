@@ -194,7 +194,7 @@ export const SimulationReport = () => {
                     const totalCustomersSold = data.customersSold?.length || 0;
                     const lostProducts = data.productsProduced - totalCustomersSold;
                     const roundControl = getControlPointsForTeamInRound(round, team.id, gameState);
-                    const patentBonus = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber);
+                    const patentBonus = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber, gameState.gameEnded, gameState.currentRound);
                     const scoreBreakdown = calculateTeamTotalScore(team.id, round.roundNumber, gameState);
                     const overallValue = scoreBreakdown.totalScore;
                     const isExpanded = expandedRounds[`${team.id}-${round.roundNumber}`];
@@ -402,7 +402,7 @@ export const SimulationReport = () => {
                         const totalCustomersSold = data.customersSold?.length || 0;
                         const lostProducts = data.productsProduced - totalCustomersSold;
                         const roundControl = getControlPointsForTeamInRound(round, team.id, gameState);
-                        const patentBonus = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber);
+                        const patentBonus = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber, gameState.gameEnded, gameState.currentRound);
                         const scoreBreakdown = calculateTeamTotalScore(team.id, round.roundNumber, gameState);
                         const overallValue = scoreBreakdown.totalScore;
                         const isExpanded = expandedRounds[`${team.id}-${round.roundNumber}`];

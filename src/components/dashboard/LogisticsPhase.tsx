@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
+import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, Wifi, Gamepad2, Battery, Radio, Signal, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { GameIcon } from './GameIcon';
 import { useToast } from '@/hooks/use-toast';
 import { getControlPointsForRegion } from '@/data/control';
@@ -249,12 +250,21 @@ export const LogisticsPhase = () => {
                     <div className="flex items-center justify-between font-bold">
                       <div className="flex items-center gap-1.5 truncate">
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
-                        <span className="truncate">{index + 1}. {team.name}</span>
+                        <span className="truncate flex items-center gap-1">
+                          {index + 1}. {team.name}
+                          {team.isBot && <span className="scale-90 text-[10px]">🤖</span>}
+                        </span>
                       </div>
                       {isActiveTurn && (
-                        <Badge className="bg-primary text-white text-[9px] px-1 py-0 font-extrabold uppercase">
-                          Turn
-                        </Badge>
+                        gameState?.botThinking?.[team.id] ? (
+                          <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded animate-pulse font-bold flex items-center gap-1 shrink-0">
+                            Thinking...
+                          </span>
+                        ) : (
+                          <Badge className="bg-primary text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                            Turn
+                          </Badge>
+                        )
                       )}
                     </div>
                     <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
@@ -387,18 +397,26 @@ export const LogisticsPhase = () => {
                                 )}
                               </div>
                               <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                                <span className="flex items-center gap-1">
-                                  <Truck className="h-3 w-3" />
-                                  Cost: {region.logisticsCost}
+                                <span className="flex items-center gap-1 font-medium">
+                                  <Truck className="h-3.5 w-3.5" />
+                                  Logistics Cost: <strong className="text-foreground">{region.logisticsCost}</strong>
                                 </span>
-                                <span className="flex items-center gap-1">
-                                  <Users className="h-3 w-3" />
-                                  {region.teamsPresent.length}/{region.maxTeams} teams
+                                <span className="flex items-center gap-1 font-medium">
+                                  <Users className="h-3.5 w-3.5" />
+                                  Presence: <strong className="text-foreground">{region.teamsPresent.length}/{region.maxTeams} teams</strong>
                                 </span>
-                                <span className="flex items-center gap-1">
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                                <span className="text-xs font-semibold text-muted-foreground">Control Points:</span>
+                                <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-bold gap-1 px-2 py-0.5">
                                   <Trophy className="h-3 w-3 text-warning" />
-                                  Control: {getControlPointsForRegion(region.name, region.teamsPresent.length, 'first')} / {getControlPointsForRegion(region.name, region.teamsPresent.length, 'second')}
-                                </span>
+                                  1st Place: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'first')} pts
+                                </Badge>
+                                {getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second') > 0 && (
+                                  <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30 text-xs font-bold gap-1 px-2 py-0.5">
+                                    2nd Place: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second')} pts
+                                  </Badge>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -594,15 +612,26 @@ export const LogisticsPhase = () => {
                               <Badge variant="secondary">Full</Badge>
                             )}
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                            <span className="flex items-center gap-1 font-medium">
                               <Truck className="h-3 w-3" />
                               Cost: {region.logisticsCost}
                             </span>
-                            <span className="flex items-center gap-1">
+                            <span className="flex items-center gap-1 font-medium">
                               <Users className="h-3 w-3" />
                               {region.teamsPresent.length}/{region.maxTeams} teams
                             </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                            <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-bold gap-1 px-1.5 py-0">
+                              <Trophy className="h-3 w-3 text-warning" />
+                              1st: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'first')} pts
+                            </Badge>
+                            {getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second') > 0 && (
+                              <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30 text-[10px] font-bold px-1.5 py-0">
+                                2nd: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second')} pts
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>

@@ -78,7 +78,15 @@ export const PhaseLockCard: React.FC<PhaseLockCardProps> = ({ phaseName }) => {
             <div key={t.id} className="flex items-center justify-between p-2 rounded-lg bg-card border border-border">
               <div className="flex items-center gap-1.5 truncate">
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
-                <span className="font-semibold truncate">{t.name}</span>
+                <span className="font-semibold truncate flex items-center gap-1.5 flex-wrap">
+                  {t.name}
+                  {t.isBot && <span className="text-[10px] scale-90">🤖</span>}
+                  {gameState?.botThinking?.[t.id] && (
+                    <span className="text-[10px] bg-amber-500/10 text-amber-600 border border-amber-500/20 px-1 py-0 rounded animate-pulse font-normal">
+                      thinking...
+                    </span>
+                  )}
+                </span>
               </div>
               {t.hasSubmitted ? (
                 <Badge className="bg-success/20 text-success dark:text-success border border-success/30 text-[10px] py-0 px-1 font-bold">

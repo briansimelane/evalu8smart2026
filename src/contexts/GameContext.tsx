@@ -9,6 +9,7 @@ import { useSession } from '@/contexts/SessionContext';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
+import { removeUndefined } from '@/lib/utils';
 
 export interface GameContextType {
   gameState: GameState | null;
@@ -24,6 +25,7 @@ export interface GameContextType {
   advanceRound: () => void;
   updatePhase: (phase: string) => void;
   claimImprovementCard: (cardId: number, teamId: string) => void;
+  setBotThinking: (teamId: string, thinking: boolean) => void;
   markImprovementCardUsed: (cardId: number) => void;
   clearNonInitialCards: () => void;
   previewNextRoundCards: () => import('@/data/improvements').ImprovementCardData[];
@@ -39,6 +41,7 @@ export interface GameContextType {
   updateCombinations: (data: Combination[] | null) => void;
   getCombinations: () => Combination[];
   recalculateControlPoints: () => void;
+  endGame: () => void;
 }
 
 export const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -56,21 +59,33 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const { currentClassId, activeClass } = useSession();
   
-  // Tracks if the state update was initiated from the Firestore snapshot listener
-  const isIncomingSnapshot = useRef(false);
-  const loadedForClassId = useRef<string | null>(null);
-  const dirty = useRef(false);
-
   const mutateGameState = useCallback((updater: (prev: GameState | null) => GameState | null) => {
-    dirty.current = true;
-    setGameState(updater);
-  }, []);
+    setGameState(prev => {
+      const next = updater(prev);
+      if (next) {
+        const safeState = { ...next };
+        if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
+        safeState.updatedAt = new Date().toISOString() as any;
+
+        setTimeout(() => {
+          if (currentClassId) {
+            const stateDocRef = doc(db, 'classes', currentClassId, 'state', 'game');
+            setDoc(stateDocRef, removeUndefined({ gameState: safeState }))
+              .catch(e => console.error("Failed to save class game to Firebase:", e));
+          } else {
+            const docRef = doc(db, 'evalu8smart_sessions', 'default_game');
+            setDoc(docRef, removeUndefined(safeState))
+              .catch(e => console.error("Failed to save game to Firebase:", e));
+          }
+        }, 0);
+      }
+      return next;
+    });
+  }, [currentClassId]);
 
   useEffect(() => {
     setGameState(null);
     setIsLoaded(false);
-    loadedForClassId.current = null;
-    dirty.current = false;
 
     if (!currentClassId) {
       let isMounted = true;
@@ -82,8 +97,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
             const data = snap.data() as GameState;
             if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
             if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
-            loadedForClassId.current = null;
-            isIncomingSnapshot.current = true;
             setGameState(data);
           } else {
             setGameState(null);
@@ -105,9 +118,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
           if (data) {
             if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
             if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
-            
-            loadedForClassId.current = currentClassId;
-            isIncomingSnapshot.current = true;
             setGameState(data);
           } else {
             setGameState(null);
@@ -118,8 +128,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
             if (classSnap.exists()) {
               const legacyData = classSnap.data() as SimulationClass;
               if (legacyData.gameState) {
-                loadedForClassId.current = currentClassId;
-                isIncomingSnapshot.current = true;
                 setGameState(legacyData.gameState);
               } else {
                 setGameState(null);
@@ -136,47 +144,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       return () => unsubscribe();
     }
   }, [currentClassId]);
-
-  useEffect(() => {
-    if (!isLoaded || !gameState) return;
-    
-    // Bypass writing back if this update originated from the database snapshot
-    if (isIncomingSnapshot.current) {
-      isIncomingSnapshot.current = false;
-      return;
-    }
-
-    if (!currentClassId) {
-      if (!dirty.current) return;
-      dirty.current = false;
-
-      const docRef = doc(db, 'evalu8smart_sessions', 'default_game');
-      const safeState = { ...gameState };
-      if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
-      safeState.updatedAt = new Date().toISOString() as any;
-      
-      setDoc(docRef, safeState)
-        .catch(e => console.error("Failed to save game to Firebase:", e));
-    } else {
-      // HARD GUARD: never write a state loaded from or belonging to a different class
-      if (loadedForClassId.current !== currentClassId) return;
-
-      if (!dirty.current) return;
-      dirty.current = false;
-
-      const safeState = { ...gameState };
-      if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
-      safeState.updatedAt = new Date().toISOString() as any;
-      
-      const timer = setTimeout(() => {
-        const stateDocRef = doc(db, 'classes', currentClassId, 'state', 'game');
-        setDoc(stateDocRef, { gameState: safeState })
-          .catch(e => console.error("Failed to save class game to Firebase:", e));
-      }, 400);
-
-      return () => clearTimeout(timer);
-    }
-  }, [gameState, isLoaded, currentClassId]);
 
   const initializeGame = (teams: Team[]) => {
     // Create initial improvement cards for each team with UNIQUE IDs
@@ -518,7 +485,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
             newCards.push({
               id: productCardId,
               icon1: 'Product',
-              icon2: undefined as any,
+              icon2: 'None' as any,
               availableForTeam: team.id,
               used: false,
               isInitial: false,
@@ -565,6 +532,35 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  const endGame = () => {
+    if (!gameState) return;
+
+    mutateGameState(prev => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        gameEnded: true,
+        updatedAt: new Date()
+      };
+    });
+  };
+
+  const setBotThinking = (teamId: string, thinking: boolean) => {
+    if (!gameState) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        botThinking: {
+          ...(prev.botThinking || {}),
+          [teamId]: thinking
+        },
+        updatedAt: new Date()
+      };
+    });
+  };
+
   const claimImprovementCard = (cardId: number, teamId: string) => {
     if (!gameState) return;
 
@@ -605,7 +601,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
             newCards.push({
               id: productCardId,
               icon1: 'Product',
-              icon2: undefined as any,
+              icon2: 'None' as any,
               availableForTeam: t.id,
               used: false,
               isInitial: false,
@@ -1127,6 +1123,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         advanceRound,
         updatePhase,
         claimImprovementCard,
+        setBotThinking,
         markImprovementCardUsed,
         clearNonInitialCards,
         previewNextRoundCards,
@@ -1142,6 +1139,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         getCombinations,
         updateCombinations,
         recalculateControlPoints,
+        endGame,
       }}
     >
       {children}

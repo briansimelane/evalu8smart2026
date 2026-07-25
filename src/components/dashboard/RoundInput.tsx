@@ -86,7 +86,7 @@ export const RoundInput = forwardRef<RoundInputRef>((props, ref) => {
 
 
   // Calculate price (5 + combination price effect + improvement effect)
-  const calculatedPrice = selectedComboData ? 5 + selectedComboData.price + improvementPriceEffect : 0;
+  const calculatedPrice = selectedComboData ? Math.max(2, Math.min(8, 5 + selectedComboData.price + improvementPriceEffect)) : 0;
   
   // Calculate production
   const productsAvailable = (selectedComboData?.products || 0) + improvementProductEffect;

@@ -220,7 +220,8 @@ export const FinancialsPhase = () => {
     // Balance sheet (always YTD snapshot)
     const latestTd = latestRound.teamData[t.id];
     const cash = latestTd?.totalMoney ?? 0;
-    const patentBonus = getTeamPatentPoints(t.id, gameState.patents, latestRound ? latestRound.roundNumber : gameState.currentRound);
+    const targetR = latestRound ? latestRound.roundNumber : gameState.currentRound;
+    const patentBonus = getTeamPatentPoints(t.id, gameState.patents, targetR, gameState.gameEnded, gameState.currentRound);
     const researchInvestments = gameState.teamResearchProgress[t.id]
       ? Object.values(gameState.teamResearchProgress[t.id].technologyInvestments).reduce((s, v) => s + v, 0)
       : 0;

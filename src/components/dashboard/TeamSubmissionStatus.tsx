@@ -87,7 +87,7 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-bold text-xs">
-                  Round {currentRound}
+                  Round {activeRoundNumber}
                 </Badge>
                 <Badge variant="secondary" className="text-xs uppercase font-semibold">
                   {activePhase === 'innovation' ? 'Research Phase' : activePhase === 'expansion' ? 'Logistics Phase' : `${activePhase} Phase`}
@@ -109,7 +109,7 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
                 Team Decision & Submission Status
               </CardTitle>
               <CardDescription className="text-sm mt-1">
-                {tabName} report for Round {currentRound} will update once round results are advanced by the facilitator.
+                {tabName} report for Round {activeRoundNumber} will update once round results are advanced by the facilitator.
               </CardDescription>
             </div>
 
@@ -148,8 +148,8 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
                 <div>
                   <span className="font-bold">{myTeam.name}: </span>
                   {myTeam.hasSubmitted 
-                    ? `Your decisions for Round ${currentRound} have been successfully submitted!` 
-                    : `Your team has NOT submitted Round ${currentRound} decisions yet.`}
+                    ? `Your decisions for Round ${activeRoundNumber} have been successfully submitted!` 
+                    : `Your team has NOT submitted Round ${activeRoundNumber} decisions yet.`}
                 </div>
               </div>
             </div>
@@ -178,8 +178,15 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
                         className="w-3 h-3 rounded-full border border-border"
                         style={{ backgroundColor: team.color }}
                       />
-                      <span className="font-bold text-sm text-foreground">
+                      <span className="font-bold text-sm text-foreground flex items-center gap-1.5 flex-wrap">
                         {team.name}
+                        {team.isBot && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 font-normal">🤖 Bot</span>}
+                        {gameState?.botThinking?.[team.id] && (
+                          <span className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 px-2 py-0.5 rounded animate-pulse font-normal flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                            Thinking...
+                          </span>
+                        )}
                       </span>
                     </div>
 

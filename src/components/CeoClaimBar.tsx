@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
-import { ShieldCheck, ShieldAlert, Key, LogOut, LayoutDashboard } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Key, LogOut, LayoutDashboard, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -98,6 +98,32 @@ export const CeoClaimBar: React.FC = () => {
         <Button variant="outline" size="sm" onClick={logout} className="border-border hover:bg-muted text-foreground">
           Logout
         </Button>
+      </div>
+    );
+  }
+
+  if (team.isBot) {
+    return (
+      <div className="w-full bg-card border border-border rounded-xl p-4 flex items-center gap-3 mb-6 shadow-md relative overflow-hidden">
+        <div className="absolute top-0 left-0 h-1 w-full bg-blue-500" />
+        <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-200 flex items-center justify-center">
+          <Bot className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Team Role Status</span>
+            <span
+              className="w-2.5 h-2.5 rounded-full"
+              style={{ backgroundColor: team.color }}
+            />
+            <span className="text-xs font-bold uppercase" style={{ color: team.color }}>
+              {team.name}
+            </span>
+          </div>
+          <p className="text-sm font-semibold text-foreground mt-0.5">
+            This seat is automated by a Bot player. Humans cannot claim the CEO seat or make actions for this team.
+          </p>
+        </div>
       </div>
     );
   }

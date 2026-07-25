@@ -1,23 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye } from 'lucide-react';
+import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Team, SimulationClass, ClassTeam } from '@/types/game';
+import { Team, SimulationClass, ClassTeam, BotProfile, BotDifficulty } from '@/types/game';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Predefined colors for teams
 const DEFAULT_TEAMS = [
-  { name: 'Green Team', color: '#22c55e' },
-  { name: 'Blue Team', color: '#3b82f6' },
-  { name: 'Black Team', color: '#1f2937' },
-  { name: 'Yellow Team', color: '#eab308' },
-  { name: 'Red Team', color: '#ef4444' }
+  { name: 'Green Team', color: '#22c55e', isBot: false, botProfile: 'BALANCED' as BotProfile, botDifficulty: 'MEDIUM' as BotDifficulty },
+  { name: 'Blue Team', color: '#3b82f6', isBot: false, botProfile: 'BALANCED' as BotProfile, botDifficulty: 'MEDIUM' as BotDifficulty },
+  { name: 'Black Team', color: '#1f2937', isBot: false, botProfile: 'BALANCED' as BotProfile, botDifficulty: 'MEDIUM' as BotDifficulty },
+  { name: 'Yellow Team', color: '#eab308', isBot: false, botProfile: 'BALANCED' as BotProfile, botDifficulty: 'MEDIUM' as BotDifficulty },
+  { name: 'Red Team', color: '#ef4444', isBot: false, botProfile: 'BALANCED' as BotProfile, botDifficulty: 'MEDIUM' as BotDifficulty }
 ];
 
 interface ClassTeamCodesTableProps {
@@ -27,7 +29,7 @@ interface ClassTeamCodesTableProps {
 }
 
 const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, handleCopy, copiedCode }) => {
-  const { selectClass, selectTeam, facilitatorReleaseCeoSlot, facilitatorChangeCeoPin } = useSession();
+  const { selectClass, selectTeam, facilitatorReleaseCeoSlot, facilitatorChangeCeoPin, convertTeamSeat } = useSession();
   const [subcollectionTeams, setSubcollectionTeams] = useState<Record<string, ClassTeam>>({});
   const navigate = useNavigate();
 
@@ -54,7 +56,8 @@ const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, handleCo
         name: `Team ${idx + 1}`,
         color: ['#22c55e', '#3b82f6', '#1f2937', '#eab308', '#ef4444'][idx % 5],
         ceoName: '',
-        ceoPin: ''
+        ceoPin: '',
+        isBot: false
       }));
 
   if (teamsToRender.length === 0) {
@@ -88,46 +91,60 @@ const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, handleCo
           const teamId = team.id || `team_${idx + 1}`;
           const code = cls.teamCodes?.[teamId];
           const liveTeamDoc = subcollectionTeams[teamId];
+          
+          const isBot = !!liveTeamDoc?.isBot || !!team.isBot || code === 'BOT';
+          const profile = liveTeamDoc?.botProfile || team.botProfile || 'BALANCED';
+          const difficulty = liveTeamDoc?.botDifficulty || team.botDifficulty || 'MEDIUM';
+
           const effectiveCeoName = liveTeamDoc?.ceoName || team.ceoName || '';
           const effectiveCeoPin = liveTeamDoc?.ceoPin || team.ceoPin || '';
           const hasCeo = !!effectiveCeoName;
 
           return (
             <TableRow key={team.id} className="border-border hover:bg-muted/10 transition-colors">
-              <TableCell className="font-semibold text-foreground">{team.name}</TableCell>
+              <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
+                {team.name}
+                {isBot && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 font-normal flex items-center gap-1">🤖 Bot</span>}
+              </TableCell>
               <TableCell>
                 <span
                   className="inline-block w-4 h-4 rounded-full border border-border"
                   style={{ backgroundColor: team.color }}
                 />
               </TableCell>
-              <TableCell className="font-mono text-blue-600 font-bold tracking-wider">
-                <div className="flex items-center gap-1.5">
-                  {code ? (
-                    <>
-                      <span>{code}</span>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6 hover:bg-muted text-muted-foreground"
-                        onClick={() => handleCopy(code)}
-                      >
-                        {copiedCode === code ? (
-                          <Check className="h-3.5 w-3.5 text-emerald-600" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </>
-                  ) : (
-                    <span className="text-red-500 font-semibold text-xs border border-red-200 bg-red-50 px-2 py-0.5 rounded">
-                      code missing — data integrity issue
-                    </span>
-                  )}
-                </div>
+              <TableCell className="font-mono text-blue-600 font-bold tracking-wider text-xs">
+                {isBot ? (
+                  <span className="text-xs px-2 py-0.5 rounded border border-blue-250 bg-blue-50 text-blue-700 capitalize">
+                    {profile.toLowerCase()} ({difficulty.toLowerCase()})
+                  </span>
+                ) : code ? (
+                  <div className="flex items-center gap-1.5">
+                    <span>{code}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 hover:bg-muted text-muted-foreground"
+                      onClick={() => handleCopy(code)}
+                    >
+                      {copiedCode === code ? (
+                        <Check className="h-3.5 w-3.5 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <span className="text-red-500 font-semibold text-xs border border-red-200 bg-red-50 px-2 py-0.5 rounded">
+                    code missing — data integrity issue
+                  </span>
+                )}
               </TableCell>
               <TableCell className="text-sm">
-                {hasCeo ? (
+                {isBot ? (
+                  <span className="text-muted-foreground text-xs flex items-center gap-1">
+                    🤖 Auto Play
+                  </span>
+                ) : hasCeo ? (
                   <span className="text-emerald-600 font-semibold">
                     {effectiveCeoName} <span className="text-xs text-muted-foreground">(PIN: {effectiveCeoPin || 'N/A'})</span>
                   </span>
@@ -149,7 +166,33 @@ const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, handleCo
                     <Eye className="h-3.5 w-3.5" />
                     View/Edit Team
                   </Button>
-                  {hasCeo && (
+
+                  {/* Convert Seat Button */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      if (isBot) {
+                        if (confirm(`Are you sure you want to convert ${team.name} to a Human team?`)) {
+                          await convertTeamSeat(cls.id, teamId, 'HUMAN');
+                        }
+                      } else {
+                        const prof = prompt("Enter bot profile (BALANCED, RESEARCHER, EXPANDER, PRICE_FIGHTER):", "BALANCED");
+                        if (prof !== null) {
+                          const diff = prompt("Enter bot difficulty (EASY, MEDIUM, HARD):", "MEDIUM");
+                          if (diff !== null) {
+                            await convertTeamSeat(cls.id, teamId, 'BOT', prof.toUpperCase() as BotProfile, diff.toUpperCase() as BotDifficulty);
+                          }
+                        }
+                      }
+                    }}
+                    className="h-7 px-2 border-border text-foreground hover:bg-muted text-xs flex items-center gap-1"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    {isBot ? 'Make Human' : 'Make Bot'}
+                  </Button>
+
+                  {!isBot && hasCeo && (
                     <>
                       <Button
                         size="sm"
@@ -216,11 +259,19 @@ export const FacilitatorHub: React.FC = () => {
       const activeConfigs = teamConfigs.slice(0, numTeams);
 
       // Map to actual Team interface
-      const teams: Team[] = activeConfigs.map((t, idx) => ({
-        id: `team_${idx + 1}`,
-        name: t.name,
-        color: t.color
-      }));
+      const teams: Team[] = activeConfigs.map((t, idx) => {
+        const teamObj: Team = {
+          id: `team_${idx + 1}`,
+          name: t.name,
+          color: t.color,
+          isBot: !!t.isBot,
+        };
+        if (t.isBot) {
+          teamObj.botProfile = t.botProfile || 'BALANCED';
+          teamObj.botDifficulty = t.botDifficulty || 'MEDIUM';
+        }
+        return teamObj;
+      });
 
       await createClass(className, teams);
       toast.success(`Class "${className}" created successfully!`);
@@ -318,37 +369,93 @@ export const FacilitatorHub: React.FC = () => {
                 </label>
                 <div className="space-y-3 bg-muted/40 p-3 rounded-lg border border-border font-sans">
                   {teamConfigs.slice(0, numTeams).map((team, idx) => (
-                    <div key={idx} className="flex items-center gap-3 bg-card p-2 rounded border border-border">
-                      <span className="text-xs font-mono text-muted-foreground font-bold min-w-[50px]">
-                        Team {idx + 1}
-                      </span>
-                      <Input
-                        type="text"
-                        required
-                        value={team.name}
-                        onChange={(e) => {
-                          const updated = [...teamConfigs];
-                          updated[idx] = { ...updated[idx], name: e.target.value };
-                          setTeamConfigs(updated);
-                        }}
-                        className="h-8 bg-background border-border text-foreground text-xs flex-1"
-                        placeholder={`Team ${idx + 1} Name`}
-                      />
-                      <div className="relative flex items-center gap-1.5">
-                        <input
-                          type="color"
-                          value={team.color}
+                    <div key={idx} className="space-y-2.5 bg-card p-3 rounded border border-border">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono text-muted-foreground font-bold min-w-[50px]">
+                          Team {idx + 1}
+                        </span>
+                        <Input
+                          type="text"
+                          required
+                          value={team.name}
                           onChange={(e) => {
                             const updated = [...teamConfigs];
-                            updated[idx] = { ...updated[idx], color: e.target.value };
+                            updated[idx] = { ...updated[idx], name: e.target.value };
                             setTeamConfigs(updated);
                           }}
-                          className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent p-0"
+                          className="h-8 bg-background border-border text-foreground text-xs flex-1"
+                          placeholder={`Team ${idx + 1} Name`}
                         />
-                        <span className="text-[11px] font-mono text-muted-foreground uppercase">
-                          {team.color}
-                        </span>
+                        <div className="relative flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={team.color}
+                            onChange={(e) => {
+                              const updated = [...teamConfigs];
+                              updated[idx] = { ...updated[idx], color: e.target.value };
+                              setTeamConfigs(updated);
+                            }}
+                            className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent p-0 animate-none"
+                          />
+                        </div>
+                        <div className="flex flex-col items-center justify-center gap-1 min-w-[50px]">
+                          <label className="text-[10px] text-muted-foreground flex items-center gap-0.5"><Bot className="h-3 w-3" /> Bot</label>
+                          <Switch
+                            checked={!!team.isBot}
+                            onCheckedChange={(checked) => {
+                              const updated = [...teamConfigs];
+                              updated[idx] = { ...updated[idx], isBot: checked };
+                              setTeamConfigs(updated);
+                            }}
+                          />
+                        </div>
                       </div>
+
+                      {team.isBot && (
+                        <div className="flex gap-2 pt-2 border-t border-border/30 bg-muted/20 p-2 rounded">
+                          <div className="flex-1 space-y-1">
+                            <label className="text-[10px] text-muted-foreground">Bot Behavior Profile</label>
+                            <Select
+                              value={team.botProfile || 'BALANCED'}
+                              onValueChange={(val) => {
+                                const updated = [...teamConfigs];
+                                updated[idx] = { ...updated[idx], botProfile: val as BotProfile };
+                                setTeamConfigs(updated);
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-[10px] py-0 px-2 bg-background">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="text-xs">
+                                <SelectItem value="BALANCED">Balanced</SelectItem>
+                                <SelectItem value="RESEARCHER">Researcher</SelectItem>
+                                <SelectItem value="EXPANDER">Expander</SelectItem>
+                                <SelectItem value="PRICE_FIGHTER">Price Fighter</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <label className="text-[10px] text-muted-foreground">Difficulty Level</label>
+                            <Select
+                              value={team.botDifficulty || 'MEDIUM'}
+                              onValueChange={(val) => {
+                                const updated = [...teamConfigs];
+                                updated[idx] = { ...updated[idx], botDifficulty: val as BotDifficulty };
+                                setTeamConfigs(updated);
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-[10px] py-0 px-2 bg-background">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="text-xs">
+                                <SelectItem value="EASY">Easy</SelectItem>
+                                <SelectItem value="MEDIUM">Medium</SelectItem>
+                                <SelectItem value="HARD">Hard</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
