@@ -72,13 +72,19 @@ export function calculatePlanStats(
 
 export function getTechnologyCostForTeam(gameState: GameState, teamId: string, technologyName: string): number {
   const tech = gameState.technologies[technologyName];
-  if (!tech) return 0;
+  let baseCost = tech ? tech.researchCost : 4;
+  
+  if (technologyName.toUpperCase().includes('WIFI')) {
+    baseCost = 3;
+  } else if (technologyName.toUpperCase().includes('GPS')) {
+    baseCost = 3;
+  }
 
   const patentHolder = gameState.patents[technologyName];
   if (patentHolder && patentHolder !== teamId) {
-    return Math.max(0, tech.researchCost - 1);
+    return Math.max(0, baseCost - 1);
   }
-  return tech.researchCost;
+  return baseCost;
 }
 
 export function canExpandToRegion(gameState: GameState, teamId: string, regionName: string): boolean {

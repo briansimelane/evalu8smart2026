@@ -449,8 +449,12 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     const techCosts: Record<string, number> = {
       'GPS': 3,
       'Wifi': 3,
+      'WIFI': 3,
+      'Wi-Fi': 3,
       'Gaming': 4,
+      'GAMING': 4,
       'Battery': 4,
+      'BATTERY': 4,
       'NFC': 5,
       '4G': 6,
     };
@@ -509,7 +513,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
           name: tech, 
           researchPoints: 0, 
           maxPoints: 6,
-          researchCost: techCosts[tech] || 4,
+          researchCost: tech.toUpperCase().includes('WIFI') ? 3 : (techCosts[tech] || 4),
           teamProgress: {}
         }
       }), {}),

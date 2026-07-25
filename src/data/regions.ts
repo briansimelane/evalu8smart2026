@@ -28,7 +28,7 @@ export const REGION_CONFIGS: RegionConfig[] = [
     name: 'USA',
     logisticsCost: 4,
     maxTeams: 5,
-    connectedRegions: ['Canada', 'Australia', 'Caribbean', 'South America']
+    connectedRegions: ['Canada', 'Australia', 'Caribbean', 'South America', 'Europe']
   },
   {
     name: 'Emirates',

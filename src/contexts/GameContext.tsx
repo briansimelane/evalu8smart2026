@@ -167,8 +167,12 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     const techCosts: Record<string, number> = {
       'GPS': 3,
       'Wifi': 3,
+      'WIFI': 3,
+      'Wi-Fi': 3,
       'Gaming': 4,
+      'GAMING': 4,
       'Battery': 4,
+      'BATTERY': 4,
       'NFC': 5,
       '4G': 6,
     };
@@ -233,7 +237,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
           name: tech, 
           researchPoints: 0, 
           maxPoints: 6,
-          researchCost: techCosts[tech] || 4,
+          researchCost: tech.toUpperCase().includes('WIFI') ? 3 : (techCosts[tech] || 4),
           teamProgress: {}
         }
       }), {}),
@@ -837,16 +841,22 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     if (!gameState) return 0;
     
     const tech = gameState.technologies[technology];
-    if (!tech) return 0;
+    let baseCost = tech ? tech.researchCost : 4;
+    
+    if (technology.toUpperCase().includes('WIFI')) {
+      baseCost = 3;
+    } else if (technology.toUpperCase().includes('GPS')) {
+      baseCost = 3;
+    }
 
     const patentHolder = gameState.patents[technology];
     
     // If patent exists and it's not this team, reduce cost by 1
     if (patentHolder && patentHolder !== teamId) {
-      return tech.researchCost - 1;
+      return Math.max(0, baseCost - 1);
     }
     
-    return tech.researchCost;
+    return baseCost;
   }, [gameState]);
 
   const calculatePlayOrder = (roundNumber: number): Team[] => {
