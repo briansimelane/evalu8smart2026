@@ -1,7 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { db } from '@/lib/firebase';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { 
+  getAuth,
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  sendPasswordResetEmail, 
+  signOut, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { db, auth } from '@/lib/firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, deleteField } from 'firebase/firestore';
-import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, BotProfile, BotDifficulty } from '@/types/game';
+import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, BotProfile, BotDifficulty, FacilitatorUser } from '@/types/game';
 import { toast } from 'sonner';
 import { REGIONS, TECHNOLOGIES, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS } from '@/data/improvements';
@@ -12,6 +21,9 @@ interface SessionContextType {
   currentRole: UserRole | null;
   currentClassId: string | null;
   currentTeamId: string | null;
+  currentUserEmail: string | null;
+  currentUserName: string | null;
+  facilitators: FacilitatorUser[];
   classes: SimulationClass[];
   classesLoaded: boolean;
   activeClass: SimulationClass | null;
@@ -20,6 +32,9 @@ interface SessionContextType {
   isCeo: boolean;
   ceoName: string | null;
   login: (code: string) => Promise<{ success: boolean; message?: string; role?: UserRole }>;
+  loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; message?: string; role?: UserRole }>;
+  createFacilitatorAccount: (name: string, email: string, defaultPassword: string) => Promise<{ success: boolean; message?: string }>;
+  sendFacilitatorPasswordReset: (email: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   createClass: (name: string, teams: Team[]) => Promise<string>;
   deleteClass: (classId: string) => Promise<void>;
@@ -47,6 +62,9 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
   const [currentClassId, setCurrentClassId] = useState<string | null>(null);
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(localStorage.getItem('evalu8_user_email'));
+  const [currentUserName, setCurrentUserName] = useState<string | null>(localStorage.getItem('evalu8_user_name'));
+  const [facilitators, setFacilitators] = useState<FacilitatorUser[]>([]);
   const [classes, setClasses] = useState<SimulationClass[]>([]);
   const [classesLoaded, setClassesLoaded] = useState(false);
   const [classesLoadError, setClassesLoadError] = useState<any>(null);
@@ -56,16 +74,50 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   // CEO state from localStorage
   const [localCeoPin, setLocalCeoPin] = useState<string | null>(localStorage.getItem('evalu8_ceo_pin'));
 
+  // Listen to Firebase Auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUserEmail(user.email);
+        localStorage.setItem('evalu8_user_email', user.email || '');
+      } else if (!localStorage.getItem('evalu8_role')) {
+        setCurrentUserEmail(null);
+        setCurrentUserName(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Listen to facilitators collection in Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'facilitators'), (snapshot) => {
+      const list: FacilitatorUser[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as FacilitatorUser);
+      });
+      setFacilitators(list);
+    }, (error) => {
+      console.error('Error fetching facilitators:', error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // Load auth state from localStorage on mount
   useEffect(() => {
     const role = localStorage.getItem('evalu8_role') as UserRole | null;
     const classId = localStorage.getItem('evalu8_class_id');
     const teamId = localStorage.getItem('evalu8_team_id');
+    const userEmail = localStorage.getItem('evalu8_user_email');
+    const userName = localStorage.getItem('evalu8_user_name');
 
     if (role) {
       setCurrentRole(role);
       if (classId) setCurrentClassId(classId);
       if (teamId) setCurrentTeamId(teamId);
+      if (userEmail) setCurrentUserEmail(userEmail);
+      if (userName) setCurrentUserName(userName);
     }
   }, []);
 
@@ -206,15 +258,145 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     return { success: false, message: 'Invalid Access Code. Please try again.' };
   };
 
+  const loginWithEmail = async (email: string, password: string): Promise<{ success: boolean; message?: string; role?: UserRole }> => {
+    const trimmedEmail = email.trim().toLowerCase();
+    const isDefaultAdmin = trimmedEmail === 'brian@learningsims.co.za';
+
+    try {
+      let user;
+      try {
+        const cred = await signInWithEmailAndPassword(auth, trimmedEmail, password);
+        user = cred.user;
+      } catch (authErr: any) {
+        if (isDefaultAdmin && (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential')) {
+          try {
+            const newCred = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+            user = newCred.user;
+          } catch (createErr) {
+            throw authErr;
+          }
+        } else {
+          throw authErr;
+        }
+      }
+
+      const userDocRef = doc(db, 'facilitators', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      let role: UserRole = isDefaultAdmin ? 'ADMIN' : 'FACILITATOR';
+      let name = user.displayName || (isDefaultAdmin ? 'Brian Simelane (Admin)' : trimmedEmail.split('@')[0]);
+
+      if (userDoc.exists()) {
+        const data = userDoc.data() as FacilitatorUser;
+        role = data.role || role;
+        name = data.name || name;
+      } else {
+        await setDoc(userDocRef, {
+          uid: user.uid,
+          name,
+          email: trimmedEmail,
+          role,
+          createdAt: new Date().toISOString(),
+          gamesCreatedCount: 0
+        });
+      }
+
+      if (trimmedEmail.includes('admin') || isDefaultAdmin) {
+        role = 'ADMIN';
+      }
+
+      localStorage.setItem('evalu8_role', role);
+      localStorage.setItem('evalu8_user_email', user.email || trimmedEmail);
+      localStorage.setItem('evalu8_user_name', name);
+      localStorage.removeItem('evalu8_class_id');
+      localStorage.removeItem('evalu8_team_id');
+
+      setCurrentRole(role);
+      setCurrentUserEmail(user.email || trimmedEmail);
+      setCurrentUserName(name);
+      setCurrentClassId(null);
+      setCurrentTeamId(null);
+
+      return { success: true, role };
+    } catch (err: any) {
+      console.error('Email sign-in error:', err);
+      let errMsg = 'Failed to sign in. Please check your credentials.';
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        errMsg = 'Invalid email or password.';
+      } else if (err.code === 'auth/too-many-requests') {
+        errMsg = 'Too many failed attempts. Please try again later.';
+      }
+      return { success: false, message: errMsg };
+    }
+  };
+
+  const createFacilitatorAccount = async (name: string, email: string, defaultPassword: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const trimmedEmail = email.trim().toLowerCase();
+      const trimmedName = name.trim();
+
+      const secondaryApp = initializeApp({
+        projectId: "evalu8smart2026",
+        appId: "1:352780138083:web:ba75600ed24719c03c2a56",
+        storageBucket: "evalu8smart2026.firebasestorage.app",
+        apiKey: "AIzaSyDHT9DXTmO7DnrTqpuD0af7KpGdtzII2zU",
+        authDomain: "evalu8smart2026.firebaseapp.com",
+        messagingSenderId: "352780138083"
+      }, `SecondaryAuth_${Date.now()}`);
+
+      const secondaryAuth = getAuth(secondaryApp);
+      const userCred = await createUserWithEmailAndPassword(secondaryAuth, trimmedEmail, defaultPassword);
+      const uid = userCred.user.uid;
+
+      const newFacilitator: FacilitatorUser = {
+        uid,
+        name: trimmedName,
+        email: trimmedEmail,
+        role: 'FACILITATOR',
+        createdAt: new Date().toISOString(),
+        createdByEmail: currentUserEmail || 'admin@evalu8.com',
+        gamesCreatedCount: 0
+      };
+
+      await setDoc(doc(db, 'facilitators', uid), newFacilitator);
+      await deleteApp(secondaryApp);
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Error creating facilitator account:', err);
+      let errMsg = 'Failed to create facilitator account.';
+      if (err.code === 'auth/email-already-in-use') {
+        errMsg = 'An account with this email address already exists.';
+      } else if (err.code === 'auth/weak-password') {
+        errMsg = 'Password should be at least 6 characters long.';
+      }
+      return { success: false, message: errMsg };
+    }
+  };
+
+  const sendFacilitatorPasswordReset = async (email: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      return { success: true };
+    } catch (err: any) {
+      console.error('Error sending password reset:', err);
+      return { success: false, message: err.message || 'Failed to send password reset email.' };
+    }
+  };
+
   const logout = () => {
+    signOut(auth).catch(() => {});
     localStorage.removeItem('evalu8_role');
     localStorage.removeItem('evalu8_class_id');
     localStorage.removeItem('evalu8_team_id');
     localStorage.removeItem('evalu8_ceo_name');
     localStorage.removeItem('evalu8_ceo_pin');
+    localStorage.removeItem('evalu8_user_email');
+    localStorage.removeItem('evalu8_user_name');
     setCurrentRole(null);
     setCurrentClassId(null);
     setCurrentTeamId(null);
+    setCurrentUserEmail(null);
+    setCurrentUserName(null);
     lastVerifiedCeoPinRef.current = null;
     setLocalCeoPin(null);
   };
@@ -382,7 +564,9 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       facilitatorCode,
       teamCodes,
       teamRegistry,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      createdByEmail: currentUserEmail || 'admin@evalu8.com',
+      createdByName: currentUserName || 'Facilitator'
     }));
 
     // 2. Game State Document: classes/{classId}/state/game
@@ -807,6 +991,9 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       currentRole,
       currentClassId,
       currentTeamId,
+      currentUserEmail,
+      currentUserName,
+      facilitators,
       classes,
       classesLoaded,
       activeClass,
@@ -815,6 +1002,9 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       isCeo,
       ceoName,
       login,
+      loginWithEmail,
+      createFacilitatorAccount,
+      sendFacilitatorPasswordReset,
       logout,
       createClass,
       deleteClass,

@@ -32,6 +32,16 @@ export interface ClassTeam {
   botDifficulty?: BotDifficulty;
 }
 
+export interface FacilitatorUser {
+  uid: string;
+  name: string;
+  email: string;
+  role: 'ADMIN' | 'FACILITATOR';
+  createdAt: string;
+  createdByEmail?: string;
+  gamesCreatedCount?: number;
+}
+
 export interface SimulationClass {
   id: string;
   name: string;
@@ -40,6 +50,8 @@ export interface SimulationClass {
   teamRegistry: ClassTeam[];
   gameState?: GameState | null; // Optional for backward compatibility with unmigrated classes
   createdAt: string;
+  createdByEmail?: string;
+  createdByName?: string;
 }
 
 export interface Technology {
