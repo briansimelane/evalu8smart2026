@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
-import { KeyRound, ArrowRight, Gamepad2, Mail, Lock, UserCheck, Shield } from 'lucide-react';
+import { KeyRound, ArrowRight, Mail, Lock, UserCheck, Shield } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -84,8 +84,19 @@ export const Login: React.FC = () => {
 
       <Card className="max-w-md w-full bg-card border-border shadow-xl overflow-hidden relative">
         <CardHeader className="text-center pt-7 pb-5 border-b border-border bg-muted/30">
-          <div className="mx-auto w-14 h-14 bg-primary rounded-xl flex items-center justify-center mb-3 shadow-lg ring-4 ring-accent/15">
-            <Gamepad2 className="text-white w-7 h-7" />
+          {/* Brand SVG Logos */}
+          <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4 p-2.5 bg-white/95 dark:bg-slate-900/90 rounded-xl border border-border/60 shadow-sm max-w-sm mx-auto">
+            <img 
+              src="/evalu8-inc-logo.svg" 
+              alt="Evalu8 Inc" 
+              className="h-10 sm:h-12 w-auto object-contain shrink-0" 
+            />
+            <div className="h-8 w-px bg-border shrink-0" />
+            <img 
+              src="/smartphone-inc-logo.svg" 
+              alt="Smartphone Inc" 
+              className="h-10 sm:h-12 w-auto object-contain shrink-0" 
+            />
           </div>
           <CardTitle className="font-display text-xl sm:text-2xl font-bold tracking-tight text-foreground">
             Evalu8 Inc / Smartphone Inc Sim

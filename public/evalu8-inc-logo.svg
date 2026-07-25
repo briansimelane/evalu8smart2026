@@ -1,0 +1,11 @@
+<svg width="380" height="140" viewBox="0 0 380 140" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Evalu8 Inc — Electric Vehicles</title>
+  <g>
+    <circle cx="72" cy="70" r="44" fill="#0B3D2E"/>
+    <path d="M72 33 A37 37 0 1 1 35 70" fill="none" stroke="#2EE6A8" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="35" cy="70" r="4" fill="#2EE6A8"/>
+    <path d="M79 44 L57 75 L70 75 L64 97 L88 65 L74 65 Z" fill="#2EE6A8"/>
+  </g>
+  <text x="132" y="72" font-family="'Segoe UI', Arial, sans-serif" font-size="32" font-weight="600" fill="#0B3D2E">Evalu8 <tspan fill="#12A971">Inc</tspan></text>
+  <text x="133" y="96" font-family="'Segoe UI', Arial, sans-serif" font-size="12" letter-spacing="3.5" fill="#12A971">ELECTRIC VEHICLES</text>
+</svg>
