@@ -68,55 +68,78 @@ export function decidePlanning(
   };
   const usableCards = allTeamCards.filter(card => getAllocatedRound(card) < round);
 
-  // Heuristically decide card usage
-  const cardUsages: Record<number, 'use' | 'product' | 'none'> = {};
-  usableCards.forEach(card => {
-    // 20% waste chance for EASY bots
-    if (difficulty === 'EASY' && rng() < 0.20) {
-      cardUsages[card.id] = 'none';
-      return;
-    }
-
-    if (profile === 'RESEARCHER') {
-      if (card.icon1 === 'Research' || card.icon2 === 'Research') {
-        cardUsages[card.id] = 'use';
-      } else {
-        cardUsages[card.id] = rng() < 0.5 ? 'product' : 'use';
-      }
-    } else if (profile === 'EXPANDER') {
-      if (card.icon1 === 'Logistic' || card.icon2 === 'Logistic') {
-        cardUsages[card.id] = 'use';
-      } else {
-        cardUsages[card.id] = rng() < 0.5 ? 'product' : 'use';
-      }
-    } else if (profile === 'PRICE_FIGHTER') {
-      if (card.icon1 === 'Price Minus' || card.icon2 === 'Price Minus' || card.icon1 === 'Price and Product') {
-        cardUsages[card.id] = 'use';
-      } else {
-        cardUsages[card.id] = 'product';
-      }
-    } else {
-      cardUsages[card.id] = rng() < 0.4 ? 'product' : 'use';
-    }
-  });
-
   // Score candidates
   const weights = PROFILE_WEIGHTS[profile];
+  
+  // Cache current logistics presence and completed technologies
+  const logisticsData = gameState.teamLogisticsProgress[teamId];
+  const presentRegions = logisticsData?.regionsWithPresence || [];
+  const researchData = gameState.teamResearchProgress[teamId];
+  const completedTechs = researchData?.completedTechnologies || [];
+
   const scoredCandidates: PlanCandidate[] = candidateCombos.map(cand => {
+    // 1. Determine optimal card usages for THIS specific candidate combination
+    const cardUsages: Record<number, 'use' | 'product' | 'none'> = {};
+    usableCards.forEach(card => {
+      if (difficulty === 'EASY' && rng() < 0.20) {
+        cardUsages[card.id] = 'none';
+        return;
+      }
+
+      // If combination has low base production, prioritize using cards as products
+      if (cand.combination >= 4 && (card.icon1 === 'Product' || card.icon2 === 'Product')) {
+        cardUsages[card.id] = 'product';
+      } else if (profile === 'RESEARCHER' && (card.icon1 === 'Research' || card.icon2 === 'Research')) {
+        cardUsages[card.id] = 'use';
+      } else if (profile === 'EXPANDER' && (card.icon1 === 'Logistic' || card.icon2 === 'Logistic')) {
+        cardUsages[card.id] = 'use';
+      } else {
+        cardUsages[card.id] = rng() < 0.5 ? 'product' : 'use';
+      }
+    });
+
     const stats = calculatePlanStats(gameState, teamId, cand.combination, cand.position, cardUsages, combinationsData);
     
-    let score = 0;
-    score += stats.productsAvailable * weights.products * 3.5;
-    score += stats.researchPoints * weights.research * 4.0;
-    score += stats.logisticsPoints * weights.logistics * 4.0;
+    // 2. Estimate sales potential in our regions at stats.calculatedPrice
+    let potentialSales = 0;
+    presentRegions.forEach(regionName => {
+      const regionData = REGION_CUSTOMERS.find(r => r.region === regionName);
+      if (regionData) {
+        regionData.customers.forEach(cust => {
+          // A customer will buy if:
+          // - Price type and price is >= our calculatedPrice
+          // - Tech type and tech is completed
+          const priceEligible = cust.type === 'price' && stats.calculatedPrice <= (cust.price || 0);
+          const techEligible = cust.type === 'tech' && cust.technology && completedTechs.includes(cust.technology);
+          if (priceEligible || techEligible) {
+            potentialSales++;
+          }
+        });
+      }
+    });
 
+    // We can't sell more than we produce
+    const expectedSalesVolume = Math.min(stats.productsAvailable, potentialSales);
+    const expectedRevenue = expectedSalesVolume * stats.calculatedPrice;
+
+    // 3. Compute score based on expected volume, expected revenue, research, and logistics points
+    let score = 0;
+    score += expectedSalesVolume * weights.products * 4.0;
+    score += expectedRevenue * weights.products * 0.8;
+    score += stats.researchPoints * weights.research * 4.5;
+    score += stats.logisticsPoints * weights.logistics * 4.5;
+
+    // Preference adjust based on profile
     if (profile === 'PRICE_FIGHTER') {
-      // Lower prices are preferred
-      score += (10 - stats.calculatedPrice) * 2.5;
+      score += (10 - stats.calculatedPrice) * 2.0;
     } else {
-      // Moderate/higher prices preferred for revenue
-      score += stats.calculatedPrice * 0.8;
+      score += stats.calculatedPrice * 0.4;
     }
+
+    // 4. Add slight PRNG noise to prevent repetitive predictable choices in identical states
+    // Noise scaling: Easy has more noise, Hard has less noise
+    const noiseScale = difficulty === 'EASY' ? 3.0 : (difficulty === 'MEDIUM' ? 1.5 : 0.5);
+    score += (rng() - 0.5) * noiseScale;
 
     return {
       combination: cand.combination,
@@ -394,19 +417,31 @@ export function decideImprovement(
   teamId: string,
   profile: BotProfile = 'BALANCED',
   difficulty: BotDifficulty = 'MEDIUM'
-): number | null {
+): number {
   const round = gameState.currentRound;
   const pool = gameState.improvementPoolByRound?.[round] || [];
-  if (pool.length === 0) return null;
+  if (pool.length === 0) {
+    return -100 - gameState.teams.findIndex(t => t.id === teamId);
+  }
 
-  // Let's filter available cards in AVAILABLE_IMPROVEMENT_CARDS matching IDs in pool
-  const candidates = pool.map(id => AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === id)).filter(Boolean);
-  if (candidates.length === 0) return null;
+  // Filter pool to only include cards that have NOT been claimed by any team this round
+  const unclaimedIds = pool.filter(id => {
+    return !gameState.improvementCards.some(c => c.id === id && c.allocatedInRound === round);
+  });
+
+  if (unclaimedIds.length === 0) {
+    return -100 - gameState.teams.findIndex(t => t.id === teamId);
+  }
+
+  const candidates = unclaimedIds.map(id => AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === id)).filter(Boolean);
+  if (candidates.length === 0) {
+    return -100 - gameState.teams.findIndex(t => t.id === teamId);
+  }
 
   const rng = mulberry32((gameState.botConfig?.seed || 999) + round * 23 + gameState.teams.findIndex(t => t.id === teamId));
 
   const scored = candidates.map(card => {
-    if (!card) return { id: -1, score: -999 };
+    if (!card) return { id: -999, score: -999 };
     let score = 0;
     if (profile === 'RESEARCHER') {
       if (card.icon1 === 'Research' || card.icon2 === 'Research') score += 10;
@@ -428,5 +463,5 @@ export function decideImprovement(
   }
 
   const result = scored[chosenIdx];
-  return result && result.id !== -1 ? result.id : null;
+  return result && result.id !== -999 ? result.id : (-100 - gameState.teams.findIndex(t => t.id === teamId));
 }

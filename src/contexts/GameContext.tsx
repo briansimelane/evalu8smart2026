@@ -573,19 +573,37 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       );
       if (alreadyClaimed) return prev;
 
+      // Prevent double claiming of unique cards (cardId >= 0)
+      const cardAlreadyTaken = prev.improvementCards.some(c =>
+        c.id === cardId && c.allocatedInRound === prev.currentRound
+      );
+      if (cardAlreadyTaken && cardId >= 0) return prev;
+
       const newCards = [...prev.improvementCards];
-      const cardData = AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === cardId);
-      
-      if (cardData) {
+      if (cardId < 0) {
+        // Direct product card claim fallback
         newCards.push({
-          id: cardData.id,
-          icon1: cardData.icon1,
-          icon2: cardData.icon2,
+          id: cardId,
+          icon1: 'Product',
+          icon2: 'None' as any,
           availableForTeam: teamId,
           used: false,
           isInitial: false,
           allocatedInRound: prev.currentRound,
         });
+      } else {
+        const cardData = AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === cardId);
+        if (cardData) {
+          newCards.push({
+            id: cardData.id,
+            icon1: cardData.icon1,
+            icon2: cardData.icon2,
+            availableForTeam: teamId,
+            used: false,
+            isInitial: false,
+            allocatedInRound: prev.currentRound,
+          });
+        }
       }
 
       // Automatically add product-only cards for teams with 0 improvement

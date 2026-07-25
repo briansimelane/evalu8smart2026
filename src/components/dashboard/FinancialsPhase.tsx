@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { getControlPointsForTeamInRound, getTeamPatentPoints } from '@/types/game';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import {
   TrendingUp, TrendingDown, DollarSign, Percent, FlaskConical,
-  Cpu, BarChart2, RefreshCw, Scale, Info,
+  Cpu, BarChart2, RefreshCw, Scale, Info, Download,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useReactToPrint } from 'react-to-print';
 
 interface InfoData {
   formula: string;
@@ -164,6 +166,28 @@ export const FinancialsPhase = () => {
   const { gameState } = useGame();
   const [viewRound, setViewRound] = useState<string>('all');
   const [activeView, setActiveView] = useState<'income' | 'balance'>('income');
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  const handlePrint = useReactToPrint({
+    content: () => reportRef.current,
+    documentTitle: `Financials_Report_Round_${gameState?.currentRound || 0}`,
+    pageStyle: `
+      @page {
+        size: A4 landscape;
+        margin: 8mm;
+      }
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .print-page-break {
+          page-break-after: always !important;
+          break-after: page !important;
+        }
+      }
+    `,
+  });
 
   if (!gameState) return null;
 
@@ -239,13 +263,21 @@ export const FinancialsPhase = () => {
       {/* ── Header ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <span className="font-bold text-base">$</span>
-            Financials — All Teams
-          </CardTitle>
-          <CardDescription>
-            COGS: ${COGS_PER_UNIT}/unit sold · Stock Loss: ${STOCK_LOSS_PER_UNIT}/unsold · Icons: ${COST_PER_ICON}/icon · Share Capital: ${SHARE_CAPITAL}
-          </CardDescription>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <span className="font-bold text-base">$</span>
+                Financials — All Teams
+              </CardTitle>
+              <CardDescription>
+                COGS: ${COGS_PER_UNIT}/unit sold · Stock Loss: ${STOCK_LOSS_PER_UNIT}/unsold · Icons: ${COST_PER_ICON}/icon · Share Capital: ${SHARE_CAPITAL}
+              </CardDescription>
+            </div>
+            <Button onClick={handlePrint} variant="outline" size="sm" className="gap-2 shrink-0 border-border hover:bg-muted text-foreground">
+              <Download className="h-4 w-4" />
+              Download PDF
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 items-center">
@@ -283,8 +315,10 @@ export const FinancialsPhase = () => {
         </CardContent>
       </Card>
 
-      {/* ══════════════ INCOME STATEMENT ══════════════ */}
-      {activeView === 'income' && (
+      {/* Printable Area */}
+      <div ref={reportRef} className="space-y-4 print:p-6 print:bg-white print:text-black">
+        {/* ══════════════ INCOME STATEMENT ══════════════ */}
+        {activeView === 'income' && (
         <>
           <Card>
             <CardHeader className="pb-2">
@@ -626,6 +660,7 @@ export const FinancialsPhase = () => {
           </div>
         </>
       )}
+      </div>
     </div>
   );
 };
