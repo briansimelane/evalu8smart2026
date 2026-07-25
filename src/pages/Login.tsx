@@ -82,20 +82,20 @@ export const Login: React.FC = () => {
       <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-primary/10 blur-[100px]" />
       <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-80 h-80 rounded-full bg-accent/10 blur-[100px]" />
 
-      <Card className="max-w-md w-full bg-card border-border shadow-xl overflow-hidden relative">
+      <Card className="max-w-xl w-full bg-card border-border shadow-xl overflow-hidden relative">
         <CardHeader className="text-center pt-7 pb-5 border-b border-border bg-muted/30">
           {/* Brand SVG Logos */}
-          <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4 p-2.5 bg-white/95 dark:bg-slate-900/90 rounded-xl border border-border/60 shadow-sm max-w-sm mx-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 mb-5 py-2 mx-auto w-full">
             <img 
               src="/evalu8-inc-logo.svg" 
               alt="Evalu8 Inc" 
-              className="h-10 sm:h-12 w-auto object-contain shrink-0" 
+              className="h-16 sm:h-20 md:h-24 w-auto object-contain shrink-0 dark:invert dark:brightness-200" 
             />
-            <div className="h-8 w-px bg-border shrink-0" />
+            <div className="hidden sm:block h-14 w-px bg-border/80 shrink-0" />
             <img 
               src="/smartphone-inc-logo.svg" 
               alt="Smartphone Inc" 
-              className="h-10 sm:h-12 w-auto object-contain shrink-0" 
+              className="h-16 sm:h-20 md:h-24 w-auto object-contain shrink-0 dark:invert dark:brightness-200" 
             />
           </div>
           <CardTitle className="font-display text-xl sm:text-2xl font-bold tracking-tight text-foreground">
