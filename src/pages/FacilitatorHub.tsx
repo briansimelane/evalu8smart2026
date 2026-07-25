@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw } from 'lucide-react';
@@ -232,7 +232,41 @@ const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, handleCo
 };
 
 export const FacilitatorHub: React.FC = () => {
-  const { classes, createClass, deleteClass, logout, currentClassId, currentClassTeams, facilitatorReleaseCeoSlot, facilitatorChangeCeoPin, selectClass, selectTeam } = useSession();
+  const { 
+    classes, 
+    currentRole, 
+    currentUserEmail, 
+    createClass, 
+    deleteClass, 
+    logout, 
+    currentClassId, 
+    currentClassTeams, 
+    facilitatorReleaseCeoSlot, 
+    facilitatorChangeCeoPin, 
+    selectClass, 
+    selectTeam 
+  } = useSession();
+
+  const visibleClasses = useMemo(() => {
+    if (currentRole === 'ADMIN') return classes;
+
+    return classes.filter(cls => {
+      // Created by this facilitator (matching email)
+      if (currentUserEmail && cls.createdByEmail?.toLowerCase() === currentUserEmail.toLowerCase()) {
+        return true;
+      }
+      // Entered via facilitator code / currently selected class
+      if (currentClassId && cls.id === currentClassId) {
+        return true;
+      }
+      // Code match fallback
+      if (currentUserEmail && cls.facilitatorCode?.toLowerCase().includes(currentUserEmail.toLowerCase())) {
+        return true;
+      }
+      return false;
+    });
+  }, [classes, currentRole, currentUserEmail, currentClassId]);
+
   const [className, setClassName] = useState('');
   const [numTeams, setNumTeams] = useState(5);
   const [teamConfigs, setTeamConfigs] = useState<typeof DEFAULT_TEAMS>(DEFAULT_TEAMS);
@@ -478,9 +512,9 @@ export const FacilitatorHub: React.FC = () => {
             Active Classes
           </h2>
 
-          {classes.length === 0 ? (
+          {visibleClasses.length === 0 ? (
             <Card className="bg-card border-border p-8 text-center text-muted-foreground">
-              No active classes found. Create one to get started.
+              No active classes found for your account. Create one to get started or enter using a facilitator code.
             </Card>
           ) : (
             <Card className="bg-card border-border overflow-hidden shadow-sm">
@@ -495,7 +529,7 @@ export const FacilitatorHub: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {classes.map((cls) => {
+                  {visibleClasses.map((cls) => {
                     const isExpanded = !!expandedClasses[cls.id];
                     return (
                       <React.Fragment key={cls.id}>
