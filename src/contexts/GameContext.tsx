@@ -41,6 +41,7 @@ export interface GameContextType {
   updateCombinations: (data: Combination[] | null) => void;
   getCombinations: () => Combination[];
   recalculateControlPoints: () => void;
+  updatePhase: (phase: import('@/types/game').GamePhase) => void;
   endGame: () => void;
 }
 

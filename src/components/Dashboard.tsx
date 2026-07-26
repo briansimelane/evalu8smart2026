@@ -17,9 +17,9 @@ import { FinancialsPhase } from './dashboard/FinancialsPhase';
 import { SummaryMap } from './dashboard/SummaryMap';
 import { GameSettingsDialog } from './dashboard/GameSettingsDialog';
 import { TeamSubmissionStatus } from './dashboard/TeamSubmissionStatus';
-import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy } from 'lucide-react';
+import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import {
@@ -36,6 +36,7 @@ import {
 
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
+import { toast } from 'sonner';
 import { CeoClaimBar } from './CeoClaimBar';
 import { GameIcon } from './dashboard/GameIcon';
 import { useBotRunner } from '@/bots/useBotRunner';
@@ -57,6 +58,7 @@ const PHASE_DISPLAY_NAMES: Record<string, string> = {
   expansion: 'Logistics Phase',
   sales: 'Sales Phase',
   control: 'Control Phase',
+  scoring: 'Scoring Phase',
 };
 
 export const Dashboard = () => {
@@ -72,6 +74,17 @@ export const Dashboard = () => {
   const roundInputRef = useRef<{ loadTeamData: (roundNumber: number, teamId: string) => void }>(null);
   const planningPhaseRef = useRef<{ loadTeamPlan: (roundNumber: number, teamId: string) => void }>(null);
   const prevRoundRef = useRef(gameState?.currentRound);
+
+  const handleOpenViewer = () => {
+    const code = activeClass?.facilitatorCode || activeClass?.id || '';
+    if (code) {
+      window.open(
+        `/viewer/${code}`,
+        'evalu8-viewer',
+        'popup,width=1600,height=900'
+      );
+    }
+  };
 
   // Compute active turn team globally for the ticker
   const activeTurnTeam = useMemo(() => {
@@ -245,6 +258,16 @@ export const Dashboard = () => {
                       </SheetHeader>
 
                       <div className="flex flex-col gap-3">
+                        {/* Open Viewer */}
+                        <Button
+                          onClick={handleOpenViewer}
+                          variant="outline"
+                          className="w-full justify-start gap-2 h-10 border-border text-foreground font-semibold"
+                        >
+                          <Presentation className="h-4 w-4 text-primary" />
+                          Open Projector Viewer
+                        </Button>
+
                         {/* 1. Advance to Round */}
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -294,10 +317,7 @@ export const Dashboard = () => {
                                 <AlertDialogCancel className="border-border bg-background hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
                                 <AlertDialogAction onClick={() => {
                                   endGame();
-                                  toast({
-                                    title: "Game Ended",
-                                    description: "The simulation has been completed. Patent points have been added to the final scores."
-                                  });
+                                  toast.success("Game Ended — The simulation has been completed. Patent points have been added to the final scores.");
                                 }} className="bg-red-600 hover:bg-red-700 text-white">End Game</AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -376,6 +396,7 @@ export const Dashboard = () => {
                         <SelectItem value="expansion">Logistics</SelectItem>
                         <SelectItem value="sales">Sales</SelectItem>
                         <SelectItem value="control">Control</SelectItem>
+                        <SelectItem value="scoring">Scoring</SelectItem>
                       </SelectContent>
                     </Select>
                     {gameState.teams.some(t => t.isBot) && (
@@ -383,10 +404,21 @@ export const Dashboard = () => {
                         🤖 Bots active (automated client-side)
                       </span>
                     )}
+                    <Button 
+                      onClick={handleOpenViewer}
+                      variant="outline"
+                      size="sm"
+                      className="border-border hover:bg-muted text-foreground gap-1.5 font-semibold text-xs h-9 ml-2"
+                      title="Open Live Board Projector View"
+                    >
+                      <Presentation className="h-3.5 w-3.5 text-primary" />
+                      <span>Open Viewer</span>
+                    </Button>
                   </div>
 
                   {/* Desktop Action Buttons (Visible on md+) */}
                   <div className="hidden md:flex items-center gap-2">
+
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
@@ -435,10 +467,7 @@ export const Dashboard = () => {
                             <AlertDialogCancel className="border-border bg-background hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
                             <AlertDialogAction onClick={() => {
                               endGame();
-                              toast({
-                                title: "Game Ended",
-                                description: "The simulation has been completed. Patent points have been added to the final scores."
-                              });
+                              toast.success("Game Ended — The simulation has been completed. Patent points have been added to the final scores.");
                             }} className="bg-red-600 hover:bg-red-700 text-white">End Game</AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -497,7 +526,7 @@ export const Dashboard = () => {
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <div className="max-w-5xl mx-auto space-y-2">
             {/* Top Row - Game Phases */}
-            <TabsList className="grid grid-cols-4 sm:grid-cols-7 gap-1 h-auto w-full bg-muted text-muted-foreground border border-border shadow-sm p-1 sm:p-1.5 rounded-xl">
+            <TabsList className="grid grid-cols-4 sm:grid-cols-8 gap-1 h-auto w-full bg-muted text-muted-foreground border border-border shadow-sm p-1 sm:p-1.5 rounded-xl">
               <TabsTrigger value="planning" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
                 <GameIcon type="planning" size="xs" />
                 <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Planning</span>
@@ -530,6 +559,10 @@ export const Dashboard = () => {
               <TabsTrigger value="control" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
                 <GameIcon type="control" size="xs" />
                 <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Control</span>
+              </TabsTrigger>
+              <TabsTrigger value="scoring" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
+                <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Scoring</span>
               </TabsTrigger>
             </TabsList>
 
@@ -605,6 +638,50 @@ export const Dashboard = () => {
 
           <TabsContent value="control" className="space-y-4">
             <ControlPhase onEndGame={() => setActiveTab('summary-map')} />
+          </TabsContent>
+
+          <TabsContent value="scoring" className="space-y-4">
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg sm:text-xl font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Award className="h-5 w-5 text-amber-500" />
+                    Round {gameState.currentRound} Scoring Phase
+                  </span>
+                  <Badge className="bg-amber-500 text-white font-extrabold text-xs">
+                    Live Scoreboard Animating on Viewer
+                  </Badge>
+                </CardTitle>
+                <CardDescription>
+                  The Scoring phase is active. The live Viewer screen is currently animating the end-of-round Scoreboard listing all teams from lowest score to highest score.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Scoreboard />
+
+                {currentRole !== 'STUDENT' && (
+                  <div className="pt-4 border-t border-border flex flex-wrap items-center justify-between gap-3">
+                    <Button
+                      onClick={() => updatePhase('control')}
+                      variant="outline"
+                      size="sm"
+                      className="font-semibold"
+                    >
+                      Back to Control Phase
+                    </Button>
+
+                    <Button
+                      onClick={advanceRound}
+                      size="lg"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-black shadow-md gap-2"
+                    >
+                      <span>Advance to Round {gameState.currentRound + 1}</span>
+                      <ChevronRight className="h-5 w-5" />
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Data View Tabs */}

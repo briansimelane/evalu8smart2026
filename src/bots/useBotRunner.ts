@@ -187,12 +187,28 @@ export function useBotRunner() {
 
         const profile = botTeam.botProfile || 'BALANCED';
         const difficulty = botTeam.botDifficulty || 'MEDIUM';
-        const allocations = decideResearch(gameState, teamId, totalIcons - allocatedSpent, profile, difficulty);
+        const neededPoints = totalIcons - allocatedSpent;
+        const allocations = decideResearch(gameState, teamId, neededPoints, profile, difficulty);
 
+        let sumAllocated = 0;
         Object.entries(allocations).forEach(([techName, points]) => {
-          allocateResearch(teamId, techName, points);
+          if (points > 0) {
+            allocateResearch(teamId, techName, points);
+            sumAllocated += points;
+          }
         });
 
+        // Fallback: If remaining points were unallocated (e.g. all techs completed), dump leftovers to clear spent count
+        const leftoverPoints = neededPoints - sumAllocated;
+        if (leftoverPoints > 0) {
+          const allTechs = Object.keys(gameState.technologies);
+          const fallbackTech = allTechs[0] || 'GPS';
+          allocateResearch(teamId, fallbackTech, leftoverPoints);
+        }
+
+        setBotThinking(teamId, false);
+        processedActions.current.add(actionKey);
+        delete activeTimers.current[actionKey];
         toast.info(`🤖 ${botTeam.name} allocated research points.`);
 
       } else if (phase === 'logistics') {
@@ -215,12 +231,28 @@ export function useBotRunner() {
 
         const profile = botTeam.botProfile || 'BALANCED';
         const difficulty = botTeam.botDifficulty || 'MEDIUM';
-        const allocations = decideLogistics(gameState, teamId, totalIcons - allocatedSpent, profile, difficulty);
+        const neededPoints = totalIcons - allocatedSpent;
+        const allocations = decideLogistics(gameState, teamId, neededPoints, profile, difficulty);
 
+        let sumAllocated = 0;
         Object.entries(allocations).forEach(([regionName, points]) => {
-          allocateLogistics(teamId, regionName, points);
+          if (points > 0) {
+            allocateLogistics(teamId, regionName, points);
+            sumAllocated += points;
+          }
         });
 
+        // Fallback: If remaining points were unallocated (e.g. all accessible regions completed), dump leftovers to clear spent count
+        const leftoverPoints = neededPoints - sumAllocated;
+        if (leftoverPoints > 0) {
+          const allRegions = Object.keys(gameState.regionLogistics);
+          const fallbackRegion = allRegions[0] || 'USA';
+          allocateLogistics(teamId, fallbackRegion, leftoverPoints);
+        }
+
+        setBotThinking(teamId, false);
+        processedActions.current.add(actionKey);
+        delete activeTimers.current[actionKey];
         toast.info(`🤖 ${botTeam.name} allocated logistics points.`);
 
       } else if (phase === 'sales') {

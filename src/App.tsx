@@ -11,6 +11,7 @@ import NotFound from "./pages/NotFound";
 import { Login } from "./pages/Login";
 import { FacilitatorHub } from "./pages/FacilitatorHub";
 import { AdminHub } from "./pages/AdminHub";
+import ViewerPage from "./pages/Viewer/ViewerPage";
 
 const queryClient = new QueryClient();
 
@@ -104,6 +105,7 @@ const App = () => (
               } />
               <Route path="/class/:classId" element={<ClassControl />} />
               <Route path="/dashboard" element={<StudentDashboard />} />
+              <Route path="/viewer/:classCode" element={<ViewerPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

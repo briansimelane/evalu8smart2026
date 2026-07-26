@@ -1,0 +1,56 @@
+/* Custom style patterns and transitions for Evalu8smart digital board viewer */
+
+.bg-grid-pattern {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+@keyframes scale-in {
+  0% { transform: scale(0.85); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Flash pulse effect for live-updates */
+@keyframes live-flash {
+  0% { background-color: rgba(254, 240, 138, 0.3); border-color: rgba(234, 179, 8, 0.6); }
+  100% { background-color: transparent; border-color: transparent; }
+}
+
+.animate-live-flash {
+  animation: live-flash 1s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* Pulse once for new cubes placed on region or price ladders */
+@keyframes pulse-once {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); box-shadow: 0 0 15px currentColor; }
+}
+
+.animate-pulse-once {
+  animation: pulse-once 0.6s ease-in-out 1;
+}
+
+/* Scroll marquee */
+@keyframes marquee-scroll {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+.animate-marquee-slow {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee-scroll 25s linear infinite;
+}

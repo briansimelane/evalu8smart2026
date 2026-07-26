@@ -133,7 +133,7 @@ export interface TeamLogisticsProgress {
   regionInvestments: Record<string, number>; // region -> logistics points invested
 }
 
-export type GamePhase = 'planning' | 'production' | 'improvement' | 'innovation' | 'expansion' | 'sales' | 'control' | 'PLANNING' | 'PRODUCTION' | (string & {});
+export type GamePhase = 'planning' | 'production' | 'improvement' | 'innovation' | 'expansion' | 'sales' | 'control' | 'scoring' | 'PLANNING' | 'PRODUCTION' | (string & {});
 
 export interface GameState {
   gameId: string;

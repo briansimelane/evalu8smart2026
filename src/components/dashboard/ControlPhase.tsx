@@ -26,7 +26,7 @@ interface ControlPhaseProps {
 }
 
 export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
-  const { gameState, addRoundData, getCurrentRound, recalculateControlPoints, endGame } = useGame();
+  const { gameState, addRoundData, getCurrentRound, recalculateControlPoints, endGame, updatePhase } = useGame();
   const { currentRole, currentTeamId } = useSession();
   const [controlCalculated, setControlCalculated] = useState(false);
   const [regionControlResults, setRegionControlResults] = useState<RegionControlResult[]>([]);
@@ -396,17 +396,30 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                   </AlertDescription>
                 </Alert>
                 {currentRole !== 'STUDENT' && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      recalculateControlPoints();
-                      toast.success("Control points recalculated & repaired across all rounds!");
-                    }}
-                    className="w-full border-warning/40 text-warning dark:text-amber-300 hover:bg-warning/10 font-semibold"
-                  >
-                    <Trophy className="mr-2 h-4 w-4 text-warning" />
-                    Recalculate & Repair All Control Points
-                  </Button>
+                  <div className="flex flex-col gap-2 pt-2">
+                    <Button
+                      onClick={() => {
+                        updatePhase('scoring');
+                        toast.success("Scoring Phase Active! The live Viewer is animating the end-of-round Scoreboard.");
+                      }}
+                      size="lg"
+                      className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold shadow-md gap-2 text-base py-5"
+                    >
+                      <Trophy className="h-5 w-5 text-amber-100 animate-bounce" />
+                      <span>Advance to Scoring Phase (Animate Scoreboard on Viewer)</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        recalculateControlPoints();
+                        toast.success("Control points recalculated & repaired across all rounds!");
+                      }}
+                      className="w-full border-warning/40 text-warning dark:text-amber-300 hover:bg-warning/10 font-semibold"
+                    >
+                      <Trophy className="mr-2 h-4 w-4 text-warning" />
+                      Recalculate & Repair All Control Points
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
