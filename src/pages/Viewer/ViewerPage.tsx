@@ -7,7 +7,9 @@ import { PriceLadder } from './PriceLadder';
 import { RegionLayer } from './RegionLayer';
 import { TechPanel } from './TechPanel';
 import { ImprovementStrip } from './ImprovementStrip';
-import gameboardBg from '@/assets/gameboard.png';
+import { MotionProvider, useMotion } from './motion/MotionContext';
+import { EventTicker } from './EventTicker';
+import { cn } from '@/lib/utils';
 import './viewer.css';
 import { Maximize2, Monitor } from 'lucide-react';
 
@@ -59,37 +61,59 @@ export default function ViewerPage() {
 
   return (
     <ViewerScaler>
-      <div className="relative w-[1920px] h-[1080px] bg-slate-100 text-slate-900 overflow-hidden font-sans select-none border border-slate-300 shadow-2xl">
-        {/* Solid Very Light Grey Background behind regions */}
-        <div className="absolute inset-0 bg-slate-100 pointer-events-none" />
-
-        {/* Top Bar (Height: 120px) */}
-        <TopBar classData={classData} gameState={gameState} />
-
-        {/* Main Board Section (Between Top Bar 120px and Bottom Research Strip 150px) */}
-        <div className="absolute top-[120px] bottom-[150px] left-0 right-0">
-          {/* Price Ladder Left Rail (Width: 140px) */}
-          <PriceLadder gameState={gameState} />
-
-          {/* Geographical Region Layer */}
-          <RegionLayer gameState={gameState} />
-
-          {/* Improvements Marketplace Right Panel (Width: 380px) */}
-          <ImprovementStrip gameState={gameState} />
-        </div>
-
-        {/* Research & Development Technologies Bottom Strip (Height: 150px) */}
-        <TechPanel gameState={gameState} />
-
-        {/* Floating Fullscreen button */}
-        <button 
-          onClick={toggleFullscreen}
-          className="absolute top-4 right-4 z-50 bg-white/90 border border-slate-200 hover:border-slate-400 text-slate-600 hover:text-slate-900 p-2 rounded-lg backdrop-blur shadow-md transition-all active:scale-95 cursor-pointer"
-          title="Toggle Fullscreen (F)"
-        >
-          <Maximize2 className="h-4.5 w-4.5" />
-        </button>
-      </div>
+      <MotionProvider gameState={gameState}>
+        <BoardContent classData={classData} gameState={gameState} toggleFullscreen={toggleFullscreen} />
+      </MotionProvider>
     </ViewerScaler>
+  );
+}
+
+interface BoardContentProps {
+  classData: any;
+  gameState: any;
+  toggleFullscreen: () => void;
+}
+
+function BoardContent({ classData, gameState, toggleFullscreen }: BoardContentProps) {
+  const m = useMotion();
+
+  return (
+    <div 
+      className="relative w-[1920px] h-[1080px] bg-slate-100 text-slate-900 overflow-hidden font-sans select-none border border-slate-300 shadow-2xl mo-board"
+      data-spotlight={m.spotlight ? 'on' : undefined}
+    >
+      {/* Solid Very Light Grey Background behind regions */}
+      <div className="absolute inset-0 bg-slate-100 pointer-events-none" />
+
+      {/* Top Bar (Height: 120px) */}
+      <TopBar classData={classData} gameState={gameState} />
+
+      {/* Event Ticker (Height: 34px, Top: 120px) */}
+      <EventTicker />
+
+      {/* Main Board Section (Between Event Ticker 154px and Bottom Research Strip 150px) */}
+      <div className={cn("absolute top-[154px] bottom-[150px] left-0 right-0 transition-all duration-700", m.settling && "mo-settle")}>
+        {/* Price Ladder Left Rail (Width: 140px) */}
+        <PriceLadder gameState={gameState} />
+
+        {/* Geographical Region Layer */}
+        <RegionLayer gameState={gameState} />
+
+        {/* Improvements Marketplace Right Panel (Width: 300px) */}
+        <ImprovementStrip gameState={gameState} />
+      </div>
+
+      {/* Research & Development Technologies Bottom Strip (Height: 150px) */}
+      <TechPanel gameState={gameState} />
+
+      {/* Floating Fullscreen button */}
+      <button 
+        onClick={toggleFullscreen}
+        className="absolute top-4 right-4 z-50 bg-white/90 border border-slate-200 hover:border-slate-400 text-slate-600 hover:text-slate-900 p-2 rounded-lg backdrop-blur shadow-md transition-all active:scale-95 cursor-pointer"
+        title="Toggle Fullscreen (F)"
+      >
+        <Maximize2 className="h-4.5 w-4.5" />
+      </button>
+    </div>
   );
 }

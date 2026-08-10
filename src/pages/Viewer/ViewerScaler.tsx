@@ -29,7 +29,8 @@ export function ViewerScaler({ children }: ViewerScalerProps) {
           width: BOARD_W, 
           height: BOARD_H,
           transform: `scale(${scale})`, 
-          transformOrigin: 'center' 
+          transformOrigin: 'center',
+          ['--mo-scale' as string]: String(scale)
         }}
         className="relative shrink-0"
       >

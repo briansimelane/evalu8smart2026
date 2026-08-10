@@ -1,6 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { GameState } from '@/types/game';
 import { GameIcon } from '@/components/dashboard/GameIcon';
+import { useMotion } from './motion/MotionContext';
+import { getMotionClass, getMotionStyles } from './motion/motionClass';
+import { cn } from '@/lib/utils';
 
 interface PriceLadderProps {
   gameState: GameState;
@@ -22,6 +25,7 @@ export function PriceLadder({ gameState }: PriceLadderProps) {
   const roundData = gameState.rounds.find(r => r.roundNumber === round);
   const currentPhase = (gameState.currentPhase || 'planning').toLowerCase();
   const isPlanning = currentPhase === 'planning';
+  const m = useMotion();
 
   const prices = [8, 7, 6, 5, 4, 3, 2];
 
@@ -91,43 +95,81 @@ export function PriceLadder({ gameState }: PriceLadderProps) {
     return gameState.teams.filter(team => !displayedPrices[team.id]);
   }, [gameState.teams, isPlanning, displayedPrices]);
 
+  const ladderChanged = gameState.teams.some(team => m.tierFor(`price:${team.id}`) > 0);
+
   return (
-    <div className="absolute top-0 bottom-0 left-0 w-[140px] bg-white/95 border-r border-slate-300 p-3.5 flex flex-col justify-between z-10 backdrop-blur-md shadow-lg text-slate-900">
+    <div 
+      className={cn(
+        "absolute top-0 bottom-0 left-0 w-[140px] bg-white/95 border-r border-slate-300 p-3.5 flex flex-col justify-between z-10 backdrop-blur-md shadow-lg text-slate-900 mo-dimmable",
+        ladderChanged && "z-20"
+      )}
+      data-changed={ladderChanged ? '1' : undefined}
+    >
       <div className="flex flex-col items-center gap-2 h-full">
         {/* Header */}
         <span className="text-base font-black text-slate-900 uppercase tracking-widest border-b-2 border-slate-400 pb-1.5 w-full text-center">
           Price
         </span>
         
-        <div className="flex flex-col justify-between w-full flex-1 py-1">
-          {prices.map(price => {
-            const teams = teamsByPrice[price] || [];
-            return (
-              <div key={price} className="relative flex items-center justify-between h-[90px] border-b border-slate-300 last:border-b-0 px-1">
-                {/* Price Tag with larger in-game red badge */}
-                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-red-600 text-white font-mono text-lg font-black shadow-md shrink-0">
-                  ${price}
-                </div>
-                
-                {/* Team color dots slot - Prominent w-7 h-7 circles with team initial */}
-                <div className="flex items-center gap-1.5 flex-1 justify-end flex-wrap max-w-[80px]">
-                  {teams.map(team => {
-                    const textColor = getContrastTextColor(team.color);
-                    return (
-                      <div 
-                        key={team.id}
-                        style={{ backgroundColor: team.color, color: textColor }}
-                        className="w-7 h-7 rounded-full shadow-lg ring-2 ring-white animate-bubble-pop flex items-center justify-center font-black text-xs shrink-0 transition-all duration-700 ease-out border border-black/10"
-                        title={`${team.name}: $${price}`}
-                      >
-                        {team.name.charAt(0).toUpperCase()}
-                      </div>
-                    );
-                  })}
-                </div>
+        <div className="relative flex flex-col justify-between w-full flex-1 py-1">
+          {prices.map(price => (
+            <div key={price} className="relative flex items-center justify-between h-[90px] border-b border-slate-300 last:border-b-0 px-1">
+              {/* Price Tag with larger in-game red badge */}
+              <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-red-600 text-white font-mono text-lg font-black shadow-md shrink-0">
+                ${price}
               </div>
-            );
-          })}
+              
+              {/* Offset space for absolutely positioned team tokens */}
+              <div className="flex-1 min-w-[80px]" />
+            </div>
+          ))}
+
+          {/* Absolute tokens layer */}
+          <div className="absolute inset-0 pointer-events-none">
+            {gameState.teams.map((team, orderIndex) => {
+              const price = displayedPrices[team.id];
+              const isVisible = !isPlanning && price !== undefined;
+              if (!isVisible) return null;
+
+              const rowIndex = prices.indexOf(price);
+              if (rowIndex === -1) return null;
+
+              const teamsAtThisPrice = teamsByPrice[price] || [];
+              const teamOffsetIndex = teamsAtThisPrice.indexOf(team);
+              const xOffset = teamOffsetIndex * -30;
+
+              const priceKey = `price:${team.id}`;
+              const priceClass = getMotionClass(m, priceKey, 'sm');
+              const priceStyles = getMotionStyles(m, priceKey, team.color);
+
+              const textColor = getContrastTextColor(team.color);
+              const delay = orderIndex * 140;
+
+              return (
+                <div
+                  key={team.id}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: 0,
+                    transform: `translate(${xOffset}px, calc(${rowIndex} * (100% / 7) + (100% / 14) - 14px))`,
+                    transition: 'transform var(--mo-announce) var(--mo-ease-pop), opacity var(--mo-quick) var(--mo-ease-soft)',
+                    transitionDelay: `${delay}ms`,
+                    backgroundColor: team.color,
+                    color: textColor,
+                    ...priceStyles
+                  }}
+                  className={cn(
+                    "w-7 h-7 rounded-full shadow-lg ring-2 ring-white flex items-center justify-center font-black text-xs shrink-0 border border-black/10 pointer-events-auto transition-all",
+                    priceClass
+                  )}
+                  title={`${team.name}: $${price}`}
+                >
+                  {team.name.charAt(0).toUpperCase()}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Unrevealed Prices Tray */}
@@ -137,10 +179,14 @@ export function PriceLadder({ gameState }: PriceLadderProps) {
             <div className="flex flex-wrap justify-center gap-1.5">
               {unrevealedTeams.map(team => {
                 const textColor = getContrastTextColor(team.color);
+                const priceKey = `price:${team.id}`;
                 return (
                   <div 
                     key={team.id}
-                    className="w-6 h-6 rounded-full border border-black/20 flex items-center justify-center font-extrabold text-[10px] shadow-md ring-2 ring-white shrink-0 animate-pulse"
+                    className={cn(
+                      "w-6 h-6 rounded-full border border-black/20 flex items-center justify-center font-extrabold text-[10px] shadow-md ring-2 ring-white shrink-0 transition-all",
+                      m.isRecent(priceKey) && 'mo-recent'
+                    )}
                     style={{ backgroundColor: team.color, color: textColor }}
                     title={`${team.name} (Planning...)`}
                   >

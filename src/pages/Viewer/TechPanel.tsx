@@ -3,6 +3,9 @@ import { GameState, Team } from '@/types/game';
 import { Award, Check, MapPin, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
 import { getTechnologyCostForTeamForState } from '@/hooks/useGameBoardState';
 import { GameIcon } from '@/components/dashboard/GameIcon';
+import { useMotion } from './motion/MotionContext';
+import { getMotionClass, getMotionStyles } from './motion/motionClass';
+import { cn } from '@/lib/utils';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -30,6 +33,7 @@ interface TechPanelProps {
 
 export function TechPanel({ gameState }: TechPanelProps) {
   const DESIRED_TECH_ORDER = ['GPS', 'WIFI', 'GAMING', 'BATTERY', 'NFC', '4G'];
+  const m = useMotion();
 
   const sortedTechs = useMemo(() => {
     return Object.values(gameState.technologies).sort((a, b) => {
@@ -41,11 +45,21 @@ export function TechPanel({ gameState }: TechPanelProps) {
 
   // Helper to render segmented pie circle for technology research progress (matching logistics style)
   const renderTechProgressCircle = (team: Team, invested: number, cost: number, isCompleted: boolean, techName: string) => {
+    const researchKey = `research:${techName}:${team.id}`;
+    const researchClass = getMotionClass(m, researchKey, 'sm');
+    const researchStyles = getMotionStyles(m, researchKey, team.color);
+
     if (isCompleted) {
       return (
         <div 
-          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-black shadow-md shrink-0 ring-2 ring-white animate-bubble-pop"
-          style={{ backgroundColor: team.color }}
+          className={cn(
+            "w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-black shadow-md shrink-0 ring-2 ring-white transition-all",
+            researchClass
+          )}
+          style={{ 
+            backgroundColor: team.color,
+            ...researchStyles
+          }}
           title={`${team.name}: ${techName} Completed!`}
         >
           ✓
@@ -55,16 +69,18 @@ export function TechPanel({ gameState }: TechPanelProps) {
 
     const fraction = Math.min(1, Math.max(0, invested / cost));
     const degrees = fraction * 360;
-    const hasInvested = invested > 0;
 
     return (
       <div 
-        className={`w-7 h-7 rounded-full border-2 relative shrink-0 shadow-2xs flex items-center justify-center overflow-hidden ${
-          hasInvested ? 'animate-bubble-pop ring-2 ring-purple-400/80 shadow-md' : ''
-        }`}
+        className={cn(
+          "w-7 h-7 rounded-full border-2 relative shrink-0 shadow-2xs flex items-center justify-center overflow-hidden transition-all duration-300 logistics-pie",
+          researchClass
+        )}
         style={{
           borderColor: team.color,
-          background: `conic-gradient(${team.color} 0deg ${degrees}deg, #e2e8f0 ${degrees}deg 360deg)`,
+          ['--pie' as string]: `${degrees}deg`,
+          background: `conic-gradient(${team.color} 0deg var(--pie), #e2e8f0 var(--pie) 360deg)`,
+          ...researchStyles
         }}
         title={`${team.name}: ${invested}/${cost} Research Icons Invested`}
       >
@@ -105,10 +121,21 @@ export function TechPanel({ gameState }: TechPanelProps) {
           const patentHolder = patentHolderId ? gameState.teams.find(t => t.id === patentHolderId) : null;
           const TechIcon = TECHNOLOGY_ICONS[tech.name] || MapPin;
 
+          const patentKey = `patent:${tech.name}`;
+          const isNewPatent = m.tierFor(patentKey) === 1;
+
+          const techKey = `tech:${tech.name}`;
+          const techChanged = m.tierFor(techKey) > 0 || 
+            gameState.teams.some(team => m.tierFor(`research:${tech.name}:${team.id}`) > 0);
+
           return (
             <div 
               key={tech.name} 
-              className="w-[250px] h-[122px] rounded-xl border-2 border-slate-400 bg-white p-3 flex flex-col justify-between shadow-md hover:border-slate-600 transition-all duration-300 shrink-0 overflow-hidden"
+              className={cn(
+                "w-[250px] h-[122px] rounded-xl border-2 border-slate-400 bg-white p-3 flex flex-col justify-between shadow-md hover:border-slate-600 transition-all duration-300 shrink-0 overflow-hidden mo-dimmable",
+                techChanged && "z-20"
+              )}
+              data-changed={techChanged ? '1' : undefined}
             >
               {/* Header: Tech Name + Specific Tech Icon + Patent Badge */}
               <div className="flex items-center justify-between border-b border-slate-150 pb-1.5">
@@ -119,11 +146,19 @@ export function TechPanel({ gameState }: TechPanelProps) {
 
                 {patentHolder ? (
                   <div 
-                    style={{ backgroundColor: patentHolder.color, color: getContrastTextColor(patentHolder.color) }}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black tracking-wider uppercase shadow-md animate-bubble-pop ring-2 ring-amber-400"
+                    style={{ 
+                      backgroundColor: patentHolder.color, 
+                      color: getContrastTextColor(patentHolder.color),
+                      ...getMotionStyles(m, patentKey, patentHolder.color)
+                    }}
+                    className={cn(
+                      "flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black tracking-wider uppercase shadow-md transition-all ring-2 ring-amber-400",
+                      getMotionClass(m, patentKey, 'sm'),
+                      isNewPatent && 'mo-arrive'
+                    )}
                     title={`Patent Holder: ${patentHolder.name}`}
                   >
-                    <Award className="h-3.5 w-3.5 animate-pulse shrink-0" />
+                    <Award className={cn("h-3.5 w-3.5 shrink-0", m.isRecent(patentKey) && 'mo-recent')} />
                     <span>{patentHolder.name}</span>
                   </div>
                 ) : (
@@ -131,7 +166,7 @@ export function TechPanel({ gameState }: TechPanelProps) {
                 )}
               </div>
 
-              {/* Team progress circles displayed next to each other in clean rows (no vertical scrollbar) */}
+              {/* Team progress circles */}
               <div className="flex items-center gap-1.5 flex-wrap justify-start py-1.5 px-0.5 overflow-hidden flex-1">
                 {gameState.teams.map(team => {
                   const progress = gameState.teamResearchProgress[team.id];

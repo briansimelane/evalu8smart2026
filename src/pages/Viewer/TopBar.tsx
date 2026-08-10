@@ -1,7 +1,10 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { GameState, SimulationClass } from '@/types/game';
+import React, { useMemo } from 'react';
+import { GameState, Team, SimulationClass } from '@/types/game';
 import { calculatePlayOrderForState } from '@/hooks/useGameBoardState';
 import { GameIcon } from '@/components/dashboard/GameIcon';
+import { useMotion } from './motion/MotionContext';
+import { getMotionClass, getMotionStyles } from './motion/motionClass';
+import { cn } from '@/lib/utils';
 
 interface TopBarProps {
   classData: SimulationClass;
@@ -21,38 +24,13 @@ const getContrastTextColor = (hexColor: string) => {
 
 export function TopBar({ classData, gameState }: TopBarProps) {
   const round = gameState.currentRound;
-  const currentPhase = (gameState.currentPhase || 'planning').toLowerCase();
   const roundData = gameState.rounds.find(r => r.roundNumber === round);
+  const m = useMotion();
   
   // Calculate turn order (play order) for current round
   const playOrder = useMemo(() => {
     return calculatePlayOrderForState(gameState, round);
   }, [gameState, round]);
-
-  // Track previous unsold count per team to animate individual team bubbles in Sales phase
-  const [animatingTeamId, setAnimatingTeamId] = useState<string | null>(null);
-  const prevUnsoldByTeamRef = useRef<Record<string, number>>({});
-
-  useEffect(() => {
-    const prevMap = prevUnsoldByTeamRef.current;
-    const currentMap: Record<string, number> = {};
-
-    gameState.teams.forEach(team => {
-      const tData = roundData?.teamData[team.id];
-      const produced = tData?.productsProduced || 0;
-      const sold = tData?.customersSold?.length || 0;
-      const unsold = Math.max(0, produced - sold);
-      currentMap[team.id] = unsold;
-
-      if (currentPhase === 'sales' && prevMap[team.id] !== undefined && prevMap[team.id] !== unsold) {
-        setAnimatingTeamId(team.id);
-        const t = setTimeout(() => setAnimatingTeamId(null), 3500);
-        return () => clearTimeout(t);
-      }
-    });
-
-    prevUnsoldByTeamRef.current = currentMap;
-  }, [gameState.teams, roundData, currentPhase]);
 
   // Determine active turn team
   const activeTurnTeam = useMemo(() => {
@@ -93,7 +71,7 @@ export function TopBar({ classData, gameState }: TopBarProps) {
     return null;
   }, [gameState, round, playOrder]);
 
-  // Updated 8 Phases mapping with game icon keys
+  // 8 Phases mapping with game icon keys
   const phases = [
     { key: 'planning', label: '1. Planning' },
     { key: 'production', label: '2. Production' },
@@ -109,7 +87,6 @@ export function TopBar({ classData, gameState }: TopBarProps) {
   const getPhaseState = (index: number) => {
     const curPhase = gameState.currentPhase || 'planning';
     
-    // Map currentPhase to index in our phases array
     let activeIdx = 0;
     if (curPhase === 'planning') activeIdx = 0;
     else if (curPhase === 'production') activeIdx = 1;
@@ -142,24 +119,23 @@ export function TopBar({ classData, gameState }: TopBarProps) {
           {playOrder.map((team, idx) => {
             const isActive = activeTurnTeam?.id === team.id;
             const textColor = getContrastTextColor(team.color);
+            const isTeamChanged = m.tierFor(`price:${team.id}`) > 0 || m.tierFor(`money:${team.id}`) > 0;
+
             return (
               <div 
                 key={team.id}
                 style={{ backgroundColor: team.color, color: textColor }}
-                className={`relative w-10 h-10 rounded-full shadow-md flex items-center justify-center text-sm font-black transition-all duration-500 border border-black/10 shrink-0 ${
+                className={cn(
+                  "relative w-10 h-10 rounded-full shadow-md flex items-center justify-center text-sm font-black transition-all duration-500 border border-black/10 shrink-0 mo-dimmable",
                   isActive 
-                    ? 'animate-attention ring-4 ring-offset-2 ring-emerald-500 scale-110 z-10 font-extrabold' 
-                    : 'opacity-85 hover:opacity-100'
-                }`}
+                    ? 'mo-turn ring-4 ring-offset-2 ring-emerald-500 scale-110 z-10 font-extrabold' 
+                    : 'opacity-85 hover:opacity-100',
+                  isTeamChanged && "z-20"
+                )}
+                data-changed={isTeamChanged ? '1' : undefined}
                 title={`${idx + 1}. ${team.name}`}
               >
                 <span>{idx + 1}</span>
-                {isActive && (
-                  <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-white"></span>
-                  </span>
-                )}
               </div>
             );
           })}
@@ -177,7 +153,7 @@ export function TopBar({ classData, gameState }: TopBarProps) {
 
           if (state === 'active') {
             opacityClass = 'opacity-100';
-            borderClass = 'border-amber-500 bg-white ring-4 ring-amber-400/80 ring-offset-2 shadow-xl animate-flash-three-slow z-20 font-black';
+            borderClass = 'border-amber-500 bg-white ring-4 ring-amber-400/80 ring-offset-2 shadow-xl z-20 font-black';
             scaleClass = 'scale-105';
           } else if (state === 'past') {
             opacityClass = 'opacity-50';
@@ -192,10 +168,18 @@ export function TopBar({ classData, gameState }: TopBarProps) {
           return (
             <div 
               key={p.key}
-              className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all duration-500 ${borderClass} ${opacityClass} ${scaleClass}`}
+              className={cn(
+                "relative flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all duration-550",
+                borderClass,
+                opacityClass,
+                scaleClass
+              )}
             >
               <GameIcon type={p.key} size="sm" />
-              <span className={`text-xs font-black uppercase tracking-wider ${state === 'active' ? 'text-slate-900' : 'text-slate-600'}`}>
+              <span className={cn(
+                "text-xs font-black uppercase tracking-wider",
+                state === 'active' ? 'text-slate-900' : 'text-slate-600'
+              )}>
                 {p.label}
               </span>
             </div>
@@ -203,13 +187,10 @@ export function TopBar({ classData, gameState }: TopBarProps) {
         })}
       </div>
 
-      {/* Independent Unsold Products Floating Bar (z-40, 100% Opaque bg-white, positioned below 2. Production) */}
+      {/* Independent Unsold Products Floating Bar */}
       {isProductionOrLater && (
         <div 
-          key={isProductionPhase ? `prod-bar-${round}` : 'prod-bar-static'}
-          className={`absolute top-[96px] left-[785px] -translate-x-1/2 bg-white border-2 border-slate-400 rounded-xl px-3.5 py-1.5 shadow-2xl flex items-center gap-2.5 z-40 whitespace-nowrap opacity-100 pointer-events-auto transition-all duration-300 ${
-            isProductionPhase ? 'animate-bubble-pop ring-4 ring-amber-400/80' : ''
-          }`}
+          className="absolute top-[96px] left-[785px] -translate-x-1/2 bg-white border-2 border-slate-400 rounded-xl px-3.5 py-1.5 shadow-2xl flex items-center gap-2.5 z-40 whitespace-nowrap opacity-100 pointer-events-auto transition-all duration-300"
         >
           <div className="flex items-center gap-1 text-[11px] font-black text-slate-600 uppercase tracking-widest border-r border-slate-300 pr-2.5">
             <GameIcon type="production" size="xs" />
@@ -225,15 +206,18 @@ export function TopBar({ classData, gameState }: TopBarProps) {
 
               if (produced === 0) return null;
 
-              const isTeamBubbleAnimating = animatingTeamId === team.id;
+              const bubbleKey = `money:${team.id}`;
+              const bubbleClass = getMotionClass(m, bubbleKey, 'sm');
+              const bubbleStyles = getMotionStyles(m, bubbleKey, team.color);
 
               return (
                 <div 
                   key={team.id}
-                  style={{ backgroundColor: team.color, color: textColor }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black shadow-sm ring-1 ring-black/10 transition-all duration-300 ${
-                    isTeamBubbleAnimating ? 'animate-bubble-pop ring-4 ring-amber-400 scale-110' : ''
-                  }`}
+                  style={{ backgroundColor: team.color, color: textColor, ...bubbleStyles }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black shadow-sm ring-1 ring-black/10 transition-all duration-300",
+                    bubbleClass
+                  )}
                   title={`${team.name}: ${unsold} unsold products remaining (${produced} produced, ${sold} sold)`}
                 >
                   <span>{team.name[0]}:</span>

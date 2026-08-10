@@ -5,15 +5,6 @@
   background-size: 24px 24px;
 }
 
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.animate-spin-slow {
-  animation: spin-slow 20s linear infinite;
-}
-
 @keyframes scale-in {
   0% { transform: scale(0.85); opacity: 0; }
   100% { transform: scale(1); opacity: 1; }
@@ -23,34 +14,155 @@
   animation: scale-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-/* Flash pulse effect for live-updates */
-@keyframes live-flash {
-  0% { background-color: rgba(254, 240, 138, 0.3); border-color: rgba(234, 179, 8, 0.6); }
-  100% { background-color: transparent; border-color: transparent; }
+:root {
+  /* ── durations ─────────────────────────────────────────────── */
+  --mo-instant:   140ms;   /* spotlight engaging */
+  --mo-quick:     240ms;   /* element arriving / leaving */
+  --mo-ack:       500ms;   /* tier-2 tint sweep */
+  --mo-announce: 1000ms;   /* tier-1 event */
+  --mo-release:   420ms;   /* spotlight releasing */
+  --mo-settle:    700ms;   /* board-level phase/round transition */
+  --mo-afterglow: 9000ms;  /* how long "recently changed" persists */
+
+  /* ── sequencing ────────────────────────────────────────────── */
+  --mo-stagger:   140ms;   /* gap between queued announcements */
+  --mo-coalesce:  250ms;   /* Firestore snapshot debounce */
+
+  /* ── easings ───────────────────────────────────────────────── */
+  --mo-ease-out:    cubic-bezier(0.16, 1, 0.3, 1);     /* arrivals, halo bloom */
+  --mo-ease-soft:   cubic-bezier(0.4, 0, 0.2, 1);      /* value & position moves */
+  --mo-ease-pop:    cubic-bezier(0.34, 1.3, 0.64, 1);  /* one restrained overshoot */
+  --mo-ease-dim-in: cubic-bezier(0.4, 0, 1, 1);        /* spotlight on — decisive */
+  --mo-ease-dim-out:cubic-bezier(0, 0, 0.2, 1);        /* spotlight off — gentle */
+
+  /* ── magnitudes ────────────────────────────────────────────── */
+  --mo-lift-sm:   1.22;    /* elements under ~40px: dots, tokens, badges */
+  --mo-lift-lg:   1.05;    /* cards, tiles, rows */
+  --mo-halo-w:    calc(4px / var(--mo-scale, 1));    /* ring thickness compensating for scale */
+  --mo-halo-grow: 1.55;    /* how far a small-element halo blooms */
+  --mo-tint-alpha: 0.18;   /* peak alpha of the tier-2 wash */
+  --mo-recent-w:  calc(3px / var(--mo-scale, 1));     /* afterglow ring thickness compensating for scale */
+
+  /* ── spotlight ─────────────────────────────────────────────── */
+  --mo-dim-opacity:    0.55;
+  --mo-dim-saturation: 0.65;
+
+  /* ── ambient ───────────────────────────────────────────────── */
+  --mo-breathe: 3200ms;    /* active-turn ring period */
 }
 
-.animate-live-flash {
-  animation: live-flash 1s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+/* Tier 1: halo bloom for SMALL elements (dots, tokens, badges under ~40px). */
+@keyframes mo-halo-sm {
+  0%   { opacity: 0;    transform: scale(0.82); }
+  18%  { opacity: 0.95; }
+  100% { opacity: 0;    transform: scale(var(--mo-halo-grow)); }
 }
 
-/* Pulse once for new cubes placed on region or price ladders */
-@keyframes pulse-once {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.15); box-shadow: 0 0 15px currentColor; }
+/* Tier 1: halo for LARGE elements (cards, tiles, rows). */
+@keyframes mo-halo-lg {
+  0%   { opacity: 0;    inset: -2px; }
+  18%  { opacity: 0.85; }
+  100% { opacity: 0;    inset: -12px; }
 }
 
-.animate-pulse-once {
-  animation: pulse-once 0.6s ease-in-out 1;
+@keyframes mo-lift {
+  0%   { transform: scale(1); }
+  38%  { transform: scale(var(--mo-lift, 1.22)); }
+  100% { transform: scale(1); }
 }
 
-/* Scroll marquee */
-@keyframes marquee-scroll {
-  0% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(-50%, 0, 0); }
+/* Tier 2: tint wash. Ramps IN over the first 15%. */
+@keyframes mo-tint {
+  0%   { background-color: transparent; }
+  15%  { background-color: var(--mo-tint-color, rgba(245, 158, 11, 0.18)); }
+  100% { background-color: transparent; }
 }
 
-.animate-marquee-slow {
-  display: inline-flex;
-  white-space: nowrap;
-  animation: marquee-scroll 25s linear infinite;
+/* Entry for genuinely new elements (first time a dot appears) */
+@keyframes mo-arrive {
+  0%   { opacity: 0; transform: scale(0.6) translateY(4px); }
+  100% { opacity: 1; transform: scale(1)   translateY(0); }
+}
+
+/* Board-level settle for round/phase change — one cross-fade, no per-element motion */
+@keyframes mo-settle {
+  0%   { opacity: 0.35; transform: scale(0.995); }
+  100% { opacity: 1;    transform: scale(1); }
+}
+
+/* Ambient: active turn ring pulse */
+@keyframes mo-breathe {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.55); }
+  50%      { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0.12); }
+}
+
+/* Base announce. Callers MUST also add --mo-lift and one halo variant. */
+.mo-announce {
+  position: relative;
+  z-index: 30;
+  animation: mo-lift var(--mo-announce) var(--mo-ease-pop) both;
+  animation-delay: var(--mo-delay, 0ms);
+  will-change: transform;
+}
+.mo-announce::after {
+  content: '';
+  position: absolute;
+  border-radius: inherit;
+  border: var(--mo-halo-w) solid var(--mo-accent, #f59e0b);
+  pointer-events: none;
+  animation-duration: var(--mo-announce);
+  animation-timing-function: var(--mo-ease-out);
+  animation-fill-mode: both;
+  animation-delay: var(--mo-delay, 0ms);
+}
+
+/* Small elements: dots, price tokens, office circles, patent badges */
+.mo-announce--sm          { --mo-lift: var(--mo-lift-sm); }
+.mo-announce--sm::after   { inset: -6px; animation-name: mo-halo-sm; }
+
+/* Large elements: region cards, tech tiles, improvement rows, team cards */
+.mo-announce--lg          { --mo-lift: var(--mo-lift-lg); }
+.mo-announce--lg::after   { inset: -2px; animation-name: mo-halo-lg; }
+
+.mo-ack {
+  animation: mo-tint var(--mo-ack) var(--mo-ease-soft) both;
+  animation-delay: var(--mo-delay, 0ms);
+}
+
+.mo-arrive {
+  animation: mo-arrive var(--mo-quick) var(--mo-ease-pop) both;
+  animation-delay: var(--mo-delay, 0ms);
+}
+
+/* Tier 3 — pure state, no animation. Team-coloured. */
+.mo-recent {
+  box-shadow: 0 0 0 var(--mo-recent-w) var(--mo-accent, #f59e0b),
+              0 0 0 calc(var(--mo-recent-w) + 3px) var(--mo-accent-soft, rgba(245, 158, 11, 0.18));
+  transition: box-shadow var(--mo-release) var(--mo-ease-soft);
+}
+
+/* The one permitted infinite animation on the whole board */
+.mo-turn { animation: mo-breathe var(--mo-breathe) var(--mo-ease-soft) infinite; }
+
+/* Spotlight styling */
+.mo-board { --mo-dim: 1; }
+
+.mo-board[data-spotlight='on'] .mo-dimmable:not([data-changed='1']) {
+  opacity: var(--mo-dim-opacity);
+  filter: saturate(var(--mo-dim-saturation));
+}
+
+/* Asymmetric: engage fast so the contrast moment lands, release slowly */
+.mo-dimmable {
+  transition: opacity var(--mo-release) var(--mo-ease-dim-out),
+              filter  var(--mo-release) var(--mo-ease-dim-out);
+}
+
+.mo-board[data-spotlight='on'] .mo-dimmable {
+  transition: opacity var(--mo-instant) var(--mo-ease-dim-in),
+              filter  var(--mo-instant) var(--mo-ease-dim-in);
+}
+
+.mo-settle {
+  animation: mo-settle var(--mo-settle) var(--mo-ease-out) both;
 }

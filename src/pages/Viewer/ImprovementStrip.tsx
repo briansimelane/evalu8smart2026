@@ -3,6 +3,9 @@ import { GameState, Team, calculateTeamTotalScore } from '@/types/game';
 import { AVAILABLE_IMPROVEMENT_CARDS } from '@/data/improvements';
 import { GameIcon } from '@/components/dashboard/GameIcon';
 import { Plus, Minus, Trophy, Award } from 'lucide-react';
+import { useMotion } from './motion/MotionContext';
+import { getMotionClass, getMotionStyles } from './motion/motionClass';
+import { cn } from '@/lib/utils';
 
 interface ImprovementStripProps {
   gameState: GameState;
@@ -22,10 +25,11 @@ const getContrastTextColor = (hexColor: string) => {
 export function ImprovementStrip({ gameState }: ImprovementStripProps) {
   const round = gameState.currentRound;
   const pool = gameState.improvementPoolByRound?.[round] || [];
+  const m = useMotion();
 
   const isScoringPhase = (gameState.currentPhase || '').toLowerCase() === 'scoring';
 
-  // Calculate teams sorted by total score in DESCENDING order (highest score at top, lowest score at bottom)
+  // Calculate teams sorted by total score in DESCENDING order
   const orderedScoredTeams = useMemo(() => {
     const teamsWithScore = gameState.teams.map(team => {
       const scoreObj = calculateTeamTotalScore(team.id, round, gameState);
@@ -35,7 +39,6 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
       };
     });
 
-    // Sort descending: highest score first (index 0), lowest score last
     return teamsWithScore.sort((a, b) => b.score - a.score);
   }, [gameState, round]);
 
@@ -44,7 +47,6 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
     return pool.map(cardId => {
       const cardData = AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === cardId);
       
-      // Find if this card was claimed this round
       const claimedCard = gameState.improvementCards.find(c => 
         c.id === cardId && c.allocatedInRound === round
       );
@@ -125,15 +127,27 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
                 ? gameState.teams.find(t => t.id === claimed.availableForTeam) 
                 : null;
 
+              const impKey = `improvement:${id}`;
+              const isNewClaim = m.tierFor(impKey) === 1;
+              const impClass = getMotionClass(m, impKey, 'sm');
+              const impStyles = getMotionStyles(m, impKey, claimingTeam?.color);
+              const impChanged = m.tierFor(impKey) > 0;
+
               return (
                 <div 
                   key={id}
-                  style={claimingTeam ? { borderColor: claimingTeam.color } : undefined}
-                  className={`relative rounded-xl transition-all duration-300 p-2 flex flex-col items-center justify-center shrink-0 ${
+                  style={{
+                    ...(claimingTeam ? { borderColor: claimingTeam.color } : undefined),
+                    ...impStyles
+                  }}
+                  className={cn(
+                    "relative rounded-xl transition-all duration-300 p-2 flex flex-col items-center justify-center shrink-0 mo-dimmable",
                     claimingTeam 
                       ? 'border-4 bg-slate-50/90 shadow-md' 
-                      : 'border-2 border-slate-200 bg-white hover:border-slate-400 shadow-xs'
-                  }`}
+                      : 'border-2 border-slate-200 bg-white hover:border-slate-400 shadow-xs',
+                    impChanged && "z-20"
+                  )}
+                  data-changed={impChanged ? '1' : undefined}
                 >
                   {/* Card Icons / Effect Display Only */}
                   <div className="flex items-center justify-center gap-2 w-full py-0.5">
@@ -149,8 +163,12 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
                   {/* Claiming team ribbon overlay */}
                   {claimingTeam && (
                     <div 
-                      style={{ backgroundColor: claimingTeam.color }}
-                      className="absolute top-0 right-0 px-2.5 py-0.5 rounded-tr-xl rounded-bl-xl text-[10px] font-black text-white uppercase shadow-lg flex items-center gap-1 animate-bubble-pop ring-2 ring-amber-400"
+                      style={{ backgroundColor: claimingTeam.color, ...impStyles }}
+                      className={cn(
+                        "absolute top-0 right-0 px-2.5 py-0.5 rounded-tr-xl rounded-bl-xl text-[10px] font-black text-white uppercase shadow-lg flex items-center gap-1 transition-all ring-2 ring-amber-400",
+                        impClass,
+                        isNewClaim && 'mo-arrive'
+                      )}
                     >
                       <span>TAKEN BY: {claimingTeam.name.toUpperCase()}</span>
                     </div>
@@ -169,12 +187,12 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
         </>
       )}
 
-      {/* 2. Scoring Phase: Full-Height Animated Scoreboard (Highest at Top, Animates from Bottom Up) */}
+      {/* 2. Scoring Phase: Full-Height Animated Scoreboard */}
       {isScoringPhase && (
         <div className="flex flex-col gap-3 h-full animate-fade-in">
           <div className="flex flex-col border-b-2 border-amber-400 pb-2.5 shrink-0">
             <div className="flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-amber-500 animate-bounce" />
+              <Trophy className="w-5 h-5 text-amber-500" />
               <span className="text-base font-black text-slate-900 uppercase tracking-tight">Round {round} Scoreboard</span>
             </div>
             <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider mt-1">
@@ -184,25 +202,19 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
 
           <div className="flex flex-col gap-3.5 flex-1 justify-center py-2">
             {orderedScoredTeams.map(({ team, score }, idx) => {
-              const totalCount = orderedScoredTeams.length;
-              const rankNum = idx + 1; // Rank 1 is highest score at top of list
+              const rankNum = idx + 1;
               const isWinner = rankNum === 1;
               const textColor = getContrastTextColor(team.color);
-
-              // Calculate delay so the bottom-most item (lowest score) animates first (0ms), moving UP to highest score
-              const bottomUpDelay = (totalCount - 1 - idx) * 1200;
 
               return (
                 <div 
                   key={team.id}
-                  style={{
-                    animationDelay: `${bottomUpDelay}ms`,
-                  }}
-                  className={`p-3.5 rounded-2xl border-2 flex items-center justify-between shadow-lg opacity-0 animate-slow-score ${
+                  className={cn(
+                    "p-3.5 rounded-2xl border-2 flex items-center justify-between shadow-lg transition-all",
                     isWinner 
-                      ? 'border-amber-400 bg-gradient-to-r from-amber-50 via-yellow-100 to-amber-50 ring-4 ring-amber-400/80 shadow-2xl scale-105 z-20 animate-attention' 
+                      ? 'border-amber-400 bg-gradient-to-r from-amber-50 via-yellow-100 to-amber-50 ring-4 ring-amber-400/80 shadow-2xl scale-105 z-20' 
                       : 'border-slate-300 bg-white hover:border-slate-400'
-                  }`}
+                  )}
                 >
                   {/* Rank & Team Badge */}
                   <div className="flex items-center gap-2.5">
@@ -216,7 +228,7 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
                     <div className="flex flex-col">
                       <span className="font-extrabold text-sm text-slate-900 uppercase tracking-tight flex items-center gap-1.5">
                         {team.name}
-                        {isWinner && <Trophy className="w-4 h-4 text-amber-500 fill-amber-400 animate-pulse" />}
+                        {isWinner && <Trophy className="w-4 h-4 text-amber-500 fill-amber-400" />}
                       </span>
                       {isWinner ? (
                         <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-1">

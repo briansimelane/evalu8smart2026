@@ -1,9 +1,12 @@
 import React, { useMemo } from 'react';
-import { GameState, Team } from '@/types/game';
+import { GameState, Team, TeamLogisticsProgress } from '@/types/game';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { GameIcon } from '@/components/dashboard/GameIcon';
 import { MapPin, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
+import { useMotion } from './motion/MotionContext';
+import { getMotionClass, getMotionStyles } from './motion/motionClass';
+import { cn } from '@/lib/utils';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -34,6 +37,7 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
   const round = gameState.currentRound;
   const roundData = gameState.rounds.find(r => r.roundNumber === round);
   const regionConfig = gameState.regionLogistics[regionName];
+  const m = useMotion();
   
   const customerData = useMemo(() => {
     return REGION_CUSTOMERS.find(c => c.region === regionName)?.customers || [];
@@ -139,19 +143,20 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
   const renderInProgressCircle = (team: Team, invested: number, cost: number) => {
     const fraction = Math.min(1, Math.max(0, invested / cost));
     const degrees = fraction * 360;
-    const hasInvested = invested > 0;
+
+    const logKey = `logistics:${regionName}:${team.id}`;
+    const logClass = getMotionClass(m, logKey, 'sm');
+    const logStyles = getMotionStyles(m, logKey, team.color);
 
     return (
       <div 
         key={`progress-${team.id}`}
-        className={`w-7 h-7 rounded-full border-2 relative shrink-0 flex items-center justify-center overflow-hidden transition-all duration-300 ${
-          hasInvested 
-            ? 'animate-bubble-pop ring-2 ring-purple-500/90 shadow-md' 
-            : 'shadow-xs'
-        }`}
+        className={cn("w-7 h-7 rounded-full border-2 relative shrink-0 flex items-center justify-center overflow-hidden transition-all duration-300 logistics-pie", logClass)}
         style={{
           borderColor: team.color,
-          background: `conic-gradient(${team.color} 0deg ${degrees}deg, #e2e8f0 ${degrees}deg 360deg)`,
+          ['--pie' as string]: `${degrees}deg`,
+          background: `conic-gradient(${team.color} 0deg var(--pie), #e2e8f0 var(--pie) 360deg)`,
+          ...logStyles
         }}
         title={`${team.name}: ${invested}/${cost} Logistics Icons Invested`}
       >
@@ -177,21 +182,36 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
   // Card width scales dynamically so all customers fit on a single horizontal row
   const cardWidth = Math.max(280, slotCount * 52 + 42);
 
+  // Spotlight change check: did any child inside this card change in the current event tick?
+  const controlKey = `control:${regionName}`;
+  const cardChanged = m.tierFor(controlKey) > 0 ||
+    customerStatus.some(({ customer }) => m.tierFor(`customer:${regionName}:${customer.id}`) > 0) ||
+    presentTeamObjs.some(t => m.tierFor(`office:${regionName}:${t.id}`) > 0) ||
+    inProgressTeamObjs.some(({ team }) => m.tierFor(`logistics:${regionName}:${team.id}`) > 0);
+
   return (
     <div 
       style={{ width: `${cardWidth}px` }}
-      className="absolute h-[165px] bg-white border border-slate-300 rounded-xl p-3 shadow-md flex flex-col justify-between backdrop-blur-sm group hover:border-slate-500 hover:shadow-xl transition-all duration-300 text-slate-900 z-10"
+      className={cn(
+        "absolute h-[165px] bg-white border border-slate-300 rounded-xl p-3 shadow-md flex flex-col justify-between backdrop-blur-sm group hover:border-slate-500 hover:shadow-xl transition-all duration-300 text-slate-900 z-10 mo-dimmable",
+        cardChanged && "z-20"
+      )}
+      data-changed={cardChanged ? '1' : undefined}
     >
-      {/* Corner Control Points Badges (1st and 2nd Place Control - Animated with 3.5s bubble pop) */}
+      {/* Corner Control Points Badges */}
       {controlLeaders && (controlLeaders.first || controlLeaders.second) && (
-        <div className="absolute -top-3.5 -right-3.5 flex items-center gap-1 z-30 animate-bubble-pop">
+        <div className="absolute -top-3.5 -right-3.5 flex items-center gap-1 z-30">
           {controlLeaders.first && (
             <div 
               style={{ 
                 backgroundColor: controlLeaders.first.team.color, 
-                color: getContrastTextColor(controlLeaders.first.team.color) 
+                color: getContrastTextColor(controlLeaders.first.team.color),
+                ...getMotionStyles(m, controlKey, controlLeaders.first.team.color)
               }}
-              className="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shadow-2xl ring-4 ring-amber-400/90 animate-bubble-pop"
+              className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shadow-2xl ring-4 ring-amber-400/90 transition-all",
+                getMotionClass(m, controlKey, 'sm')
+              )}
               title={`1st Place Control: ${controlLeaders.first.team.name} (+${controlLeaders.first.points} control points)`}
             >
               {controlLeaders.first.points}
@@ -201,9 +221,13 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
             <div 
               style={{ 
                 backgroundColor: controlLeaders.second.team.color, 
-                color: getContrastTextColor(controlLeaders.second.team.color) 
+                color: getContrastTextColor(controlLeaders.second.team.color),
+                ...getMotionStyles(m, controlKey, controlLeaders.second.team.color)
               }}
-              className="w-6 h-6 rounded-full flex items-center justify-center font-black text-[11px] shadow-lg ring-2 ring-white animate-bubble-pop opacity-95"
+              className={cn(
+                "w-6 h-6 rounded-full flex items-center justify-center font-black text-[11px] shadow-lg ring-2 ring-white transition-all opacity-95",
+                getMotionClass(m, controlKey, 'sm')
+              )}
               title={`2nd Place Control: ${controlLeaders.second.team.name} (+${controlLeaders.second.points} control points)`}
             >
               {controlLeaders.second.points}
@@ -212,7 +236,7 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
         </div>
       )}
 
-      {/* Top Row: Title + Logistics Cost + Office Circles (Present, In-Progress, Empty) */}
+      {/* Top Row: Title + Logistics Cost + Office Circles */}
       <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
         <div className="flex items-center gap-2">
           {/* Logistics Badge with official GameIcon and dark gray border */}
@@ -223,22 +247,31 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
           <span className="font-display font-black text-base tracking-tight text-slate-900">{regionName.toUpperCase()}</span>
         </div>
 
-        {/* Office & Logistics Slots Row (Present -> In-Progress -> Empty next to each other) */}
+        {/* Office & Logistics Slots Row */}
         <div className="flex items-center gap-1.5">
           {/* 1. Present Teams (Office Established - Letter Inside with Gold Ring & Bubble Pop) */}
-          {presentTeamObjs.map(team => (
-            <div 
-              key={`present-${team.id}`}
-              style={{ 
-                backgroundColor: team.color,
-                color: getContrastTextColor(team.color)
-              }}
-              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ring-2 ring-amber-400 shadow-md shrink-0 animate-bubble-pop"
-              title={`Office established by ${team.name} (Logistics Complete!)`}
-            >
-              {team.name[0]}
-            </div>
-          ))}
+          {presentTeamObjs.map(team => {
+            const officeKey = `office:${regionName}:${team.id}`;
+            const isNewOffice = m.tierFor(officeKey) === 1;
+            return (
+              <div 
+                key={`present-${team.id}`}
+                style={{ 
+                  backgroundColor: team.color,
+                  color: getContrastTextColor(team.color),
+                  ...getMotionStyles(m, officeKey, team.color)
+                }}
+                className={cn(
+                  "w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ring-2 ring-amber-400 shadow-md shrink-0 transition-all",
+                  getMotionClass(m, officeKey, 'sm'),
+                  isNewOffice && 'mo-arrive'
+                )}
+                title={`Office established by ${team.name} (Logistics Complete!)`}
+              >
+                {team.name[0]}
+              </div>
+            );
+          })}
 
           {/* 2. In-Progress Teams (Shaded Pie Circles by Logistics Progress matching Research) */}
           {inProgressTeamObjs.map(({ team, invested }) => 
@@ -262,14 +295,17 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
         {customerStatus.map(({ customer, buyerTeam }) => {
           const isPrice = customer.type === 'price';
           const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
+          const custKey = `customer:${regionName}:${customer.id}`;
 
           return (
             <div 
               key={customer.id}
               style={buyerTeam ? { borderColor: buyerTeam.color } : undefined}
-              className={`relative w-11 h-11 rounded-xl flex items-center justify-center p-0.5 text-center font-mono shadow-sm transition-all duration-300 ${
-                isPrice ? 'bg-red-600' : 'bg-purple-600'
-              } ${buyerTeam ? 'border-[3px] shadow-md' : isPrice ? 'border border-red-700' : 'border border-purple-700'}`}
+              className={cn(
+                `relative w-11 h-11 rounded-xl flex items-center justify-center p-0.5 text-center font-mono shadow-sm transition-all duration-300`,
+                isPrice ? 'bg-red-600' : 'bg-purple-600',
+                buyerTeam ? 'border-[3px] shadow-md' : isPrice ? 'border border-red-700' : 'border border-purple-700'
+              )}
               title={
                 buyerTeam 
                   ? `Sold to ${buyerTeam.name} (${isPrice ? `$${customer.price}` : customer.technology})` 
@@ -288,8 +324,14 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
               {/* Bottom-Center Team Color Dot Badge indicating purchasing team */}
               {buyerTeam && (
                 <div 
-                  style={{ backgroundColor: buyerTeam.color }}
-                  className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full shadow-lg ring-2 ring-white z-20 animate-bubble-pop"
+                  style={{ 
+                    backgroundColor: buyerTeam.color,
+                    ...getMotionStyles(m, custKey, buyerTeam.color)
+                  }}
+                  className={cn(
+                    "absolute -bottom-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full shadow-lg ring-2 ring-white z-20 transition-all",
+                    getMotionClass(m, custKey, 'sm')
+                  )}
                   title={`Sold to ${buyerTeam.name}`}
                 />
               )}
