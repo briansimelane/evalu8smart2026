@@ -153,11 +153,9 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                         <Badge variant="secondary" className="text-sm px-2.5 py-1 text-warning dark:text-warning font-semibold">
                           Control: +{roundControl} pts
                         </Badge>
-                        {patentBonus > 0 && (
-                          <Badge variant="secondary" className="text-sm px-2.5 py-1 text-muted-foreground dark:text-purple-400 font-semibold">
-                            Patent: +{patentBonus} pts
-                          </Badge>
-                        )}
+                        <Badge variant="secondary" className="text-sm px-2.5 py-1 text-muted-foreground dark:text-purple-400 font-semibold">
+                          Patent: +{patentBonus} pts
+                        </Badge>
                         <Badge variant="default" className="text-sm px-2.5 py-1 font-bold bg-primary text-white">
                           Total Score: {overallValue.toLocaleString()} pts
                         </Badge>

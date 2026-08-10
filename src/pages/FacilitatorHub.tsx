@@ -22,13 +22,13 @@ const DEFAULT_TEAMS = [
   { name: 'Red Team', color: '#ef4444', isBot: false, botProfile: 'BALANCED' as BotProfile, botDifficulty: 'MEDIUM' as BotDifficulty }
 ];
 
-interface ClassTeamCodesTableProps {
+export interface ClassTeamCodesTableProps {
   cls: SimulationClass;
   handleCopy: (code: string) => void;
   copiedCode: string | null;
 }
 
-const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, handleCopy, copiedCode }) => {
+export const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, handleCopy, copiedCode }) => {
   const { selectClass, selectTeam, facilitatorReleaseCeoSlot, facilitatorChangeCeoPin, convertTeamSeat } = useSession();
   const [subcollectionTeams, setSubcollectionTeams] = useState<Record<string, ClassTeam>>({});
   const navigate = useNavigate();

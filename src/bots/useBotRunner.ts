@@ -18,14 +18,20 @@ export function useBotRunner() {
     setBotThinking
   } = useGame();
   
-  const { currentRole, currentClassId, currentClassTeams } = useSession();
+  const { currentClassId, currentClassTeams } = useSession();
 
   const processedActions = useRef<Set<string>>(new Set());
   const activeTimers = useRef<Record<string, boolean>>({});
+  const activeTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
+
+  // Maintain ref to latest gameState to avoid stale closure state in timeouts
+  const latestGameState = useRef(gameState);
+  useEffect(() => {
+    latestGameState.current = gameState;
+  }, [gameState]);
 
   useEffect(() => {
     if (!gameState || !currentClassId) return;
-    if (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') return;
     if (gameState.botConfig?.enabled === false) return;
 
     const round = gameState.currentRound;
@@ -37,11 +43,27 @@ export function useBotRunner() {
     const roundData = gameState.rounds.find(r => r.roundNumber === round);
     const playOrder = calculatePlayOrder(round);
 
+    const isTeamBot = (tId: string) => {
+      const bTeam = gameState.teams?.find(t => t.id === tId);
+      const rTeam = currentClassTeams?.[tId];
+      return !!(
+        bTeam?.isBot ||
+        rTeam?.isBot ||
+        (bTeam as any)?.accessCode === 'BOT' ||
+        (rTeam as any)?.accessCode === 'BOT' ||
+        (bTeam as any)?.code === 'BOT' ||
+        (rTeam as any)?.code === 'BOT' ||
+        bTeam?.name?.toLowerCase().includes('bot') ||
+        rTeam?.name?.toLowerCase().includes('bot')
+      );
+    };
+
     // Identify active turn team based on normalized phase
     let activeTurnTeam = null;
 
     if (phase === 'planning') {
-      activeTurnTeam = playOrder.find(t => !roundData?.teamData[t.id]);
+      // In planning phase, all bot teams without a submitted plan can submit concurrently
+      activeTurnTeam = playOrder.find(t => !roundData?.teamData[t.id] && isTeamBot(t.id));
     } else if (phase === 'improvement') {
       activeTurnTeam = playOrder.find(t => {
         const count = roundData?.teamData[t.id]?.improvementCards || 0;
@@ -52,12 +74,14 @@ export function useBotRunner() {
       });
     } else if (phase === 'research') {
       activeTurnTeam = playOrder.find(t => {
+        if (!isTeamBot(t.id)) return false;
         const icons = roundData?.teamData[t.id]?.researchIcons || 0;
         const spent = (gameState.researchAllocatedByRound || {})[round]?.[t.id] || 0;
         return icons > 0 && spent < icons;
       });
     } else if (phase === 'logistics') {
       activeTurnTeam = playOrder.find(t => {
+        if (!isTeamBot(t.id)) return false;
         const icons = roundData?.teamData[t.id]?.logisticsIcons || 0;
         const spent = (gameState.logisticsAllocatedByRound || {})[round]?.[t.id] || 0;
         return icons > 0 && spent < icons;
@@ -65,7 +89,7 @@ export function useBotRunner() {
     } else if (phase === 'sales') {
       const activeSalesPlayOrder = playOrder.filter(team => {
         const tData = roundData?.teamData[team.id];
-        return (tData?.productsProduced || 0) > 0;
+        return (tData?.productsProduced || 0) > 0 && isTeamBot(team.id);
       });
       activeTurnTeam = activeSalesPlayOrder.find(t => {
         const tData = roundData?.teamData[t.id];
@@ -77,11 +101,7 @@ export function useBotRunner() {
     if (!activeTurnTeam) return;
 
     const teamId = activeTurnTeam.id;
-    const regTeam = currentClassTeams[teamId];
-    const botTeam = gameState.teams.find(t => t.id === teamId);
-    const isBot = botTeam?.isBot || regTeam?.isBot;
-
-    if (!isBot) return; // Wait for human player to make decision
+    if (!isTeamBot(teamId)) return; // Wait for human player to make decision
 
     const actionKey = `${round}:${phase}:${teamId}`;
 
@@ -89,218 +109,187 @@ export function useBotRunner() {
     if (processedActions.current.has(actionKey)) return;
     if (activeTimers.current[actionKey]) return;
 
-    const teamData = roundData?.teamData[teamId];
-    const combinationsData = getCombinations();
+    const botTeam = gameState.teams?.find(t => t.id === teamId);
 
     // Trigger timer and set bot "thinking" status on Firestore
     activeTimers.current[actionKey] = true;
     setBotThinking(teamId, true);
     
-    const delay = 2000 + Math.random() * 3000; // 2-5s thinking delay
+    const delay = 1500 + Math.random() * 2000; // 1.5-3.5s thinking delay
 
-    setTimeout(() => {
-      // Re-read latest state inside timeout to prevent race conditions
-      const currentRoundData = gameState.rounds.find(r => r.roundNumber === round);
-      const currentTeamData = currentRoundData?.teamData[teamId];
+    activeTimeouts.current[actionKey] = setTimeout(() => {
+      try {
+        // Re-read latest state inside timeout to prevent race conditions
+        const currentState = latestGameState.current;
+        if (!currentState) return;
 
-      if (phase === 'planning') {
-        if (currentTeamData) {
-          setBotThinking(teamId, false);
-          processedActions.current.add(actionKey);
-          delete activeTimers.current[actionKey];
-          return;
-        }
+        const currentBotTeam = currentState.teams?.find(t => t.id === teamId) || botTeam;
+        const currentRoundData = currentState.rounds.find(r => r.roundNumber === round);
+        const currentTeamData = currentRoundData?.teamData[teamId];
+        const combinationsData = getCombinations();
 
-        const profile = botTeam.botProfile || 'BALANCED';
-        const difficulty = botTeam.botDifficulty || 'MEDIUM';
-        const decision = decidePlanning(gameState, teamId, profile, difficulty, combinationsData);
+        if (phase === 'planning') {
+          if (currentTeamData) return;
 
-        const mockStats = {
-          teamId,
-          combination: decision.combination,
-          position: decision.position,
-          price: 0,
-          productsProduced: 0,
-          improvementCards: 0,
-          researchIcons: 0,
-          logisticsIcons: 0,
-          cardUsages: decision.cardUsages,
-          revenue: 0,
-          technologiesResearched: [],
-          expansionLocations: [],
-          salesByRegion: {},
-          regionControlPoints: {},
-          controlValue: 0,
-          totalMoney: 0,
-        };
+          const profile = (currentBotTeam as any)?.botProfile || 'BALANCED';
+          const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
+          const decision = decidePlanning(currentState, teamId, profile, difficulty, combinationsData);
 
-        const stats = calculatePlanStats(gameState, teamId, decision.combination, decision.position, decision.cardUsages, combinationsData);
-        mockStats.price = stats.calculatedPrice;
-        mockStats.productsProduced = stats.productsAvailable;
-        mockStats.improvementCards = stats.improvementPoints;
-        mockStats.researchIcons = stats.researchPoints;
-        mockStats.logisticsIcons = stats.logisticsPoints;
+          const mockStats = {
+            teamId,
+            combination: decision.combination,
+            position: decision.position,
+            price: 0,
+            productsProduced: 0,
+            improvementCards: 0,
+            researchIcons: 0,
+            logisticsIcons: 0,
+            cardUsages: decision.cardUsages,
+            revenue: 0,
+            technologiesResearched: [],
+            expansionLocations: [],
+            salesByRegion: {},
+            regionControlPoints: {},
+            controlValue: 0,
+            totalMoney: 0,
+          };
 
-        addRoundData(round, teamId, mockStats);
-        toast.info(`🤖 ${botTeam.name} submitted its plan.`);
+          const stats = calculatePlanStats(currentState, teamId, decision.combination, decision.position, decision.cardUsages, combinationsData);
+          mockStats.price = stats.calculatedPrice;
+          mockStats.productsProduced = stats.productsAvailable;
+          mockStats.improvementCards = stats.improvementPoints;
+          mockStats.researchIcons = stats.researchPoints;
+          mockStats.logisticsIcons = stats.logisticsPoints;
 
-      } else if (phase === 'improvement') {
-        const alreadyClaimed = gameState.improvementCards.some(c => 
-          (c.availableForTeam === teamId || c.usedBy === teamId) && c.allocatedInRound === round
-        );
-        if (alreadyClaimed) {
-          setBotThinking(teamId, false);
-          processedActions.current.add(actionKey);
-          delete activeTimers.current[actionKey];
-          return;
-        }
+          addRoundData(round, teamId, mockStats);
+          toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} submitted its plan.`);
 
-        const profile = botTeam.botProfile || 'BALANCED';
-        const difficulty = botTeam.botDifficulty || 'MEDIUM';
-        const cardIdToClaim = decideImprovement(gameState, teamId, profile, difficulty);
+        } else if (phase === 'improvement') {
+          const alreadyClaimed = currentState.improvementCards.some(c => 
+            (c.availableForTeam === teamId || c.usedBy === teamId) && c.allocatedInRound === round
+          );
+          if (alreadyClaimed) return;
 
-        if (cardIdToClaim !== null) {
-          claimImprovementCard(cardIdToClaim, teamId);
-          toast.info(`🤖 ${botTeam.name} claimed an improvement card.`);
-        } else {
-          // If no cards left or skip, do nothing/advance
-          toast.info(`🤖 ${botTeam.name} skipped improvement card selection.`);
-        }
+          const profile = (currentBotTeam as any)?.botProfile || 'BALANCED';
+          const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
+          const cardIdToClaim = decideImprovement(currentState, teamId, profile, difficulty);
 
-      } else if (phase === 'research') {
-        if (!teamData) {
-          setBotThinking(teamId, false);
-          delete activeTimers.current[actionKey];
-          return;
-        }
-
-        const allocatedMap = gameState.researchAllocatedByRound[round] || {};
-        const allocatedSpent = allocatedMap[teamId] || 0;
-        const totalIcons = teamData.researchIcons || 0;
-
-        if (allocatedSpent >= totalIcons) {
-          setBotThinking(teamId, false);
-          processedActions.current.add(actionKey);
-          delete activeTimers.current[actionKey];
-          return;
-        }
-
-        const profile = botTeam.botProfile || 'BALANCED';
-        const difficulty = botTeam.botDifficulty || 'MEDIUM';
-        const neededPoints = totalIcons - allocatedSpent;
-        const allocations = decideResearch(gameState, teamId, neededPoints, profile, difficulty);
-
-        let sumAllocated = 0;
-        Object.entries(allocations).forEach(([techName, points]) => {
-          if (points > 0) {
-            allocateResearch(teamId, techName, points);
-            sumAllocated += points;
+          if (cardIdToClaim !== null) {
+            claimImprovementCard(cardIdToClaim, teamId);
+            toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} claimed an improvement card.`);
+          } else {
+            toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} skipped improvement card selection.`);
           }
-        });
 
-        // Fallback: If remaining points were unallocated (e.g. all techs completed), dump leftovers to clear spent count
-        const leftoverPoints = neededPoints - sumAllocated;
-        if (leftoverPoints > 0) {
-          const allTechs = Object.keys(gameState.technologies);
-          const fallbackTech = allTechs[0] || 'GPS';
-          allocateResearch(teamId, fallbackTech, leftoverPoints);
+        } else if (phase === 'research') {
+          if (!currentTeamData) return;
+
+          const allocatedMap = currentState.researchAllocatedByRound[round] || {};
+          const allocatedSpent = allocatedMap[teamId] || 0;
+          const totalIcons = currentTeamData.researchIcons || 0;
+
+          if (allocatedSpent >= totalIcons) return;
+
+          const profile = (currentBotTeam as any)?.botProfile || 'BALANCED';
+          const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
+          const neededPoints = totalIcons - allocatedSpent;
+          const allocations = decideResearch(currentState, teamId, neededPoints, profile, difficulty);
+
+          let sumAllocated = 0;
+          Object.entries(allocations).forEach(([techName, points]) => {
+            if (points > 0) {
+              allocateResearch(teamId, techName, points);
+              sumAllocated += points;
+            }
+          });
+
+          // Fallback: If remaining points were unallocated, dump leftovers to clear spent count
+          const leftoverPoints = neededPoints - sumAllocated;
+          if (leftoverPoints > 0) {
+            const allTechs = Object.keys(currentState.technologies);
+            const fallbackTech = allTechs[0] || 'GPS';
+            allocateResearch(teamId, fallbackTech, leftoverPoints);
+          }
+
+          toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} allocated research points.`);
+
+        } else if (phase === 'logistics') {
+          if (!currentTeamData) return;
+
+          const allocatedMap = currentState.logisticsAllocatedByRound[round] || {};
+          const allocatedSpent = allocatedMap[teamId] || 0;
+          const totalIcons = currentTeamData.logisticsIcons || 0;
+
+          if (allocatedSpent >= totalIcons) return;
+
+          const profile = (currentBotTeam as any)?.botProfile || 'BALANCED';
+          const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
+          const neededPoints = totalIcons - allocatedSpent;
+          const allocations = decideLogistics(currentState, teamId, neededPoints, profile, difficulty);
+
+          let sumAllocated = 0;
+          Object.entries(allocations).forEach(([regionName, points]) => {
+            if (points > 0) {
+              allocateLogistics(teamId, regionName, points);
+              sumAllocated += points;
+            }
+          });
+
+          // Fallback: If remaining points were unallocated, dump leftovers to clear spent count
+          const leftoverPoints = neededPoints - sumAllocated;
+          if (leftoverPoints > 0) {
+            const allRegions = Object.keys(currentState.regionLogistics);
+            const fallbackRegion = allRegions[0] || 'USA';
+            allocateLogistics(teamId, fallbackRegion, leftoverPoints);
+          }
+
+          toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} allocated logistics points.`);
+
+        } else if (phase === 'sales') {
+          if (!currentTeamData || currentTeamData.customersSold) return;
+
+          const soldCustomers = new Set<string>();
+          Object.values(currentRoundData?.teamData || {}).forEach(tData => {
+            if (tData.customersSold) {
+              tData.customersSold.forEach(cid => soldCustomers.add(cid));
+            }
+          });
+
+          const profile = (currentBotTeam as any)?.botProfile || 'BALANCED';
+          const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
+          const chosenCustomerIds = decideSales(currentState, teamId, profile, difficulty, soldCustomers);
+
+          const teamPrice = currentTeamData.price;
+          const revenue = teamPrice * chosenCustomerIds.length;
+          const salesByRegion: Record<string, number> = {};
+          
+          chosenCustomerIds.forEach(cid => {
+            const regObj = REGION_CUSTOMERS.find(r => r.customers.some(c => c.id === cid));
+            if (regObj) {
+              salesByRegion[regObj.region] = (salesByRegion[regObj.region] || 0) + 1;
+            }
+          });
+
+          const finalSalesData = {
+            ...currentTeamData,
+            customersSold: chosenCustomerIds,
+            salesByRegion,
+            revenue,
+            totalMoney: (currentTeamData.totalMoney || 0) + revenue
+          };
+
+          addRoundData(round, teamId, finalSalesData);
+          toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} completed customer sales.`);
         }
-
+      } catch (err) {
+        console.error(`Error executing bot action for ${teamId} in ${phase}:`, err);
+      } finally {
         setBotThinking(teamId, false);
         processedActions.current.add(actionKey);
         delete activeTimers.current[actionKey];
-        toast.info(`🤖 ${botTeam.name} allocated research points.`);
-
-      } else if (phase === 'logistics') {
-        if (!teamData) {
-          setBotThinking(teamId, false);
-          delete activeTimers.current[actionKey];
-          return;
-        }
-
-        const allocatedMap = gameState.logisticsAllocatedByRound[round] || {};
-        const allocatedSpent = allocatedMap[teamId] || 0;
-        const totalIcons = teamData.logisticsIcons || 0;
-
-        if (allocatedSpent >= totalIcons) {
-          setBotThinking(teamId, false);
-          processedActions.current.add(actionKey);
-          delete activeTimers.current[actionKey];
-          return;
-        }
-
-        const profile = botTeam.botProfile || 'BALANCED';
-        const difficulty = botTeam.botDifficulty || 'MEDIUM';
-        const neededPoints = totalIcons - allocatedSpent;
-        const allocations = decideLogistics(gameState, teamId, neededPoints, profile, difficulty);
-
-        let sumAllocated = 0;
-        Object.entries(allocations).forEach(([regionName, points]) => {
-          if (points > 0) {
-            allocateLogistics(teamId, regionName, points);
-            sumAllocated += points;
-          }
-        });
-
-        // Fallback: If remaining points were unallocated (e.g. all accessible regions completed), dump leftovers to clear spent count
-        const leftoverPoints = neededPoints - sumAllocated;
-        if (leftoverPoints > 0) {
-          const allRegions = Object.keys(gameState.regionLogistics);
-          const fallbackRegion = allRegions[0] || 'USA';
-          allocateLogistics(teamId, fallbackRegion, leftoverPoints);
-        }
-
-        setBotThinking(teamId, false);
-        processedActions.current.add(actionKey);
-        delete activeTimers.current[actionKey];
-        toast.info(`🤖 ${botTeam.name} allocated logistics points.`);
-
-      } else if (phase === 'sales') {
-        if (!teamData || teamData.customersSold) {
-          setBotThinking(teamId, false);
-          processedActions.current.add(actionKey);
-          delete activeTimers.current[actionKey];
-          return;
-        }
-
-        const soldCustomers = new Set<string>();
-        Object.values(currentRoundData?.teamData || {}).forEach(tData => {
-          if (tData.customersSold) {
-            tData.customersSold.forEach(cid => soldCustomers.add(cid));
-          }
-        });
-
-        const profile = botTeam.botProfile || 'BALANCED';
-        const difficulty = botTeam.botDifficulty || 'MEDIUM';
-        const chosenCustomerIds = decideSales(gameState, teamId, profile, difficulty, soldCustomers);
-
-        const teamPrice = teamData.price;
-        const revenue = teamPrice * chosenCustomerIds.length;
-        const salesByRegion: Record<string, number> = {};
-        
-        chosenCustomerIds.forEach(cid => {
-          const regObj = REGION_CUSTOMERS.find(r => r.customers.some(c => c.id === cid));
-          if (regObj) {
-            salesByRegion[regObj.region] = (salesByRegion[regObj.region] || 0) + 1;
-          }
-        });
-
-        const finalSalesData = {
-          ...teamData,
-          customersSold: chosenCustomerIds,
-          salesByRegion,
-          revenue,
-          totalMoney: (teamData.totalMoney || 0) + revenue
-        };
-
-        addRoundData(round, teamId, finalSalesData);
-        toast.info(`🤖 ${botTeam.name} completed customer sales.`);
+        delete activeTimeouts.current[actionKey];
       }
-
-      setBotThinking(teamId, false);
-      processedActions.current.add(actionKey);
-      delete activeTimers.current[actionKey];
     }, delay);
 
-  }, [gameState, currentClassId, currentRole, currentClassTeams]);
+  }, [gameState, currentClassId, currentClassTeams]);
 }

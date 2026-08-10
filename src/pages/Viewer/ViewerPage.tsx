@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useSession } from '@/contexts/SessionContext';
 import { useGameBoardState } from '@/hooks/useGameBoardState';
 import { ViewerScaler } from './ViewerScaler';
 import { TopBar } from './TopBar';
@@ -9,10 +10,12 @@ import { TechPanel } from './TechPanel';
 import { ImprovementStrip } from './ImprovementStrip';
 import gameboardBg from '@/assets/gameboard.png';
 import './viewer.css';
-import { Maximize2, Monitor } from 'lucide-react';
+import { Maximize2, Monitor, LayoutDashboard } from 'lucide-react';
 
 export default function ViewerPage() {
   const { classCode } = useParams<{ classCode: string }>();
+  const navigate = useNavigate();
+  const { currentRole, selectClass, selectTeam } = useSession();
   const { classData, gameState, loading, error } = useGameBoardState(classCode || '');
 
   const toggleFullscreen = () => {
@@ -81,14 +84,29 @@ export default function ViewerPage() {
         {/* Research & Development Technologies Bottom Strip (Height: 150px) */}
         <TechPanel gameState={gameState} />
 
-        {/* Floating Fullscreen button */}
-        <button 
-          onClick={toggleFullscreen}
-          className="absolute top-4 right-4 z-50 bg-white/90 border border-slate-200 hover:border-slate-400 text-slate-600 hover:text-slate-900 p-2 rounded-lg backdrop-blur shadow-md transition-all active:scale-95"
-          title="Toggle Fullscreen (F)"
-        >
-          <Maximize2 className="h-4.5 w-4.5" />
-        </button>
+        {/* Floating Controls: All Games + Fullscreen */}
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+          {currentRole && currentRole !== 'STUDENT' && (
+            <button 
+              onClick={() => {
+                selectClass(null);
+                selectTeam(null);
+                navigate(currentRole === 'ADMIN' ? '/admin' : '/facilitator/classes');
+              }}
+              className="bg-white/90 border border-slate-200 hover:border-slate-400 text-slate-700 hover:text-slate-900 px-3 py-2 rounded-lg backdrop-blur shadow-md transition-all text-xs font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            >
+              <LayoutDashboard className="h-4 w-4 text-purple-600" />
+              All Games
+            </button>
+          )}
+          <button 
+            onClick={toggleFullscreen}
+            className="bg-white/90 border border-slate-200 hover:border-slate-400 text-slate-600 hover:text-slate-900 p-2 rounded-lg backdrop-blur shadow-md transition-all active:scale-95"
+            title="Toggle Fullscreen (F)"
+          >
+            <Maximize2 className="h-4.5 w-4.5" />
+          </button>
+        </div>
       </div>
     </ViewerScaler>
   );

@@ -17,6 +17,7 @@ import { FinancialsPhase } from './dashboard/FinancialsPhase';
 import { SummaryMap } from './dashboard/SummaryMap';
 import { GameSettingsDialog } from './dashboard/GameSettingsDialog';
 import { TeamSubmissionStatus } from './dashboard/TeamSubmissionStatus';
+import { CombinationsGuideModal } from './dashboard/CombinationsGuideModal';
 import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -65,7 +66,13 @@ export const Dashboard = () => {
   const navigate = useNavigate();
   const gameContext = useGame();
   const { gameState, resetGame, advanceRound, updatePhase, calculatePlayOrder, endGame } = gameContext;
-  const { currentRole, logout, activeClass } = useSession();
+  const { currentRole, logout, activeClass, selectClass, selectTeam } = useSession();
+  
+  const handleReturnToHub = () => {
+    selectClass(null);
+    selectTeam(null);
+    navigate(currentRole === 'ADMIN' ? '/admin' : '/facilitator/classes');
+  };
   
   // Automate bot actions client-side
   useBotRunner();
@@ -354,7 +361,7 @@ export const Dashboard = () => {
                         {/* 4. All Games */}
                         <Button
                           variant="default"
-                          onClick={() => navigate(currentRole === 'ADMIN' ? '/admin' : '/facilitator/classes')}
+                          onClick={handleReturnToHub}
                           className="w-full justify-start gap-2 h-10 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm"
                         >
                           <LayoutDashboard className="h-4 w-4" />
@@ -495,11 +502,12 @@ export const Dashboard = () => {
                       </AlertDialogContent>
                     </AlertDialog>
                     
+                    <CombinationsGuideModal triggerLabel="Combinations Guide" triggerVariant="outline" triggerClassName="text-xs h-8 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 font-bold" />
                     <GameSettingsDialog />
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={() => navigate(currentRole === 'ADMIN' ? '/admin' : '/facilitator/classes')}
+                      onClick={handleReturnToHub}
                       className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-1.5 shadow-sm text-xs"
                     >
                       <LayoutDashboard className="h-4 w-4" />
@@ -511,10 +519,13 @@ export const Dashboard = () => {
                   </div>
                 </>
               ) : (
-                <Button variant="outline" size="sm" onClick={logout} className="border-border hover:bg-muted text-foreground">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Logout
-                </Button>
+                <div className="flex items-center gap-2">
+                  <CombinationsGuideModal triggerLabel="Combinations Guide" triggerVariant="outline" triggerClassName="text-xs h-8 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 font-bold" />
+                  <Button variant="outline" size="sm" onClick={logout} className="border-border hover:bg-muted text-foreground">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Logout
+                  </Button>
+                </div>
               )}
             </div>
           </div>
@@ -526,45 +537,67 @@ export const Dashboard = () => {
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <div className="max-w-5xl mx-auto space-y-2">
             {/* Top Row - Game Phases */}
-            <TabsList className="grid grid-cols-4 sm:grid-cols-8 gap-1 h-auto w-full bg-muted text-muted-foreground border border-border shadow-sm p-1 sm:p-1.5 rounded-xl">
-              <TabsTrigger value="planning" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
-                <GameIcon type="planning" size="xs" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Planning</span>
-              </TabsTrigger>
-              <TabsTrigger value="production" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
-                <GameIcon type="production" size="xs" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Production</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="improvement" 
-                disabled={gameState.currentRound >= 5} 
-                className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                title={gameState.currentRound >= 5 ? "Improvement phase is skipped in Round 5 (Final Round)" : undefined}
-              >
-                <GameIcon type="improvement" size="xs" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Improvement</span>
-              </TabsTrigger>
-              <TabsTrigger value="innovation" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
-                <GameIcon type="research" size="xs" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Research</span>
-              </TabsTrigger>
-              <TabsTrigger value="expansion" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
-                <GameIcon type="logistics" size="xs" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Logistics</span>
-              </TabsTrigger>
-              <TabsTrigger value="sales" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
-                <GameIcon type="sales" size="xs" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Sales</span>
-              </TabsTrigger>
-              <TabsTrigger value="control" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
-                <GameIcon type="control" size="xs" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Control</span>
-              </TabsTrigger>
-              <TabsTrigger value="scoring" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
-                <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Scoring</span>
-              </TabsTrigger>
-            </TabsList>
+            {(() => {
+              const currentGamePhase = (gameState.currentPhase || 'planning').toLowerCase();
+
+              const renderPhaseTrigger = (
+                value: string,
+                label: string,
+                iconNode: React.ReactNode,
+                disabled?: boolean,
+                title?: string
+              ) => {
+                const isLive = currentGamePhase === value;
+                return (
+                  <TabsTrigger
+                    key={value}
+                    value={value}
+                    disabled={disabled}
+                    title={title}
+                    className={`relative flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2 transition-all ${
+                      disabled ? 'opacity-40 cursor-not-allowed' : ''
+                    } ${
+                      isLive ? 'ring-2 ring-emerald-500/80 border-emerald-500/50 font-bold bg-emerald-500/10 text-emerald-950 dark:text-emerald-100' : ''
+                    }`}
+                  >
+                    {isLive && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3 z-10" title="Active Game Phase">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border border-white dark:border-slate-900"></span>
+                      </span>
+                    )}
+                    {iconNode}
+                    <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap flex items-center gap-1">
+                      {label}
+                      {isLive && (
+                        <span className="hidden lg:inline-block text-[8px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded-sm leading-none border border-emerald-500/30">
+                          Active
+                        </span>
+                      )}
+                    </span>
+                  </TabsTrigger>
+                );
+              };
+
+              return (
+                <TabsList className="grid grid-cols-4 sm:grid-cols-8 gap-1 h-auto w-full bg-muted text-muted-foreground border border-border shadow-sm p-1 sm:p-1.5 rounded-xl">
+                  {renderPhaseTrigger('planning', 'Planning', <GameIcon type="planning" size="xs" />)}
+                  {renderPhaseTrigger('production', 'Production', <GameIcon type="production" size="xs" />)}
+                  {renderPhaseTrigger(
+                    'improvement',
+                    'Improvement',
+                    <GameIcon type="improvement" size="xs" />,
+                    gameState.currentRound >= 5,
+                    gameState.currentRound >= 5 ? 'Improvement phase is skipped in Round 5 (Final Round)' : undefined
+                  )}
+                  {renderPhaseTrigger('innovation', 'Research', <GameIcon type="research" size="xs" />)}
+                  {renderPhaseTrigger('expansion', 'Logistics', <GameIcon type="logistics" size="xs" />)}
+                  {renderPhaseTrigger('sales', 'Sales', <GameIcon type="sales" size="xs" />)}
+                  {renderPhaseTrigger('control', 'Control', <GameIcon type="control" size="xs" />)}
+                  {renderPhaseTrigger('scoring', 'Scoring', <GameIcon type="scoring" size="xs" />)}
+                </TabsList>
+              );
+            })()}
 
             {/* Bottom Row - Data Views */}
             <TabsList className="grid grid-cols-3 sm:grid-cols-6 gap-1 h-auto w-full border border-border p-1 sm:p-1.5 rounded-xl">

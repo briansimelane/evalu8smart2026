@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
-import { GameState, Team, RoundData, TeamRoundData, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress } from '@/types/game';
+import { GameState, Team, RoundData, TeamRoundData, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, GamePhase } from '@/types/game';
 import { REGIONS, TECHNOLOGIES, TEAM_COLORS, COMBINATIONS, Combination, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS, AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
@@ -10,6 +10,7 @@ import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
 import { removeUndefined } from '@/lib/utils';
+import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule } from '@/lib/rules';
 
 export interface GameContextType {
   gameState: GameState | null;
@@ -23,7 +24,6 @@ export interface GameContextType {
   reshuffleRoundCards: () => import('@/data/improvements').ImprovementCardData[];
   allocateImprovementCards: (allocations: Record<number, string>) => void;
   advanceRound: () => void;
-  updatePhase: (phase: string) => void;
   claimImprovementCard: (cardId: number, teamId: string) => void;
   setBotThinking: (teamId: string, thinking: boolean) => void;
   markImprovementCardUsed: (cardId: number) => void;
@@ -41,7 +41,7 @@ export interface GameContextType {
   updateCombinations: (data: Combination[] | null) => void;
   getCombinations: () => Combination[];
   recalculateControlPoints: () => void;
-  updatePhase: (phase: import('@/types/game').GamePhase) => void;
+  updatePhase: (phase: GamePhase) => void;
   endGame: () => void;
 }
 
@@ -266,6 +266,42 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
     mutateGameState(prev => {
       if (!prev) return prev;
+
+      // 1. Basic combination/position check
+      const combinations = prev.combinationsData || COMBINATIONS;
+      const selectedCombo = combinations.find(
+        c => c.combination === data.combination && c.position === data.position
+      );
+      if (!selectedCombo) {
+        console.error(`Invalid combination ${data.combination} or position ${data.position}`);
+        return prev;
+      }
+
+      // 2. Validate planning stats consistency (price, productsProduced, researchIcons, logisticsIcons)
+      const stats = calculatePlanStats(
+        prev,
+        teamId,
+        data.combination,
+        data.position,
+        data.cardUsages || {},
+        combinations
+      );
+
+      if (
+        data.price !== stats.calculatedPrice ||
+        data.productsProduced !== stats.productsAvailable ||
+        data.researchIcons !== stats.researchPoints ||
+        data.logisticsIcons !== stats.logisticsPoints
+      ) {
+        console.error(`Planning stats mismatch for team ${teamId}. Given: price=${data.price}, produced=${data.productsProduced}, research=${data.researchIcons}, logistics=${data.logisticsIcons}. Expected: price=${stats.calculatedPrice}, produced=${stats.productsAvailable}, research=${stats.researchPoints}, logistics=${stats.logisticsPoints}.`);
+        return prev;
+      }
+
+      // 3. Sales quantity check
+      if (data.customersSold && data.customersSold.length > data.productsProduced) {
+        console.error(`Sales count (${data.customersSold.length}) exceeds products produced (${data.productsProduced})`);
+        return prev;
+      }
 
       const rounds = [...prev.rounds];
       const roundIndex = rounds.findIndex(r => r.roundNumber === roundNumber);
@@ -523,7 +559,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  const updatePhase = (phase: string) => {
+  const updatePhase = (phase: GamePhase) => {
     if (!gameState) return;
 
     mutateGameState(prev => {
@@ -738,7 +774,26 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       if (!prev) return prev;
 
       const tech = prev.technologies[technology];
+      if (!tech) return prev;
       const baseCost = tech.researchCost;
+
+      // Validate research allocation limits
+      const currentRound = prev.currentRound;
+      const roundData = prev.rounds.find(r => r.roundNumber === currentRound);
+      const teamRoundData = roundData?.teamData[teamId];
+      if (!teamRoundData) {
+        console.error(`No plan submitted for team ${teamId} in round ${currentRound}`);
+        return prev;
+      }
+
+      const allowedIcons = teamRoundData.researchIcons || 0;
+      const roundAllocations = prev.researchAllocatedByRound[currentRound] || {};
+      const prevSpent = roundAllocations[teamId] || 0;
+
+      if (prevSpent + points > allowedIcons) {
+        console.error(`Allocating ${points} research points would exceed allowed limit of ${allowedIcons} (already spent ${prevSpent}) for team ${teamId}`);
+        return prev;
+      }
 
       // Clone current state pieces
       const currentTPAll = { ...prev.teamResearchProgress };
@@ -747,6 +802,15 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         technologyInvestments: {},
         completedTechnologies: [],
       };
+
+      // Check if technology is already completed (only block if they have other uncompleted technologies)
+      if (teamProgress.completedTechnologies.includes(technology)) {
+        const totalTechs = Object.keys(prev.technologies).length;
+        if (teamProgress.completedTechnologies.length < totalTechs) {
+          console.error(`Technology ${technology} is already completed by team ${teamId}`);
+          return prev;
+        }
+      }
 
       // Update investment for the acting team
       const currentInvestment = teamProgress.technologyInvestments[technology] || 0;
@@ -808,9 +872,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       };
 
       // Track research allocation for this round
-      const currentRound = prev.currentRound;
-      const roundAllocations = prev.researchAllocatedByRound[currentRound] || {};
-      const prevSpent = roundAllocations[teamId] || 0;
       const newRoundAllocations = {
         ...prev.researchAllocatedByRound,
         [currentRound]: {
@@ -908,6 +969,38 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       const teamProgress = prev.teamLogisticsProgress[teamId];
       if (!teamProgress) return prev;
 
+      // Validate logistics allocation limits
+      const currentRound = prev.currentRound;
+      const roundData = prev.rounds.find(r => r.roundNumber === currentRound);
+      const teamRoundData = roundData?.teamData[teamId];
+      if (!teamRoundData) {
+        console.error(`No plan submitted for team ${teamId} in round ${currentRound}`);
+        return prev;
+      }
+
+      const allowedIcons = teamRoundData.logisticsIcons || 0;
+      const roundAllocations = prev.logisticsAllocatedByRound[currentRound] || {};
+      const prevSpent = roundAllocations[teamId] || 0;
+
+      if (prevSpent + points > allowedIcons) {
+        console.error(`Allocating ${points} logistics points would exceed allowed limit of ${allowedIcons} (already spent ${prevSpent}) for team ${teamId}`);
+        return prev;
+      }
+
+      // Validate expansion constraints (must be connected and not full)
+      const isAlreadyPresent = teamProgress.regionsWithPresence.includes(regionName);
+      if (!isAlreadyPresent) {
+        if (region.teamsPresent.length >= region.maxTeams) {
+          console.error(`Region ${regionName} is full (${region.teamsPresent.length}/${region.maxTeams} teams)`);
+          return prev;
+        }
+
+        if (!canExpandToRegionRule(prev, teamId, regionName)) {
+          console.error(`Region ${regionName} is not connected to any region with team presence for team ${teamId}`);
+          return prev;
+        }
+      }
+
       const currentInvestment = teamProgress.regionInvestments[regionName] || 0;
       const newInvestment = currentInvestment + points;
 
@@ -941,9 +1034,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       };
 
       // Track logistics allocation for this round
-      const currentRound = prev.currentRound;
-      const roundAllocations = prev.logisticsAllocatedByRound[currentRound] || {};
-      const prevSpent = roundAllocations[teamId] || 0;
       const newRoundAllocations = {
         ...prev.logisticsAllocatedByRound,
         [currentRound]: {

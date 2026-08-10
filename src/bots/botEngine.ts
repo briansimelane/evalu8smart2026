@@ -2,6 +2,7 @@ import { GameState, BotProfile, BotDifficulty, TeamRoundData, Team } from '@/typ
 import { Customer, REGION_CUSTOMERS } from '@/data/customers';
 import { PATENT_POINTS } from '@/types/game';
 import { AVAILABLE_IMPROVEMENT_CARDS } from '@/data/improvements';
+import { COMBINATIONS } from '@/data/combinations';
 import { 
   calculatePlanStats, 
   getTechnologyCostForTeam, 
@@ -56,8 +57,9 @@ export function decidePlanning(
   const rng = mulberry32(seed);
 
   // Enumerate all unique available (combination, position) pairs
+  const combos = (combinationsData && combinationsData.length > 0) ? combinationsData : COMBINATIONS;
   const candidateCombos: Array<{ combination: number; position: number }> = [];
-  combinationsData.forEach(c => {
+  combos.forEach(c => {
     candidateCombos.push({ combination: c.combination, position: c.position });
   });
 
@@ -110,7 +112,7 @@ export function decidePlanning(
           // - Price type and price is >= our calculatedPrice
           // - Tech type and tech is completed
           const priceEligible = cust.type === 'price' && stats.calculatedPrice <= (cust.price || 0);
-          const techEligible = cust.type === 'tech' && cust.technology && completedTechs.includes(cust.technology);
+          const techEligible = cust.type === 'value' && cust.technology && completedTechs.includes(cust.technology);
           if (priceEligible || techEligible) {
             potentialSales++;
           }
@@ -167,11 +169,15 @@ export function decidePlanning(
     chosenIdx = Math.floor(rng() * limit);
   }
 
-  const chosen = scoredCandidates[chosenIdx] || scoredCandidates[0];
+  if (scoredCandidates.length === 0) {
+    return { combination: 1, position: 1, cardUsages: {} };
+  }
+
+  const chosen = scoredCandidates[chosenIdx] || scoredCandidates[0] || { combination: 1, position: 1, cardUsages: {} };
   return {
-    combination: chosen.combination,
-    position: chosen.position,
-    cardUsages: chosen.cardUsages
+    combination: chosen.combination || 1,
+    position: chosen.position || 1,
+    cardUsages: chosen.cardUsages || {}
   };
 }
 

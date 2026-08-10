@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, Wrench, Microscope, Truck, DollarSign, ClipboardList, Store, CheckSquare } from 'lucide-react';
+import { Package, Wrench, Microscope, Truck, DollarSign, ClipboardList, Store, CheckSquare, Award } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type GameCategory =
@@ -27,7 +27,9 @@ export type GameCategory =
   | 'sales'
   | 'Sales'
   | 'control'
-  | 'Control';
+  | 'Control'
+  | 'scoring'
+  | 'Scoring';
 
 export interface GameIconProps {
   type: GameCategory | string;
@@ -41,7 +43,7 @@ export interface GameIconProps {
 
 export const getCategoryKey = (
   type: string
-): 'planning' | 'price' | 'production' | 'improvement' | 'research' | 'logistics' | 'sales' | 'control' | null => {
+): 'planning' | 'price' | 'production' | 'improvement' | 'research' | 'logistics' | 'sales' | 'control' | 'scoring' | null => {
   const normalized = type.toLowerCase();
   if (normalized.includes('plan')) return 'planning';
   if (normalized.includes('price') || normalized.includes('dollar') || normalized.includes('cost')) return 'price';
@@ -51,6 +53,7 @@ export const getCategoryKey = (
   if (normalized.includes('logistic') || normalized === 'expansion') return 'logistics';
   if (normalized.includes('sale')) return 'sales';
   if (normalized.includes('control')) return 'control';
+  if (normalized.includes('score') || normalized.includes('scoring') || normalized.includes('award')) return 'scoring';
   return null;
 };
 
@@ -118,6 +121,14 @@ export const GAME_CATEGORY_CONFIG = {
     textClass: 'text-white',
     borderClass: 'border-indigo-700',
     fullClass: 'bg-indigo-600 text-white border-indigo-700',
+  },
+  scoring: {
+    label: 'Scoring',
+    icon: Award,
+    bgClass: 'bg-amber-500',
+    textClass: 'text-white',
+    borderClass: 'border-amber-600',
+    fullClass: 'bg-amber-500 text-white border-amber-600',
   },
 };
 

@@ -1,5 +1,5 @@
-import { GameState, Customer } from '@/types/game';
-import { REGION_CUSTOMERS } from '@/data/customers';
+import { GameState } from '@/types/game';
+import { REGION_CUSTOMERS, Customer } from '@/data/customers';
 import { ICON_EFFECTS } from '@/data/improvements';
 
 export function calculatePlanStats(

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSession } from '@/contexts/SessionContext';
-import { Trash2, ShieldAlert, LogOut, LayoutGrid, RefreshCw, UserPlus, Users, KeyRound, Mail, Lock, Plus, ExternalLink } from 'lucide-react';
+import { Trash2, ShieldAlert, LogOut, LayoutGrid, RefreshCw, UserPlus, Users, KeyRound, Mail, Lock, Plus, ExternalLink, Copy, Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { ClassTeamCodesTable } from './FacilitatorHub';
 
 export const AdminHub: React.FC = () => {
   const { 
@@ -31,6 +32,24 @@ export const AdminHub: React.FC = () => {
   const [facPassword, setFacPassword] = useState('');
   const [creatingFac, setCreatingFac] = useState(false);
   const [resettingEmail, setResettingEmail] = useState<string | null>(null);
+
+  // Expandable team codes state
+  const [expandedClasses, setExpandedClasses] = useState<Record<string, boolean>>({});
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const toggleExpandClass = (id: string) => {
+    setExpandedClasses(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const handleCopy = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    toast.success('Code copied to clipboard!');
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
 
   const handleCreateFacilitator = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -291,71 +310,97 @@ export const AdminHub: React.FC = () => {
                   </TableHeader>
                   <TableBody>
                     {classes.map((cls) => {
-                      const teamCount = cls.teamRegistry?.length || cls.gameState?.teams?.length || 0;
+                      const teamCount = cls.teamRegistry?.length || cls.gameState?.teams?.length || Object.keys(cls.teamCodes || {}).length || 0;
                       const isLegacy = !!cls.gameState;
+                      const isExpanded = !!expandedClasses[cls.id];
 
                       return (
-                        <TableRow key={cls.id} className="border-border hover:bg-muted/10 transition-colors">
-                          <TableCell className="font-semibold text-foreground">
-                            <div className="flex items-center gap-2">
-                              <span>{cls.name}</span>
-                              {isLegacy && (
-                                <span className="text-[10px] bg-amber-500/10 text-amber-600 border border-amber-500/20 px-1.5 py-0.5 rounded font-mono font-bold">
-                                  Legacy
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground font-medium">
-                            {cls.createdByEmail || 'System / Facilitator'}
-                          </TableCell>
-                          <TableCell className="font-mono text-emerald-700 dark:text-emerald-400 font-bold tracking-wider">
-                            {cls.facilitatorCode}
-                          </TableCell>
-                          <TableCell className="text-foreground text-sm">
-                            {teamCount} teams
-                          </TableCell>
-                          <TableCell className="text-muted-foreground text-xs">
-                            {new Date(cls.createdAt).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex gap-2 justify-end">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  selectClass(cls.id);
-                                  navigate(`/class/${cls.id}`);
-                                }}
-                                className="h-8 gap-1 text-xs font-semibold"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                Enter Game
-                              </Button>
-
-                              {isLegacy && (
+                        <React.Fragment key={cls.id}>
+                          <TableRow className="border-border hover:bg-muted/10 transition-colors">
+                            <TableCell className="font-semibold text-foreground">
+                              <div className="flex items-center gap-2">
+                                <span>{cls.name}</span>
+                                {isLegacy && (
+                                  <span className="text-[10px] bg-amber-500/10 text-amber-600 border border-amber-500/20 px-1.5 py-0.5 rounded font-mono font-bold">
+                                    Legacy
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground font-medium">
+                              {cls.createdByEmail || 'System / Facilitator'}
+                            </TableCell>
+                            <TableCell className="font-mono text-emerald-700 dark:text-emerald-400 font-bold tracking-wider">
+                              <div className="flex items-center gap-1.5">
+                                <span>{cls.facilitatorCode}</span>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => toggleExpandClass(cls.id)}
+                                  className="h-6 px-2 text-[10px] font-semibold border-border"
+                                >
+                                  {isExpanded ? 'Hide Codes' : 'Show Codes'}
+                                </Button>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-foreground text-sm">
+                              {teamCount} teams
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-xs">
+                              {new Date(cls.createdAt).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex gap-2 justify-end">
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => migrateLegacyClass(cls.id)}
-                                  className="border-amber-300 text-amber-700 hover:bg-amber-50 h-8 gap-1 text-xs"
+                                  onClick={() => {
+                                    selectClass(cls.id);
+                                    navigate(`/class/${cls.id}`);
+                                  }}
+                                  className="h-8 gap-1 text-xs font-semibold"
                                 >
-                                  <RefreshCw className="h-3.5 w-3.5" />
-                                  Migrate
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  Enter Game
                                 </Button>
-                              )}
 
-                              <Button
-                                size="icon"
-                                variant="destructive"
-                                onClick={() => handleDeleteClass(cls.id, cls.name)}
-                                className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-300 h-8 w-8"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                                {isLegacy && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => migrateLegacyClass(cls.id)}
+                                    className="border-amber-300 text-amber-700 hover:bg-amber-50 h-8 gap-1 text-xs"
+                                  >
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                    Migrate
+                                  </Button>
+                                )}
+
+                                <Button
+                                  size="icon"
+                                  variant="destructive"
+                                  onClick={() => handleDeleteClass(cls.id, cls.name)}
+                                  className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-300 h-8 w-8"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+
+                          {/* Collapsible Team Access Codes Table */}
+                          {isExpanded && (
+                            <TableRow className="border-border bg-muted/5 hover:bg-muted/5">
+                              <TableCell colSpan={6} className="p-4 bg-muted/5">
+                                <div className="space-y-4 max-w-4xl mx-auto py-2">
+                                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Team Access Codes & Controls</div>
+                                  <ClassTeamCodesTable cls={cls} handleCopy={handleCopy} copiedCode={copiedCode} />
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </TableBody>

@@ -239,7 +239,7 @@ export const SimulationReport = () => {
                           <div className="text-xs text-muted-foreground flex gap-2">
                             <span>Sold: <strong>{totalCustomersSold}</strong></span>
                             <span>Lost: <strong className="text-destructive">{lostProducts}</strong></span>
-                            {patentBonus > 0 && <span className="text-purple-400">Patent: <strong>+{patentBonus}</strong></span>}
+                            <span className="text-purple-400">Patent: <strong>+{patentBonus} pts</strong></span>
                           </div>
                           <Button
                             variant="ghost"
@@ -439,7 +439,7 @@ export const SimulationReport = () => {
                               <TableCell className="text-right">+{roundControl} pts</TableCell>
                               <TableCell className="text-right font-medium">{((data.revenue || 0) + roundControl).toLocaleString()} pts</TableCell>
                               <TableCell className="text-right font-medium text-muted-foreground dark:text-purple-400">
-                                {patentBonus > 0 ? `+${patentBonus} pts` : '-'}
+                                +{patentBonus} pts
                               </TableCell>
                               <TableCell className="text-right font-bold">
                                 <div className="flex items-center justify-end gap-1">

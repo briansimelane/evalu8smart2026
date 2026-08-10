@@ -12,6 +12,7 @@ import { GameIcon } from './GameIcon';
 import { Badge } from '@/components/ui/badge';
 
 import { useSession } from '@/contexts/SessionContext';
+import { CombinationsGuideModal } from './CombinationsGuideModal';
 
 export interface PlanningPhaseRef {
   loadTeamPlan: (roundNumber: number, teamId: string) => void;
@@ -500,14 +501,28 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     <div className="space-y-4">
       {renderPlayOrderSection()}
       <Card>
-      <CardHeader>
-        <CardTitle className="text-base sm:text-xl font-bold flex items-center gap-2 flex-wrap tracking-tight">
-          <GameIcon type="planning" size="md" />
-          <span>{editingRound ? `Edit Round ${editingRound}` : `Round ${currentRound}`} Planning</span>
-        </CardTitle>
-        <CardDescription>
-          Select your strategy: team, combination, position, and improvement cards
-        </CardDescription>
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <CardTitle className="text-base sm:text-xl font-bold flex items-center gap-2 flex-wrap tracking-tight">
+            <GameIcon type="planning" size="md" />
+            <span>{editingRound ? `Edit Round ${editingRound}` : `Round ${currentRound}`} Planning</span>
+          </CardTitle>
+          <CardDescription>
+            Select your strategy: team, combination, position, and improvement cards
+          </CardDescription>
+        </div>
+
+        <CombinationsGuideModal
+          activeTeamId={selectedTeam}
+          triggerLabel="Combinations & Cards Guide"
+          triggerVariant="default"
+          triggerClassName="bg-purple-600 hover:bg-purple-700 text-white shadow-md text-xs h-9 font-bold"
+          onSelectCombination={(combo, pos) => {
+            setSelectedCombination(String(combo));
+            setSelectedPosition(String(pos));
+            toast.success(`Selected Combination ${combo}, Position ${pos}!`);
+          }}
+        />
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 
 export const CeoClaimBar: React.FC = () => {
   const navigate = useNavigate();
-  const { currentRole, currentTeamId, activeClass, currentClassTeams, isReadOnly, isCeo, ceoName, claimCeoSlot, releaseCeoSlot, logout, selectTeam } = useSession();
+  const { currentRole, currentTeamId, activeClass, currentClassTeams, isReadOnly, isCeo, ceoName, claimCeoSlot, releaseCeoSlot, logout, selectClass, selectTeam } = useSession();
   const [isOpen, setIsOpen] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [pinInput, setPinInput] = useState('');
@@ -38,18 +38,32 @@ export const CeoClaimBar: React.FC = () => {
               {activeTeamObj ? (
                 <>
                   <span className="text-muted-foreground">Viewing & Editing:</span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold text-white shadow-sm" style={{ backgroundColor: activeTeamObj.color }}>
+                  <span className="font-bold flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: activeTeamObj.color }} />
                     {activeTeamObj.name}
                   </span>
                 </>
               ) : (
-                <span className="text-muted-foreground">Viewing: <strong className="text-foreground">All Teams Overview</strong> (Select a team to focus inputs)</span>
+                <span className="text-muted-foreground">Master Facilitator View — All Teams Active</span>
               )}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              selectClass(null);
+              selectTeam(null);
+              navigate(currentRole === 'ADMIN' ? '/admin' : '/facilitator/classes');
+            }}
+            className="h-8 border-border text-foreground hover:bg-muted font-semibold text-xs gap-1.5 shadow-sm"
+          >
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            All Games
+          </Button>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground font-semibold">Team Focus:</span>
             <Select
