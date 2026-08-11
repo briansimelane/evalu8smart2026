@@ -89,13 +89,13 @@ export const Login: React.FC = () => {
             <img 
               src="/evalu8-inc-logo.svg" 
               alt="Evalu8 Inc" 
-              className="h-16 sm:h-20 md:h-24 w-auto object-contain shrink-0 dark:invert dark:brightness-200" 
+              className="h-16 sm:h-20 md:h-24 w-auto object-contain shrink-0" 
             />
             <div className="hidden sm:block h-14 w-px bg-border/80 shrink-0" />
             <img 
               src="/smartphone-inc-logo.svg" 
               alt="Smartphone Inc" 
-              className="h-16 sm:h-20 md:h-24 w-auto object-contain shrink-0 dark:invert dark:brightness-200" 
+              className="h-16 sm:h-20 md:h-24 w-auto object-contain shrink-0" 
             />
           </div>
           <CardTitle className="font-display text-xl sm:text-2xl font-bold tracking-tight text-foreground">
@@ -245,6 +245,17 @@ export const Login: React.FC = () => {
               </form>
             </TabsContent>
           </Tabs>
+
+          <div className="mt-6 text-center border-t border-border/60 pt-4">
+            <button
+              type="button"
+              onClick={() => navigate('/demo')}
+              className="text-xs text-muted-foreground hover:text-emerald-500 font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Just exploring? Play the demo</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </CardContent>
       </Card>
     </div>

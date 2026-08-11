@@ -41,13 +41,7 @@ export function calculatePlanStats(
       const icon1Effects = ICON_EFFECTS[card.icon1 as keyof typeof ICON_EFFECTS] || { priceEffect: 0, productEffect: 0, researchEffect: 0, logisticsEffect: 0 };
       const icon2Effects = ICON_EFFECTS[card.icon2 as keyof typeof ICON_EFFECTS] || { priceEffect: 0, productEffect: 0, researchEffect: 0, logisticsEffect: 0 };
       improvementPriceEffect += icon1Effects.priceEffect + icon2Effects.priceEffect;
-      
-      if (card.icon1 === 'Product' && card.icon2 === 'Product') {
-        improvementProductEffect += 1;
-      } else {
-        improvementProductEffect += icon1Effects.productEffect + icon2Effects.productEffect;
-      }
-      
+      improvementProductEffect += icon1Effects.productEffect + icon2Effects.productEffect;
       improvementResearchEffect += icon1Effects.researchEffect + icon2Effects.researchEffect;
       improvementLogisticsEffect += icon1Effects.logisticsEffect + icon2Effects.logisticsEffect;
     } else if (usage === 'product') {

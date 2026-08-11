@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useGameBoardState } from '@/hooks/useGameBoardState';
+import { useGame } from '@/contexts/GameContext';
+import { useSession } from '@/contexts/SessionContext';
 import { ViewerScaler } from './ViewerScaler';
 import { TopBar } from './TopBar';
 import { PriceLadder } from './PriceLadder';
@@ -12,10 +14,7 @@ import { cn } from '@/lib/utils';
 import './viewer.css';
 import { Maximize2, Monitor } from 'lucide-react';
 
-export default function ViewerPage() {
-  const { classCode } = useParams<{ classCode: string }>();
-  const { classData, gameState, loading, error } = useGameBoardState(classCode || '');
-
+export function ViewerBoard({ classData, gameState }: { classData: any; gameState: any }) {
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch((err) => {
@@ -35,6 +34,36 @@ export default function ViewerPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  return (
+    <ViewerScaler>
+      <MotionProvider gameState={gameState}>
+        <BoardContent classData={classData} gameState={gameState} toggleFullscreen={toggleFullscreen} />
+      </MotionProvider>
+    </ViewerScaler>
+  );
+}
+
+export function DemoViewerPage() {
+  const { gameState } = useGame();
+  const { activeClass } = useSession();
+
+  const classData = activeClass || { id: 'demo', name: 'Solo Demo Game', code: 'DEMO', facilitatorCode: '' };
+
+  if (!gameState) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <p className="text-lg font-bold">Loading Demo Board...</p>
+      </div>
+    );
+  }
+
+  return <ViewerBoard classData={classData} gameState={gameState} />;
+}
+
+export function LiveViewerPage() {
+  const { classCode } = useParams<{ classCode: string }>();
+  const { classData, gameState, loading, error } = useGameBoardState(classCode || '');
 
   if (loading) {
     return (
@@ -58,13 +87,15 @@ export default function ViewerPage() {
     );
   }
 
-  return (
-    <ViewerScaler>
-      <MotionProvider gameState={gameState}>
-        <BoardContent classData={classData} gameState={gameState} toggleFullscreen={toggleFullscreen} />
-      </MotionProvider>
-    </ViewerScaler>
-  );
+  return <ViewerBoard classData={classData} gameState={gameState} />;
+}
+
+export default function ViewerPage() {
+  const isDemoPath = window.location.pathname.startsWith('/demo');
+  if (isDemoPath) {
+    return <DemoViewerPage />;
+  }
+  return <LiveViewerPage />;
 }
 
 interface BoardContentProps {

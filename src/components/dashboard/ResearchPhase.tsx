@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,10 +36,12 @@ export const ResearchPhase = () => {
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   
   useEffect(() => {
-    if (currentTeamId) {
+    if (currentRole === 'STUDENT' && currentTeamId) {
+      setSelectedTeam(currentTeamId);
+    } else if (currentTeamId && !selectedTeam) {
       setSelectedTeam(currentTeamId);
     }
-  }, [currentTeamId]);
+  }, [currentTeamId, currentRole, selectedTeam]);
 
   if (!gameState) return null;
 
@@ -70,8 +72,8 @@ export const ResearchPhase = () => {
       const roundAllocations = gameState.researchAllocatedByRound?.[gameState.currentRound] || {};
       setAllocatedThisRound(roundAllocations);
 
-      // Auto-select first team with remaining research if none selected
-      if (!selectedTeam && filteredOrder.length > 0) {
+      // Auto-select first team with remaining research if none selected (Facilitator mode only)
+      if (currentRole !== 'STUDENT' && !selectedTeam && filteredOrder.length > 0) {
         const currentRound = gameState.currentRound;
         const roundData = gameState.rounds.find(r => r.roundNumber === currentRound);
         const firstAvailable = filteredOrder.find(t => {
@@ -82,7 +84,7 @@ export const ResearchPhase = () => {
         if (firstAvailable) setSelectedTeam(firstAvailable.id);
       }
     }
-  }, [gameState?.currentRound, gameState?.teams, gameState?.patents, gameState?.researchAllocatedByRound, calculatePlayOrder, selectedTeam]);
+  }, [gameState?.currentRound, gameState?.teams, gameState?.patents, gameState?.researchAllocatedByRound, calculatePlayOrder, selectedTeam, currentRole]);
 
   const selectedTeamData = selectedTeam ? currentRoundData?.teamData[selectedTeam] : undefined;
   const availableResearchIcons = selectedTeamData?.researchIcons || 0;
@@ -194,8 +196,8 @@ export const ResearchPhase = () => {
         return spent < icons;
       });
       const nextId = nextTeam ? nextTeam.id : '';
-      setSelectedTeam(nextId);
       if (currentRole !== 'STUDENT' && nextId) {
+        setSelectedTeam(nextId);
         selectTeam(nextId);
         if (nextTeam) {
           toast({
@@ -242,6 +244,65 @@ export const ResearchPhase = () => {
     return spent >= icons;
   });
 
+  const activeTurnTeam = useMemo(() => {
+    return playOrder.find(t => {
+      const icons = currentRoundData?.teamData[t.id]?.researchIcons || 0;
+      const spent = allocatedThisRound[t.id] || 0;
+      return icons > 0 && spent < icons;
+    });
+  }, [playOrder, currentRoundData, allocatedThisRound]);
+
+  const isMyTurn = !activeTurnTeam || activeTurnTeam.id === currentTeamId;
+
+  // Helper to render conic pie circle for research progress (matching Viewer TechPanel style)
+  const renderTechProgressCircle = (
+    team: { id: string; name: string; color: string },
+    invested: number,
+    cost: number,
+    isCompleted: boolean,
+    techName: string
+  ) => {
+    if (isCompleted) {
+      return (
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-black shadow-md shrink-0 ring-2 ring-white transition-all"
+          style={{ backgroundColor: team.color }}
+          title={`${team.name}: ${techName} Completed!`}
+        >
+          ✓
+        </div>
+      );
+    }
+
+    const fraction = Math.min(1, Math.max(0, invested / cost));
+    const degrees = fraction * 360;
+
+    return (
+      <div
+        className="w-7 h-7 rounded-full border-2 border-slate-400/60 relative shrink-0 shadow-2xs flex items-center justify-center overflow-hidden transition-all duration-300"
+        style={{
+          borderColor: team.color,
+          background: `conic-gradient(${team.color} 0deg ${degrees}deg, #e2e8f0 ${degrees}deg 360deg)`,
+        }}
+        title={`${team.name}: ${invested}/${cost} Research Icons Invested`}
+      >
+        {cost > 1 && (
+          <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-40" viewBox="0 0 24 24">
+            {Array.from({ length: cost }).map((_, i) => {
+              const angle = (i * 360) / cost;
+              const rad = (angle - 90) * (Math.PI / 180);
+              const x2 = 12 + 12 * Math.cos(rad);
+              const y2 = 12 + 12 * Math.sin(rad);
+              return (
+                <line key={i} x1="12" y1="12" x2={x2} y2={y2} stroke="#000000" strokeWidth="1.2" />
+              );
+            })}
+          </svg>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       {!allTeamsAllocated && (
@@ -259,84 +320,85 @@ export const ResearchPhase = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Play Order & Research Icons Overview */}
-            {(() => {
-              const activeTurnTeam = playOrder.find(t => {
-                const icons = currentRoundData?.teamData[t.id]?.researchIcons || 0;
-                const spent = allocatedThisRound[t.id] || 0;
-                return icons > 0 && spent < icons;
-              });
+            <div className="space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Trophy className="h-4 w-4 text-warning" />
+                  <span>Play Order & Team Research Icons</span>
+                </h3>
+                {activeTurnTeam ? (
+                  <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-xs font-bold gap-1.5 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-purple-500 animate-ping" />
+                    Current Turn: {activeTurnTeam.name}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    Research Complete
+                  </Badge>
+                )}
+              </div>
 
-              return (
-                <div className="space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                      <Trophy className="h-4 w-4 text-warning" />
-                      <span>Play Order & Team Research Icons</span>
-                    </h3>
-                    {activeTurnTeam ? (
-                      <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-xs font-bold gap-1.5 animate-pulse">
-                        <span className="w-2 h-2 rounded-full bg-purple-500 animate-ping" />
-                        Current Turn: {activeTurnTeam.name}
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
-                        <CheckCircle className="h-3 w-3" />
-                        Research Complete
-                      </Badge>
-                    )}
-                  </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                {playOrder.map((team, index) => {
+                  const icons = currentRoundData?.teamData[team.id]?.researchIcons || 0;
+                  const spent = allocatedThisRound[team.id] || 0;
+                  const isActiveTurn = team.id === activeTurnTeam?.id;
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                    {playOrder.map((team, index) => {
-                      const icons = currentRoundData?.teamData[team.id]?.researchIcons || 0;
-                      const spent = allocatedThisRound[team.id] || 0;
-                      const isActiveTurn = team.id === activeTurnTeam?.id;
-
-                      return (
-                        <div
-                          key={team.id}
-                          className={`p-2.5 rounded-lg border flex flex-col justify-between space-y-1 text-xs transition-all ${
-                            isActiveTurn
-                              ? 'ring-2 ring-purple-500 bg-purple-500/10 border-purple-500/80 shadow-md animate-pulse'
-                              : team.id === selectedTeam
-                              ? 'ring-2 ring-primary bg-primary/5 shadow-sm border-primary/50'
-                              : 'bg-card/60 border-border'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between font-bold">
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
-                              <span className="truncate flex items-center gap-1">
-                                {index + 1}. {team.name}
-                                {team.isBot && <span className="scale-90 text-[10px]">🤖</span>}
-                              </span>
-                            </div>
-                            {isActiveTurn && (
-                              gameState?.botThinking?.[team.id] ? (
-                                <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded animate-pulse font-bold flex items-center gap-1 shrink-0">
-                                  Thinking...
-                                </span>
-                              ) : (
-                                <Badge className="bg-purple-600 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
-                                  Turn
-                                </Badge>
-                              )
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
-                            <span className="font-semibold flex items-center gap-1">
-                              <GameIcon type="research" size="xs" />
-                              {icons} Icons
-                            </span>
-                            <span>{spent}/{icons} spent</span>
-                          </div>
+                  return (
+                    <div
+                      key={team.id}
+                      className={`p-2.5 rounded-lg border flex flex-col justify-between space-y-1 text-xs transition-all ${
+                        isActiveTurn
+                          ? 'ring-2 ring-purple-500 bg-purple-500/10 border-purple-500/80 shadow-md animate-pulse'
+                          : team.id === selectedTeam
+                          ? 'ring-2 ring-primary bg-primary/5 shadow-sm border-primary/50'
+                          : 'bg-card/60 border-border'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                          <span className="truncate flex items-center gap-1">
+                            {index + 1}. {team.name}
+                            {team.isBot && <span className="scale-90 text-[10px]">🤖</span>}
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
+                        {isActiveTurn && (
+                          gameState?.botThinking?.[team.id] ? (
+                            <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded animate-pulse font-bold flex items-center gap-1 shrink-0">
+                              Thinking...
+                            </span>
+                          ) : (
+                            <Badge className="bg-purple-600 text-white text-[9px] px-1 py-0 font-extrabold uppercase">
+                              Turn
+                            </Badge>
+                          )
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
+                        <span className="font-semibold flex items-center gap-1">
+                          <GameIcon type="research" size="xs" />
+                          {icons} Icons
+                        </span>
+                        <span>{spent}/{icons} spent</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {!isMyTurn && currentRole === 'STUDENT' && (
+              <Alert className="bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-100 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                  <AlertDescription className="font-semibold text-sm">
+                    Waiting for <strong>{activeTurnTeam?.name}</strong> to complete their research turn before you can allocate.
+                  </AlertDescription>
                 </div>
-              );
-            })()}
+              </Alert>
+            )}
 
             <Separator />
 
@@ -511,9 +573,32 @@ export const ResearchPhase = () => {
                           value={allocations[tech.name] || ''}
                           onChange={(e) => handleAllocationChange(tech.name, e.target.value)}
                           placeholder="0"
-                          disabled={isCompleted || availableThisTeam <= 0 || isReadOnlyMode}
+                          disabled={isCompleted || availableThisTeam <= 0 || isReadOnlyMode || (currentRole === 'STUDENT' && !isMyTurn)}
                           className="h-8"
                         />
+                      </div>
+
+                      {/* All Teams Progress Breakdown (Viewer Circles) */}
+                      <div className="pt-2.5 border-t border-border/40 space-y-1.5 text-xs">
+                        <span className="font-semibold text-muted-foreground text-[10px] uppercase tracking-wider">All Teams Progress</span>
+                        <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                          {gameState.teams.map(t => {
+                            const p = getTeamResearchProgress(t.id);
+                            const inv = p?.technologyInvestments[tech.name] || 0;
+                            const c = getTechnologyCostForTeam(t.id, tech.name);
+                            const isDone = p?.completedTechnologies.includes(tech.name) || false;
+
+                            return (
+                              <div key={t.id} className="flex items-center gap-1.5 bg-secondary/40 rounded-full pr-2.5 pl-0.5 py-0.5 border border-border/50 shadow-2xs">
+                                {renderTechProgressCircle(t, inv, c, isDone, tech.name)}
+                                <span className="text-[11px] font-bold truncate max-w-[85px]">{t.name}</span>
+                                <span className="text-[10px] text-muted-foreground font-mono font-bold">
+                                  {isDone ? '✓' : `${inv}/${c}`}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -546,7 +631,7 @@ export const ResearchPhase = () => {
                   <div className="flex gap-2">
                     <Button
                       onClick={handleConfirmAllocations}
-                      disabled={totalAllocated === 0 || remainingIcons < 0 || isReadOnlyMode}
+                      disabled={totalAllocated === 0 || remainingIcons < 0 || isReadOnlyMode || (currentRole === 'STUDENT' && !isMyTurn)}
                       className="flex-1"
                     >
                       Confirm Allocations
@@ -566,14 +651,6 @@ export const ResearchPhase = () => {
                   <AccordionTrigger>Research History for {selectedTeamObj?.name}</AccordionTrigger>
                   <AccordionContent>
                     <div className="space-y-2">
-                      <div className="grid grid-cols-6 gap-4 text-sm font-semibold text-muted-foreground border-b pb-2">
-                        <span>Technology</span>
-                        <span>Cost</span>
-                        <span>Patent Pts</span>
-                        <span>Invested</span>
-                        <span>Remaining</span>
-                        <span>Status</span>
-                      </div>
                       {technologies.map((tech) => {
                         const invested = teamProgress.technologyInvestments[tech.name] || 0;
                         const cost = getTechnologyCostForTeam(selectedTeam, tech.name);
@@ -621,23 +698,28 @@ export const ResearchPhase = () => {
         </Card>
       )}
 
-      {/* All Technologies Summary - shown when all teams have allocated */}
-      {allTeamsAllocated && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <GameIcon type="research" size="sm" />
-                All Technologies Status
-              </CardTitle>
+      {/* All Technologies Overview */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <GameIcon type="research" size="sm" />
+              All Technologies Status
+            </CardTitle>
+            {allTeamsAllocated ? (
               <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
                 Research Complete
               </Badge>
-            </div>
-            <CardDescription>
-              Complete overview of patents, completed research, and ongoing progress
-            </CardDescription>
-          </CardHeader>
+            ) : (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-bold gap-1">
+                Live Overview
+              </Badge>
+            )}
+          </div>
+          <CardDescription>
+            Complete overview of patents, completed research, and ongoing progress across all teams
+          </CardDescription>
+        </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {technologies.map((tech) => {
@@ -704,55 +786,39 @@ export const ResearchPhase = () => {
                         </Badge>
                       )}
 
-                      {/* Teams with Completed Research */}
-                      {teamsCompleted.length > 0 && (
-                        <div className="space-y-2">
-                          <span className="text-xs font-medium text-muted-foreground">Completed:</span>
-                          <div className="flex flex-wrap gap-2">
-                            {teamsCompleted.map(team => (
-                              <Badge
+                      {/* All Teams Progress Circles Grid */}
+                      <div className="space-y-1.5 pt-2 border-t border-border/40">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Team Progress Circles</span>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {gameState.teams.map(team => {
+                            const progress = getTeamResearchProgress(team.id);
+                            const investment = progress?.technologyInvestments[tech.name] || 0;
+                            const isCompleted = progress?.completedTechnologies.includes(tech.name) || false;
+                            const cost = getTechnologyCostForTeam(team.id, tech.name);
+
+                            return (
+                              <div
                                 key={team.id}
-                                style={{ backgroundColor: team.color }}
-                                className="text-white gap-1"
+                                className={`p-1.5 rounded-lg border flex items-center gap-2 text-xs transition-all ${
+                                  isCompleted
+                                    ? 'bg-success/10 border-success/30'
+                                    : investment > 0
+                                    ? 'bg-secondary/40 border-border'
+                                    : 'bg-card/50 border-border/40 opacity-70'
+                                }`}
                               >
-                                <CheckCircle className="h-3 w-3" />
-                                {team.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Teams In Progress */}
-                      {teamsInProgress.length > 0 && (
-                        <div className="space-y-2">
-                          <span className="text-xs font-medium text-muted-foreground">In Progress:</span>
-                          <div className="space-y-1">
-                            {teamsInProgress.map(team => {
-                              const progress = getTeamResearchProgress(team.id);
-                              const investment = progress?.technologyInvestments[tech.name] || 0;
-                              const cost = getTechnologyCostForTeam(team.id, tech.name);
-                              const progressPercent = (investment / cost) * 100;
-
-                              return (
-                                <div key={team.id} className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <div
-                                      className="w-3 h-3 rounded-full"
-                                      style={{ backgroundColor: team.color }}
-                                    />
-                                    <span className="text-xs">{team.name}</span>
-                                    <span className="text-xs text-muted-foreground ml-auto">
-                                      {investment}/{cost}
-                                    </span>
-                                  </div>
-                                  <Progress value={progressPercent} className="h-1" />
+                                {renderTechProgressCircle(team, investment, cost, isCompleted, tech.name)}
+                                <div className="flex flex-col min-w-0 flex-1">
+                                  <span className="text-[11px] font-bold truncate">{team.name}</span>
+                                  <span className="text-[10px] text-muted-foreground font-mono font-bold">
+                                    {isCompleted ? 'Completed' : `${investment}/${cost}`}
+                                  </span>
                                 </div>
-                              );
-                            })}
-                          </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      )}
+                      </div>
                     </CardContent>
                   </Card>
                 );
@@ -760,7 +826,6 @@ export const ResearchPhase = () => {
             </div>
           </CardContent>
         </Card>
-      )}
     </div>
   );
 };

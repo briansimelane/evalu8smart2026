@@ -6,6 +6,7 @@ import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useSession } from '@/contexts/SessionContext';
+import { useDemoState } from '@/demo/DemoStateProvider';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
@@ -73,9 +74,15 @@ function toValidDate(val: any): Date {
 export function GameProvider({ children }: { children: ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const { currentClassId, activeClass } = useSession();
+  const { currentClassId, activeClass, isDemo } = useSession();
+  const demoContext = useDemoState();
   
   const mutateGameState = useCallback((updater: (prev: GameState | null) => GameState | null) => {
+    if (isDemo) {
+      demoContext.setDemoGameState(updater);
+      return;
+    }
+
     setGameState(prev => {
       const next = updater(prev);
       if (next) {
@@ -99,9 +106,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
-  }, [currentClassId]);
+  }, [currentClassId, isDemo, demoContext]);
 
   useEffect(() => {
+    if (isDemo) {
+      setGameState(null);
+      setIsLoaded(true);
+      return;
+    }
+
     setGameState(null);
     setIsLoaded(false);
 
@@ -156,12 +169,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
           });
         }
         setIsLoaded(true);
-      }, (error) => {
-        console.error("Error listening to class gameState:", error);
+      }, (e) => {
+        console.error("Failed to subscribe to game state:", e);
+        setIsLoaded(true);
       });
+
+      setIsLoaded(true);
       return () => unsubscribe();
     }
-  }, [currentClassId]);
+  }, [currentClassId, isDemo]);
+
+  const effectiveGameState = isDemo ? demoContext.demoGameState : gameState;
+  const activeGameState = isDemo ? (demoContext.maskedDemoState || demoContext.demoGameState) : gameState;
+  const activeIsLoaded = isDemo ? demoContext.isLoaded : isLoaded;
 
   const initializeGame = (teams: Team[]) => {
     // Create initial improvement cards for each team with UNIQUE IDs
@@ -279,7 +299,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const addRoundData = (roundNumber: number, teamId: string, data: TeamRoundData) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -348,7 +368,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const updatePatent = (techName: string, teamId: string) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -386,13 +406,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const getCurrentRound = () => {
-    return gameState?.currentRound || 1;
+    return effectiveGameState?.currentRound || 1;
   };
 
   const getTeamData = (teamId: string): TeamRoundData[] => {
-    if (!gameState) return [];
+    if (!effectiveGameState) return [];
 
-    return gameState.rounds
+    return effectiveGameState.rounds
       .map(round => round.teamData[teamId])
       .filter(Boolean);
   };
@@ -400,7 +420,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const resetGame = () => {
     const teamsToUse: Team[] = (activeClass?.teamRegistry && activeClass.teamRegistry.length > 0)
       ? activeClass.teamRegistry.map(t => ({ id: t.id, name: t.name, color: t.color }))
-      : (gameState?.teams || []);
+      : (effectiveGameState?.teams || []);
 
     if (teamsToUse.length > 0) {
       initializeGame(teamsToUse);
@@ -410,12 +430,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const selectRandomCards = (): ImprovementCardData[] => {
-    if (!gameState) return [];
+    if (!effectiveGameState) return [];
 
-    const currentRound = gameState.currentRound;
+    const currentRound = effectiveGameState.currentRound;
 
     // If pool already exists for this round, return it
-    const existingIds = gameState.improvementPoolByRound?.[currentRound];
+    const existingIds = effectiveGameState.improvementPoolByRound?.[currentRound];
     if (existingIds && existingIds.length > 0) {
       return existingIds
         .map(id => AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === id))
@@ -423,9 +443,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
 
     // Always select cards equal to the number of teams
-    const numEligibleTeams = gameState.teams.length;
+    const numEligibleTeams = effectiveGameState.teams.length;
 
-    const usedCardIds = gameState.improvementCards
+    const usedCardIds = effectiveGameState.improvementCards
       .filter(card => card.used)
       .map(card => card.id);
 
@@ -461,14 +481,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const reshuffleRoundCards = (): ImprovementCardData[] => {
-    if (!gameState) return [];
+    if (!effectiveGameState) return [];
 
-    const currentRound = gameState.currentRound;
+    const currentRound = effectiveGameState.currentRound;
 
     // Always select as many cards as there are teams
-    const numEligibleTeams = gameState.teams.length;
+    const numEligibleTeams = effectiveGameState.teams.length;
 
-    const usedCardIds = gameState.improvementCards
+    const usedCardIds = effectiveGameState.improvementCards
       .filter(card => card.used)
       .map(card => card.id);
 
@@ -503,7 +523,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const allocateImprovementCards = (allocations: Record<number, string>) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -562,7 +582,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const advanceRound = () => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -577,7 +597,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const updatePhase = (phase: GamePhase) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -591,7 +611,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const endGame = () => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -605,7 +625,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const setBotThinking = (teamId: string, thinking: boolean) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
     mutateGameState(prev => {
       if (!prev) return prev;
       return {
@@ -620,7 +640,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const claimImprovementCard = (cardId: number, teamId: string) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -696,7 +716,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const markImprovementCardUsed = (cardId: number) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -714,7 +734,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const clearNonInitialCards = () => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -731,25 +751,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const previewNextRoundCards = (): ImprovementCardData[] => {
-    if (!gameState) return [];
+    if (!effectiveGameState) return [];
 
-    const nextRound = gameState.currentRound + 1;
+    const nextRound = effectiveGameState.currentRound + 1;
 
     // Check if cards already exist for next round
-    if (gameState.improvementPoolByRound?.[nextRound]) {
-      const cardIds = gameState.improvementPoolByRound[nextRound];
+    if (effectiveGameState.improvementPoolByRound?.[nextRound]) {
+      const cardIds = effectiveGameState.improvementPoolByRound[nextRound];
       return AVAILABLE_IMPROVEMENT_CARDS.filter(card => cardIds.includes(card.id));
     }
 
     // Find teams that will have improvement in next round (if round data exists)
-    const nextRoundData = gameState.rounds.find(r => r.roundNumber === nextRound);
+    const nextRoundData = effectiveGameState.rounds.find(r => r.roundNumber === nextRound);
     const numEligibleTeams = nextRoundData 
       ? Object.values(nextRoundData.teamData).filter(td => td.improvementCards > 0).length
-      : gameState.teams.length; // Default to all teams if no data yet
+      : effectiveGameState.teams.length; // Default to all teams if no data yet
 
     if (numEligibleTeams === 0) return [];
 
-    const usedCardIds = gameState.improvementCards
+    const usedCardIds = effectiveGameState.improvementCards
       .filter(card => card.used)
       .map(card => card.id);
 
@@ -785,7 +805,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const allocateResearch = (teamId: string, technology: string, points: number) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -912,14 +932,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const getTeamResearchProgress = useCallback((teamId: string) => {
-    if (!gameState) return undefined;
-    return gameState.teamResearchProgress[teamId];
-  }, [gameState]);
+    if (!effectiveGameState) return undefined;
+    return effectiveGameState.teamResearchProgress[teamId];
+  }, [effectiveGameState]);
 
   const getTechnologyCostForTeam = useCallback((teamId: string, technology: string) => {
-    if (!gameState) return 0;
+    if (!effectiveGameState) return 0;
     
-    const tech = gameState.technologies[technology];
+    const tech = effectiveGameState.technologies[technology];
     let baseCost = tech ? tech.researchCost : 4;
     
     if (technology.toUpperCase().includes('WIFI')) {
@@ -928,7 +948,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       baseCost = 3;
     }
 
-    const patentHolder = gameState.patents[technology];
+    const patentHolder = effectiveGameState.patents[technology];
     
     // If patent exists and it's not this team, reduce cost by 1
     if (patentHolder && patentHolder !== teamId) {
@@ -936,18 +956,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     
     return baseCost;
-  }, [gameState]);
+  }, [effectiveGameState]);
 
   const calculatePlayOrder = (roundNumber: number): Team[] => {
-    if (!gameState) return [];
+    if (!effectiveGameState) return [];
 
-    const roundData = gameState.rounds.find(r => r.roundNumber === roundNumber);
-    const previousRoundData = gameState.rounds.find(r => r.roundNumber === roundNumber - 1);
-    const round0Data = gameState.rounds.find(r => r.roundNumber === 0);
+    const roundData = effectiveGameState.rounds.find(r => r.roundNumber === roundNumber);
+    const previousRoundData = effectiveGameState.rounds.find(r => r.roundNumber === roundNumber - 1);
+    const round0Data = effectiveGameState.rounds.find(r => r.roundNumber === 0);
 
-    if (!roundData) return gameState.teams;
+    if (!roundData) return effectiveGameState.teams;
 
-    const teamsWithData = gameState.teams.map(team => {
+    const teamsWithData = effectiveGameState.teams.map(team => {
       const currentData = roundData.teamData[team.id];
       const previousData = previousRoundData?.teamData[team.id];
       const round0Value = round0Data?.teamData[team.id];
@@ -975,7 +995,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const allocateLogistics = useCallback((teamId: string, regionName: string, points: number) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -1073,23 +1093,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
         updatedAt: new Date()
       };
     });
-  }, [gameState]);
+  }, [effectiveGameState]);
 
   const getTeamLogisticsProgress = useCallback((teamId: string) => {
-    if (!gameState) return undefined;
-    return gameState.teamLogisticsProgress[teamId];
-  }, [gameState]);
+    if (!effectiveGameState) return undefined;
+    return effectiveGameState.teamLogisticsProgress[teamId];
+  }, [effectiveGameState]);
 
   const canExpandToRegion = useCallback((teamId: string, regionName: string): boolean => {
-    if (!gameState) return false;
+    if (!effectiveGameState) return false;
 
-    const region = gameState.regionLogistics[regionName];
+    const region = effectiveGameState.regionLogistics[regionName];
     if (!region) return false;
 
     // Check if region is full
     if (region.teamsPresent.length >= region.maxTeams) return false;
 
-    const teamProgress = gameState.teamLogisticsProgress[teamId];
+    const teamProgress = effectiveGameState.teamLogisticsProgress[teamId];
     if (!teamProgress) return false;
 
     // Check if team already has presence
@@ -1101,31 +1121,31 @@ export function GameProvider({ children }: { children: ReactNode }) {
     );
 
     return hasConnectedPresence;
-  }, [gameState]);
+  }, [effectiveGameState]);
 
   const getAvailableRegionsForTeam = useCallback((teamId: string): RegionLogistics[] => {
-    if (!gameState) return [];
+    if (!effectiveGameState) return [];
 
-    return Object.values(gameState.regionLogistics).filter(region =>
+    return Object.values(effectiveGameState.regionLogistics).filter(region =>
       canExpandToRegion(teamId, region.name)
     );
-  }, [gameState, canExpandToRegion]);
+  }, [effectiveGameState, canExpandToRegion]);
 
   const isRegionFull = useCallback((regionName: string): boolean => {
-    if (!gameState) return false;
+    if (!effectiveGameState) return false;
 
-    const region = gameState.regionLogistics[regionName];
+    const region = effectiveGameState.regionLogistics[regionName];
     if (!region) return false;
 
     return region.teamsPresent.length >= region.maxTeams;
-  }, [gameState]);
+  }, [effectiveGameState]);
 
   const getCombinations = useCallback((): Combination[] => {
-    return gameState?.combinationsData || COMBINATIONS;
-  }, [gameState]);
+    return effectiveGameState?.combinationsData || COMBINATIONS;
+  }, [effectiveGameState]);
 
   const updateCombinations = useCallback((data: Combination[] | null) => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
     mutateGameState(prev => {
       if (!prev) return prev;
       const newState = { ...prev };
@@ -1136,10 +1156,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
       return newState;
     });
-  }, [gameState]);
+  }, [effectiveGameState]);
 
   const recalculateControlPoints = useCallback(() => {
-    if (!gameState) return;
+    if (!effectiveGameState) return;
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -1237,16 +1257,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
         updatedAt: new Date()
       };
     });
-  }, [gameState]);
+  }, [effectiveGameState]);
 
-  if (!isLoaded) {
+  if (!activeIsLoaded) {
     return <div className="min-h-screen flex items-center justify-center bg-[#0D1117] text-white">Loading Game State...</div>;
   }
 
   return (
     <GameContext.Provider
       value={{
-        gameState,
+        gameState: activeGameState,
         initializeGame,
         addRoundData,
         updatePatent,

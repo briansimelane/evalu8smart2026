@@ -139,14 +139,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
       const icon1Effects = ICON_EFFECTS[card.icon1 as keyof typeof ICON_EFFECTS] || { priceEffect: 0, productEffect: 0, researchEffect: 0, logisticsEffect: 0 };
       const icon2Effects = ICON_EFFECTS[card.icon2 as keyof typeof ICON_EFFECTS] || { priceEffect: 0, productEffect: 0, researchEffect: 0, logisticsEffect: 0 };
       improvementPriceEffect += icon1Effects.priceEffect + icon2Effects.priceEffect;
-      
-      // Special case: Product+Product cards should only grant 1 product total
-      if (card.icon1 === 'Product' && card.icon2 === 'Product') {
-        improvementProductEffect += 1;
-      } else {
-        improvementProductEffect += icon1Effects.productEffect + icon2Effects.productEffect;
-      }
-      
+      improvementProductEffect += icon1Effects.productEffect + icon2Effects.productEffect;
       improvementResearchEffect += icon1Effects.researchEffect + icon2Effects.researchEffect;
       improvementLogisticsEffect += icon1Effects.logisticsEffect + icon2Effects.logisticsEffect;
     } else if (usage === 'product') {
@@ -157,7 +150,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const currentRoundData = gameState ? gameState.rounds.find(r => r.roundNumber === currentRound) : undefined;
   const teamsWithData = new Set(Object.keys(currentRoundData?.teamData || {}));
   const selectableTeams = gameState
-    ? (editingRound ? gameState.teams : gameState.teams.filter(t => !teamsWithData.has(t.id)))
+    ? (currentRole === 'STUDENT' ? gameState.teams.filter(t => t.id === currentTeamId) : (editingRound ? gameState.teams : gameState.teams.filter(t => !teamsWithData.has(t.id))))
     : [];
 
   const calculatedPrice = selectedComboData ? Math.max(2, Math.min(8, 5 + selectedComboData.price + improvementPriceEffect)) : 0;

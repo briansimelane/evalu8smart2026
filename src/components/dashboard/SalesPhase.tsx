@@ -30,10 +30,12 @@ export const SalesPhase = () => {
   const [selectedCustomers, setSelectedCustomers] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
-    if (currentTeamId) {
+    if (currentRole === 'STUDENT' && currentTeamId) {
+      setSelectedTeam(currentTeamId);
+    } else if (currentTeamId && !selectedTeam) {
       setSelectedTeam(currentTeamId);
     }
-  }, [currentTeamId]);
+  }, [currentTeamId, currentRole, selectedTeam]);
 
   if (!gameState) return null;
 

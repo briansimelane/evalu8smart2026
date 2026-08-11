@@ -1,4 +1,4 @@
-import React, { useState, useEffect, ReactNode } from 'react';
+import React, { useState, useEffect, useRef, ReactNode } from 'react';
 
 const BOARD_W = 1920;
 const BOARD_H = 1080;
@@ -8,22 +8,45 @@ interface ViewerScalerProps {
 }
 
 export function ViewerScaler({ children }: ViewerScalerProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
   useEffect(() => {
-    const fit = () => {
-      setScale(Math.min(
-        window.innerWidth / BOARD_W,
-        window.innerHeight / BOARD_H
-      ));
+    const updateScale = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const availW = rect.width || window.innerWidth;
+      const availH = rect.height || window.innerHeight;
+      
+      const newScale = Math.min(
+        availW / BOARD_W,
+        availH / BOARD_H
+      );
+      setScale(newScale > 0 ? newScale : 1);
     };
-    fit();
-    window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+
+    updateScale();
+
+    const observer = new ResizeObserver(() => {
+      updateScale();
+    });
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    window.addEventListener('resize', updateScale);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateScale);
+    };
   }, []);
 
   return (
-    <div className="w-screen h-screen overflow-hidden flex items-center justify-center bg-slate-100">
+    <div 
+      ref={containerRef}
+      className="w-full h-full min-h-0 flex-1 overflow-hidden flex items-center justify-center bg-slate-950 relative"
+    >
       <div 
         style={{ 
           width: BOARD_W, 

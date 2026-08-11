@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useGame } from '@/contexts/GameContext';
+import { useSession } from '@/contexts/SessionContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Trophy, TrendingUp, Package, Edit, Wrench, Microscope, Truck, ShoppingCart, PackageX, ChevronDown } from 'lucide-react';
@@ -17,6 +18,8 @@ interface CurrentStateProps {
 
 export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
   const { gameState, advanceRound } = useGame();
+  const { currentRole } = useSession();
+  const showActions = currentRole !== 'STUDENT' && !!onEditTeamData;
   const [decisionsOpen, setDecisionsOpen] = useState(() => {
     const saved = localStorage.getItem('decisionsOpen');
     return saved !== null ? JSON.parse(saved) : true;
@@ -133,12 +136,12 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
                               <span className="text-xs font-bold">{teamRoundData.logisticsIcons}</span>
                             </div>
                           </div>
-                          {onEditTeamData && (
+                          {showActions && (
                             <div className="pt-1 flex justify-end">
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => onEditTeamData(gameState.currentRound, team.id)}
+                                onClick={() => onEditTeamData!(gameState.currentRound, team.id)}
                                 className="h-8 text-xs font-semibold gap-1 text-primary"
                               >
                                 <Edit className="h-3.5 w-3.5" />
@@ -184,7 +187,7 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
                           </div>
                         </TableHead>
                         <TableHead className="text-center text-base">Previous Round Value</TableHead>
-                        <TableHead className="text-center text-base">Actions</TableHead>
+                        {showActions && <TableHead className="text-center text-base">Actions</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -219,17 +222,17 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
                               <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.researchIcons}</TableCell>
                               <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.logisticsIcons}</TableCell>
                               <TableCell className="text-center font-semibold py-1 text-base">${getPreviousRoundValue(team.id).toLocaleString()}</TableCell>
-                              <TableCell className="text-center py-1">
-                                {onEditTeamData && (
+                              {showActions && (
+                                <TableCell className="text-center py-1">
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    onClick={() => onEditTeamData(gameState.currentRound, team.id)}
+                                    onClick={() => onEditTeamData!(gameState.currentRound, team.id)}
                                   >
                                     Amend
                                   </Button>
-                                )}
-                              </TableCell>
+                                </TableCell>
+                              )}
                             </TableRow>
                           );
                         });

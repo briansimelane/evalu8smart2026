@@ -1,6 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    match /demo_games/{demoId} {
+      allow read: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid;
+
+      allow create, update: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt <= request.time + duration.value(8, 'd');
+
+      allow delete: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid;
+    }
+
     match /classes/{classId} {
       allow read, write: if true;
       match /state/{doc} { allow read, write: if true; }

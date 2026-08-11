@@ -16,7 +16,7 @@ import { PhaseLockCard } from './PhaseLockCard';
 
 export const ImprovementPhase = () => {
   const { gameState, allocateImprovementCards, selectRandomCards, reshuffleRoundCards, previewNextRoundCards, claimImprovementCard, calculatePlayOrder } = useGame();
-  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam } = useSession();
+  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam, isDemo } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const { toast } = useToast();
   const [allocations, setAllocations] = useState<Record<number, string>>({});
@@ -32,16 +32,16 @@ export const ImprovementPhase = () => {
       .filter(Boolean) as ImprovementCardData[];
   }, [gameState?.improvementPoolByRound, gameState?.currentRound]);
 
-  // Facilitator initializes the card pool once on Firestore
+  // Facilitator or Demo mode initializes the card pool once on Firestore
   useEffect(() => {
-    if (currentRole !== 'STUDENT' && gameState) {
+    if ((currentRole !== 'STUDENT' || isDemo) && gameState) {
       const currentRound = gameState.currentRound;
       const existingIds = gameState.improvementPoolByRound?.[currentRound] || [];
       if (existingIds.length === 0) {
         selectRandomCards();
       }
     }
-  }, [gameState?.currentRound, currentRole, selectRandomCards]);
+  }, [gameState?.currentRound, currentRole, isDemo, selectRandomCards]);
 
   if (!gameState) return null;
 
@@ -64,8 +64,20 @@ export const ImprovementPhase = () => {
   const currentRoundData = gameState.rounds.find(r => r.roundNumber === gameState.currentRound);
 
   const allocationsCompleted = useMemo(() => {
-    return gameState.improvementCards.some(c => c.allocatedInRound === gameState.currentRound);
-  }, [gameState.improvementCards, gameState.currentRound]);
+    if (!gameState) return false;
+    const currentRound = gameState.currentRound;
+    const teamsNeedingCards = gameState.teams.filter(t => {
+      const td = currentRoundData?.teamData[t.id];
+      return td && td.improvementCards > 0;
+    });
+    if (teamsNeedingCards.length === 0) return true;
+
+    return teamsNeedingCards.every(t =>
+      gameState.improvementCards.some(c =>
+        (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === currentRound
+      )
+    );
+  }, [gameState, currentRoundData]);
 
   const teamsWithPlans = useMemo(() => {
     return currentRoundData

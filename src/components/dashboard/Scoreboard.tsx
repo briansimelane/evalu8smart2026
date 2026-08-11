@@ -89,13 +89,14 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                 return (
                   <div
                     key={team.id}
-                    className="p-4 rounded-lg border bg-card hover:bg-accent/10 transition-colors"
+                    className="p-4 rounded-lg border bg-card hover:bg-accent/10 transition-colors space-y-3"
                   >
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                    {/* Row 1: Header (Team Name & Input Icons) */}
+                    <div className="flex items-center justify-between gap-4 flex-wrap pb-2 border-b border-border/40">
                       {/* Team Name */}
                       <div className="flex items-center gap-3">
                         <div
-                          className="w-4 h-4 rounded-full border-2"
+                          className="w-4 h-4 rounded-full border-2 shrink-0"
                           style={{ backgroundColor: team.color }}
                         />
                         <div className="font-semibold text-lg flex items-center gap-1.5 flex-wrap">
@@ -111,7 +112,7 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                       </div>
 
                       {/* Input Details with Icons */}
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 shrink-0">
                          <div className="flex items-center gap-1.5">
                            <GameIcon type="price" size="sm" />
                            <span className="text-base font-medium">${teamRoundData.price}</span>
@@ -133,11 +134,13 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                           <span className="text-base font-medium">{teamRoundData.logisticsIcons}</span>
                         </div>
                       </div>
+                    </div>
 
-                      {/* Results as Badges */}
+                    {/* Row 2: Results as Badges */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant="outline" className="text-sm px-2.5 py-1">
-                          Combo {teamRoundData.combination}-{teamRoundData.position}
+                          Combo {teamRoundData.combination ? `${teamRoundData.combination}-${teamRoundData.position}` : '—'}
                         </Badge>
                         <Badge variant="secondary" className="text-sm px-2.5 py-1">
                           <ShoppingCart className="h-3.5 w-3.5 mr-1" />

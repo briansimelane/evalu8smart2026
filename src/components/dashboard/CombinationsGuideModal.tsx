@@ -123,11 +123,7 @@ export function CombinationsGuideModal({
           logisticsEffect: 0,
         };
         priceEffect += icon1Effects.priceEffect + icon2Effects.priceEffect;
-        if (card.icon1 === 'Product' && card.icon2 === 'Product') {
-          productEffect += 1;
-        } else {
-          productEffect += icon1Effects.productEffect + icon2Effects.productEffect;
-        }
+        productEffect += icon1Effects.productEffect + icon2Effects.productEffect;
         researchEffect += icon1Effects.researchEffect + icon2Effects.researchEffect;
         logisticsEffect += icon1Effects.logisticsEffect + icon2Effects.logisticsEffect;
       } else if (usage === 'product') {

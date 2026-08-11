@@ -13,6 +13,9 @@ import { FacilitatorHub } from "./pages/FacilitatorHub";
 import { AdminHub } from "./pages/AdminHub";
 import ViewerPage from "./pages/Viewer/ViewerPage";
 
+import { DemoStateProvider, useDemoState } from "./demo/DemoStateProvider";
+import { DemoSetup } from "./demo/DemoSetup";
+
 const queryClient = new QueryClient();
 
 const IndexRedirect = () => {
@@ -37,6 +40,17 @@ const IndexRedirect = () => {
     return <Navigate to="/dashboard" replace />;
   }
   return <Navigate to="/login" replace />;
+};
+
+const DemoRouteWrapper = () => {
+  const { demoGameState, isLoaded } = useDemoState();
+  if (!isLoaded) {
+    return <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center font-bold">Loading Demo...</div>;
+  }
+  if (!demoGameState) {
+    return <DemoSetup />;
+  }
+  return <Index />;
 };
 
 const ClassControl = () => {
@@ -85,32 +99,36 @@ const SessionProviderWrapper = ({ children, roles }: { children: React.ReactNode
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <SessionProvider>
-        <GameProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <Routes>
-              <Route path="/" element={<IndexRedirect />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/facilitator/classes" element={
-                <SessionProviderWrapper roles={['FACILITATOR', 'ADMIN']}>
-                  <FacilitatorHub />
-                </SessionProviderWrapper>
-              } />
-              <Route path="/admin" element={
-                <SessionProviderWrapper roles={['ADMIN']}>
-                  <AdminHub />
-                </SessionProviderWrapper>
-              } />
-              <Route path="/class/:classId" element={<ClassControl />} />
-              <Route path="/dashboard" element={<StudentDashboard />} />
-              <Route path="/viewer/:classCode" element={<ViewerPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </GameProvider>
-      </SessionProvider>
+      <DemoStateProvider>
+        <SessionProvider>
+          <GameProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <Routes>
+                <Route path="/" element={<IndexRedirect />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/demo" element={<DemoRouteWrapper />} />
+                <Route path="/demo/viewer" element={<ViewerPage />} />
+                <Route path="/facilitator/classes" element={
+                  <SessionProviderWrapper roles={['FACILITATOR', 'ADMIN']}>
+                    <FacilitatorHub />
+                  </SessionProviderWrapper>
+                } />
+                <Route path="/admin" element={
+                  <SessionProviderWrapper roles={['ADMIN']}>
+                    <AdminHub />
+                  </SessionProviderWrapper>
+                } />
+                <Route path="/class/:classId" element={<ClassControl />} />
+                <Route path="/dashboard" element={<StudentDashboard />} />
+                <Route path="/viewer/:classCode" element={<ViewerPage />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </GameProvider>
+        </SessionProvider>
+      </DemoStateProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

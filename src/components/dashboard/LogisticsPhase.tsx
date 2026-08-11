@@ -34,10 +34,12 @@ export const LogisticsPhase = () => {
   const [allocations, setAllocations] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (currentTeamId) {
+    if (currentRole === 'STUDENT' && currentTeamId) {
+      setSelectedTeam(currentTeamId);
+    } else if (currentTeamId && !selectedTeam) {
       setSelectedTeam(currentTeamId);
     }
-  }, [currentTeamId]);
+  }, [currentTeamId, currentRole, selectedTeam]);
 
   if (!gameState) return null;
 
@@ -176,6 +178,54 @@ export const LogisticsPhase = () => {
     if (hasInvestment) return 'in-progress';
     
     return 'available';
+  };
+
+  // Helper to render conic pie circle for logistics progress (matching Viewer RegionCard style)
+  const renderLogisticsProgressCircle = (
+    team: { id: string; name: string; color: string },
+    invested: number,
+    cost: number,
+    isPresent: boolean
+  ) => {
+    if (isPresent) {
+      return (
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-black shadow-md shrink-0 ring-2 ring-white transition-all"
+          style={{ backgroundColor: team.color }}
+          title={`${team.name}: Present in Region`}
+        >
+          ✓
+        </div>
+      );
+    }
+
+    const fraction = Math.min(1, Math.max(0, invested / cost));
+    const degrees = fraction * 360;
+
+    return (
+      <div
+        className="w-7 h-7 rounded-full border-2 border-slate-400/60 relative shrink-0 shadow-2xs flex items-center justify-center overflow-hidden transition-all duration-300"
+        style={{
+          borderColor: team.color,
+          background: `conic-gradient(${team.color} 0deg ${degrees}deg, #e2e8f0 ${degrees}deg 360deg)`,
+        }}
+        title={`${team.name}: ${invested}/${cost} Logistics Icons Invested`}
+      >
+        {cost > 1 && (
+          <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-40" viewBox="0 0 24 24">
+            {Array.from({ length: cost }).map((_, i) => {
+              const angle = (i * 360) / cost;
+              const rad = (angle - 90) * (Math.PI / 180);
+              const x2 = 12 + 12 * Math.cos(rad);
+              const y2 = 12 + 12 * Math.sin(rad);
+              return (
+                <line key={i} x1="12" y1="12" x2={x2} y2={y2} stroke="#000000" strokeWidth="1.2" />
+              );
+            })}
+          </svg>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -433,22 +483,27 @@ export const LogisticsPhase = () => {
                         </div>
                       )}
 
-                      {/* Teams Present */}
-                      {teamsInRegion.length > 0 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">Teams:</span>
-                          <div className="flex gap-1">
-                            {teamsInRegion.map(team => (
-                              <div
-                                key={team?.id}
-                                className="w-4 h-4 rounded-full border-2 border-background"
-                                style={{ backgroundColor: team?.color }}
-                                title={team?.name}
-                              />
-                            ))}
-                          </div>
+                      {/* All Teams Logistics Progress & Presence Breakdown */}
+                      <div className="space-y-1.5 pt-2 border-t border-border/40 text-xs">
+                        <span className="font-semibold text-muted-foreground text-[10px] uppercase tracking-wider">All Teams Presence & Progress</span>
+                        <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                          {gameState.teams.map(team => {
+                            const isPresent = region.teamsPresent.includes(team.id);
+                            const progress = getTeamLogisticsProgress(team.id);
+                            const invested = progress?.regionInvestments[region.name] || 0;
+
+                            return (
+                              <div key={team.id} className="flex items-center gap-1.5 bg-secondary/40 rounded-full pr-2.5 pl-0.5 py-0.5 border border-border/50 shadow-2xs">
+                                {renderLogisticsProgressCircle(team, invested, region.logisticsCost, isPresent)}
+                                <span className="text-[11px] font-bold truncate max-w-[85px]">{team.name}</span>
+                                <span className="text-[10px] text-muted-foreground font-mono font-bold">
+                                  {isPresent ? 'Present' : `${invested}/${region.logisticsCost}`}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      )}
+                      </div>
 
                       {/* Connected Regions */}
                       <div className="space-y-1">
@@ -563,127 +618,107 @@ export const LogisticsPhase = () => {
         </div>
       )}
 
-      {/* All Regions Summary - shown when all teams have allocated */}
-      {allTeamsAllocated && (
-        <Card>
-          <CardHeader>
+      {/* All Regions Summary */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Truck className="h-5 w-5" />
               All Regions Status
             </CardTitle>
-            <CardDescription>
-              Summary of all teams' logistics presence and progress across regions
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between mb-4">
-              <Badge variant="secondary">All Teams Allocated</Badge>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Object.values(gameState.regionLogistics)
-                .sort((a, b) => REGION_CUSTOMERS.findIndex(r => r.region === a.name) - REGION_CUSTOMERS.findIndex(r => r.region === b.name))
-                .map(region => {
-                const isFull = isRegionFull(region.name);
-                const teamsInRegion = region.teamsPresent.map(tid => 
-                  gameState.teams.find(t => t.id === tid)
-                ).filter(Boolean);
+            {allTeamsAllocated ? (
+              <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
+                Logistics Complete
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-bold gap-1">
+                Live Overview
+              </Badge>
+            )}
+          </div>
+          <CardDescription>
+            Summary of all teams' logistics presence and progress across regions
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.values(gameState.regionLogistics)
+              .sort((a, b) => REGION_CUSTOMERS.findIndex(r => r.region === a.name) - REGION_CUSTOMERS.findIndex(r => r.region === b.name))
+              .map(region => {
+              const isFull = isRegionFull(region.name);
 
-                // Get teams with partial progress
-                const teamsInProgress = gameState.teams.filter(team => {
-                  const progress = getTeamLogisticsProgress(team.id);
-                  const investment = progress?.regionInvestments[region.name] || 0;
-                  return investment > 0 && !region.teamsPresent.includes(team.id);
-                });
-
-                return (
-                  <Card
-                    key={region.name}
-                    className={`${
-                      isFull ? 'border-muted bg-muted/20' : 'border-primary/30 bg-primary/5'
-                    }`}
-                  >
-                    <CardContent className="pt-4 space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-semibold">{region.name}</h4>
-                            {isFull && (
-                              <Badge variant="secondary">Full</Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                            <span className="flex items-center gap-1 font-medium">
-                              <Truck className="h-3 w-3" />
-                              Cost: {region.logisticsCost}
-                            </span>
-                            <span className="flex items-center gap-1 font-medium">
-                              <Users className="h-3 w-3" />
-                              {region.teamsPresent.length}/{region.maxTeams} teams
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                            <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-bold gap-1 px-1.5 py-0">
-                              <Trophy className="h-3 w-3 text-warning" />
-                              1st: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'first')} pts
+              return (
+                <Card
+                  key={region.name}
+                  className={`${
+                    isFull ? 'border-muted bg-muted/20' : 'border-primary/30 bg-primary/5'
+                  }`}
+                >
+                  <CardContent className="pt-4 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold">{region.name}</h4>
+                          {isFull && (
+                            <Badge variant="secondary">Full</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                          <span className="flex items-center gap-1 font-medium">
+                            <Truck className="h-3 w-3" />
+                            Cost: {region.logisticsCost}
+                          </span>
+                          <span className="flex items-center gap-1 font-medium">
+                            <Users className="h-3 w-3" />
+                            {region.teamsPresent.length}/{region.maxTeams} teams
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                          <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-bold gap-1 px-1.5 py-0">
+                            <Trophy className="h-3 w-3 text-warning" />
+                            1st: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'first')} pts
+                          </Badge>
+                          {getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second') > 0 && (
+                            <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30 text-[10px] font-bold px-1.5 py-0">
+                              2nd: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second')} pts
                             </Badge>
-                            {getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second') > 0 && (
-                              <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30 text-[10px] font-bold px-1.5 py-0">
-                                2nd: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second')} pts
-                              </Badge>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
+                    </div>
 
-                      {/* Teams Present */}
-                      {teamsInRegion.length > 0 && (
-                        <div className="space-y-2">
-                          <span className="text-xs font-medium text-muted-foreground">Teams Present:</span>
-                          <div className="flex flex-wrap gap-2">
-                            {teamsInRegion.map(team => (
-                              <Badge
-                                key={team?.id}
-                                style={{ backgroundColor: team?.color }}
-                                className="text-white gap-1"
-                              >
-                                <CheckCircle className="h-3 w-3" />
-                                {team?.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                    {/* All Teams Logistics Progress & Presence Circles Grid */}
+                    <div className="space-y-1.5 pt-2 border-t border-border/40">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Team Presence & Progress</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {gameState.teams.map(team => {
+                          const isPresent = region.teamsPresent.includes(team.id);
+                          const progress = getTeamLogisticsProgress(team.id);
+                          const investment = progress?.regionInvestments[region.name] || 0;
 
-                      {/* Teams In Progress */}
-                      {teamsInProgress.length > 0 && (
-                        <div className="space-y-2">
-                          <span className="text-xs font-medium text-muted-foreground">In Progress:</span>
-                          <div className="space-y-1">
-                            {teamsInProgress.map(team => {
-                              const progress = getTeamLogisticsProgress(team.id);
-                              const investment = progress?.regionInvestments[region.name] || 0;
-                              const progressPercent = (investment / region.logisticsCost) * 100;
-                              
-                              return (
-                                <div key={team.id} className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <div
-                                      className="w-3 h-3 rounded-full"
-                                      style={{ backgroundColor: team.color }}
-                                    />
-                                    <span className="text-xs">{team.name}</span>
-                                    <span className="text-xs text-muted-foreground ml-auto">
-                                      {investment}/{region.logisticsCost}
-                                    </span>
-                                  </div>
-                                  <Progress value={progressPercent} className="h-1" />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
+                          return (
+                            <div
+                              key={team.id}
+                              className={`p-1.5 rounded-lg border flex items-center gap-2 text-xs transition-all ${
+                                isPresent
+                                  ? 'bg-success/10 border-success/30'
+                                  : investment > 0
+                                  ? 'bg-secondary/40 border-border'
+                                  : 'bg-card/50 border-border/40 opacity-70'
+                              }`}
+                            >
+                              {renderLogisticsProgressCircle(team, investment, region.logisticsCost, isPresent)}
+                              <div className="flex flex-col min-w-0 flex-1">
+                                <span className="text-[11px] font-bold truncate">{team.name}</span>
+                                <span className="text-[10px] text-muted-foreground font-mono font-bold">
+                                  {isPresent ? 'Present' : `${investment}/${region.logisticsCost}`}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
 
                       {/* Connected Regions */}
                        <div className="space-y-1">
@@ -747,9 +782,8 @@ export const LogisticsPhase = () => {
                  );
                })}
              </div>
-          </CardContent>
-        </Card>
-      )}
+           </CardContent>
+         </Card>
     </div>
   );
 };

@@ -37,6 +37,9 @@ import {
 
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
+import { useDemoState } from '@/demo/DemoStateProvider';
+import { DemoControlBar } from '@/demo/DemoControlBar';
+import { useDemoHost } from '@/demo/useDemoHost';
 import { toast } from 'sonner';
 import { CeoClaimBar } from './CeoClaimBar';
 import { GameIcon } from './dashboard/GameIcon';
@@ -66,8 +69,11 @@ export const Dashboard = () => {
   const navigate = useNavigate();
   const gameContext = useGame();
   const { gameState, resetGame, advanceRound, updatePhase, calculatePlayOrder, endGame } = gameContext;
-  const { currentRole, logout, activeClass, selectClass, selectTeam } = useSession();
+  const { currentRole, logout, activeClass, selectClass, selectTeam, isDemo, exitDemo } = useSession();
   
+  // Housekeeping for demo mode
+  useDemoHost();
+
   const handleReturnToHub = () => {
     selectClass(null);
     selectTeam(null);
@@ -214,6 +220,7 @@ export const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {isDemo && <DemoControlBar />}
       {gameState.gameEnded && (
         <div className="bg-gradient-to-r from-yellow-600 via-amber-600 to-yellow-600 text-white py-3 px-4 text-center font-display text-xs sm:text-sm font-black tracking-wide flex items-center justify-center gap-2 shadow-md animate-fade-in relative z-50">
           <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-200 animate-bounce animate-duration-1000" />
@@ -533,7 +540,7 @@ export const Dashboard = () => {
       </header>
 
       <main className="container mx-auto py-4 sm:py-5">
-        <CeoClaimBar />
+        {!isDemo && <CeoClaimBar />}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <div className="max-w-5xl mx-auto space-y-2">
             {/* Top Row - Game Phases */}

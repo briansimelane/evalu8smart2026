@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { useSession } from '@/contexts/SessionContext';
+import { useDemoState } from '@/demo/DemoStateProvider';
 import { decidePlanning, decideResearch, decideLogistics, decideSales, decideImprovement } from './botEngine';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { toast } from 'sonner';
@@ -18,33 +19,39 @@ export function useBotRunner() {
     setBotThinking
   } = useGame();
   
-  const { currentClassId, currentClassTeams } = useSession();
+  const { currentClassId, currentClassTeams, isDemo } = useSession();
+  const demoState = isDemo ? useDemoState() : null;
+  const isReadOnlyTab = demoState?.isReadOnlyTab || false;
 
   const processedActions = useRef<Set<string>>(new Set());
   const activeTimers = useRef<Record<string, boolean>>({});
   const activeTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
 
+  const effectiveState = isDemo ? demoState?.demoGameState : gameState;
+
   // Maintain ref to latest gameState to avoid stale closure state in timeouts
-  const latestGameState = useRef(gameState);
+  const latestGameState = useRef(effectiveState);
   useEffect(() => {
-    latestGameState.current = gameState;
-  }, [gameState]);
+    latestGameState.current = effectiveState;
+  }, [effectiveState]);
 
   useEffect(() => {
-    if (!gameState || !currentClassId) return;
-    if (gameState.botConfig?.enabled === false) return;
+    if (!effectiveState) return;
+    if (!currentClassId && !isDemo) return;
+    if (isReadOnlyTab) return;
+    if (effectiveState.botConfig?.enabled === false) return;
 
-    const round = gameState.currentRound;
-    const rawPhase = (gameState.currentPhase || 'planning').toLowerCase();
+    const round = effectiveState.currentRound;
+    const rawPhase = (effectiveState.currentPhase || 'planning').toLowerCase();
     
     // Normalize phase name
     const phase = rawPhase === 'innovation' ? 'research' : (rawPhase === 'expansion' ? 'logistics' : rawPhase);
 
-    const roundData = gameState.rounds.find(r => r.roundNumber === round);
+    const roundData = effectiveState.rounds.find(r => r.roundNumber === round);
     const playOrder = calculatePlayOrder(round);
 
     const isTeamBot = (tId: string) => {
-      const bTeam = gameState.teams?.find(t => t.id === tId);
+      const bTeam = effectiveState.teams?.find(t => t.id === tId);
       const rTeam = currentClassTeams?.[tId];
       return !!(
         bTeam?.isBot ||
@@ -67,29 +74,27 @@ export function useBotRunner() {
     } else if (phase === 'improvement') {
       activeTurnTeam = playOrder.find(t => {
         const count = roundData?.teamData[t.id]?.improvementCards || 0;
-        const isDone = gameState.improvementCards.some(c => 
+        const isDone = effectiveState.improvementCards.some(c => 
           (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === round
         );
         return count > 0 && !isDone;
       });
     } else if (phase === 'research') {
       activeTurnTeam = playOrder.find(t => {
-        if (!isTeamBot(t.id)) return false;
         const icons = roundData?.teamData[t.id]?.researchIcons || 0;
-        const spent = (gameState.researchAllocatedByRound || {})[round]?.[t.id] || 0;
+        const spent = (effectiveState.researchAllocatedByRound || {})[round]?.[t.id] || 0;
         return icons > 0 && spent < icons;
       });
     } else if (phase === 'logistics') {
       activeTurnTeam = playOrder.find(t => {
-        if (!isTeamBot(t.id)) return false;
         const icons = roundData?.teamData[t.id]?.logisticsIcons || 0;
-        const spent = (gameState.logisticsAllocatedByRound || {})[round]?.[t.id] || 0;
+        const spent = (effectiveState.logisticsAllocatedByRound || {})[round]?.[t.id] || 0;
         return icons > 0 && spent < icons;
       });
     } else if (phase === 'sales') {
       const activeSalesPlayOrder = playOrder.filter(team => {
         const tData = roundData?.teamData[team.id];
-        return (tData?.productsProduced || 0) > 0 && isTeamBot(team.id);
+        return (tData?.productsProduced || 0) > 0;
       });
       activeTurnTeam = activeSalesPlayOrder.find(t => {
         const tData = roundData?.teamData[t.id];
@@ -109,7 +114,7 @@ export function useBotRunner() {
     if (processedActions.current.has(actionKey)) return;
     if (activeTimers.current[actionKey]) return;
 
-    const botTeam = gameState.teams?.find(t => t.id === teamId);
+    const botTeam = effectiveState.teams?.find(t => t.id === teamId);
 
     // Trigger timer and set bot "thinking" status on Firestore
     activeTimers.current[actionKey] = true;
@@ -291,5 +296,5 @@ export function useBotRunner() {
       }
     }, delay);
 
-  }, [gameState, currentClassId, currentClassTeams]);
+  }, [effectiveState, currentClassId, currentClassTeams, isDemo]);
 }

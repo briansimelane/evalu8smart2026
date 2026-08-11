@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode, useMemo } from 'react';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { 
   getAuth,
@@ -16,6 +16,8 @@ import { REGIONS, TECHNOLOGIES, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS } from '@/data/improvements';
 import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
 import { removeUndefined } from '@/lib/utils';
+import { buildInitialGameState } from '@/lib/initialGameState';
+import { isDemoPathname } from '@/demo/useIsDemoRoute';
 
 interface SessionContextType {
   currentRole: UserRole | null;
@@ -31,6 +33,10 @@ interface SessionContextType {
   isReadOnly: boolean;
   isCeo: boolean;
   ceoName: string | null;
+  isDemo: boolean;
+  isDemoHost: boolean;
+  startDemo: (config: import('@/demo/DemoStateProvider').DemoConfig) => Promise<void>;
+  exitDemo: () => void;
   login: (code: string) => Promise<{ success: boolean; message?: string; role?: UserRole }>;
   loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; message?: string; role?: UserRole }>;
   createFacilitatorAccount: (name: string, email: string, defaultPassword: string) => Promise<{ success: boolean; message?: string }>;
@@ -70,6 +76,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   const [classesLoadError, setClassesLoadError] = useState<any>(null);
   const [activeClass, setActiveClass] = useState<SimulationClass | null>(null);
   const [currentClassTeams, setCurrentClassTeams] = useState<Record<string, ClassTeam>>({});
+  const isDemoRoute = isDemoPathname();
 
   // CEO state from localStorage
   const [localCeoPin, setLocalCeoPin] = useState<string | null>(localStorage.getItem('evalu8_ceo_pin'));
@@ -77,6 +84,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   // Listen to Firebase Auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user?.isAnonymous) return;
       if (user) {
         setCurrentUserEmail(user.email);
         localStorage.setItem('evalu8_user_email', user.email || '');
@@ -91,6 +99,8 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   // Listen to facilitators collection in Firestore
   useEffect(() => {
+    if (isDemoRoute) return;
+
     const unsubscribe = onSnapshot(collection(db, 'facilitators'), (snapshot) => {
       const list: FacilitatorUser[] = [];
       snapshot.forEach((docSnap) => {
@@ -102,7 +112,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isDemoRoute]);
 
   // Load auth state from localStorage on mount
   useEffect(() => {
@@ -123,6 +133,11 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   // Listen to classes identity collection in Firestore
   useEffect(() => {
+    if (isDemoRoute) {
+      setClassesLoaded(true);
+      return;
+    }
+
     const unsubscribe = onSnapshot(collection(db, 'classes'), (snapshot) => {
       const classList: SimulationClass[] = [];
       snapshot.forEach((docSnap) => {
@@ -137,11 +152,11 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isDemoRoute]);
 
   // Listen to active class teams subcollection in Firestore
   useEffect(() => {
-    if (!currentClassId) {
+    if (isDemoRoute || !currentClassId) {
       setCurrentClassTeams({});
       return;
     }
@@ -157,7 +172,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, [currentClassId]);
+  }, [currentClassId, isDemoRoute]);
 
   // Sync active class details when currentClassId or classes update
   useEffect(() => {
@@ -428,112 +443,6 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     setCurrentUserName(null);
     lastVerifiedCeoPinRef.current = null;
     setLocalCeoPin(null);
-  };
-
-  const buildInitialGameState = (teams: Team[]): GameState => {
-    const baseId = Date.now();
-    const initialCards = teams.map((team, idx) => {
-      const colorName = getTeamColorName(team.color, team.name);
-      const cardData = INITIAL_IMPROVEMENT_CARDS[colorName];
-      
-      return {
-        id: baseId + idx + 1,
-        icon1: cardData.icon1,
-        icon2: cardData.icon2,
-        availableForTeam: team.id,
-        used: false,
-        isInitial: true,
-      };
-    });
-
-    const techCosts: Record<string, number> = {
-      'GPS': 3,
-      'Wifi': 3,
-      'WIFI': 3,
-      'Wi-Fi': 3,
-      'Gaming': 4,
-      'GAMING': 4,
-      'Battery': 4,
-      'BATTERY': 4,
-      'NFC': 5,
-      '4G': 6,
-    };
-
-    const teamResearchProgress: Record<string, TeamResearchProgress> = {};
-    teams.forEach(team => {
-      teamResearchProgress[team.id] = {
-        teamId: team.id,
-        technologyInvestments: {},
-        completedTechnologies: [],
-      };
-    });
-
-    const regionLogistics: Record<string, RegionLogistics> = {};
-    REGION_CONFIGS.forEach(config => {
-      regionLogistics[config.name] = {
-        name: config.name,
-        logisticsCost: config.logisticsCost,
-        maxTeams: config.maxTeams,
-        connectedRegions: config.connectedRegions,
-        teamsPresent: [],
-        teamProgress: {}
-      };
-    });
-
-    const teamLogisticsProgress: Record<string, TeamLogisticsProgress> = {};
-    teams.forEach(team => {
-      const colorName = getTeamColorName(team.color, team.name);
-      const startingRegion = INITIAL_TEAM_REGIONS[colorName];
-      
-      if (startingRegion) {
-        regionLogistics[startingRegion].teamsPresent.push(team.id);
-        
-        teamLogisticsProgress[team.id] = {
-          teamId: team.id,
-          regionsWithPresence: [startingRegion],
-          regionInvestments: {}
-        };
-      } else {
-        teamLogisticsProgress[team.id] = {
-          teamId: team.id,
-          regionsWithPresence: [],
-          regionInvestments: {}
-        };
-      }
-    });
-
-    return {
-      gameId: Date.now().toString(),
-      teams,
-      currentRound: 1,
-      rounds: [],
-      technologies: TECHNOLOGIES.reduce((acc, tech) => ({
-        ...acc,
-        [tech]: { 
-          name: tech, 
-          researchPoints: 0, 
-          maxPoints: 6,
-          researchCost: tech.toUpperCase().includes('WIFI') ? 3 : (techCosts[tech] || 4),
-          teamProgress: {}
-        }
-      }), {}),
-      regions: REGIONS.map(region => ({
-        name: region,
-        sales: {},
-        controlPoints: {}
-      })),
-      patents: {},
-      improvementCards: initialCards,
-      improvementPoolByRound: {},
-      teamResearchProgress,
-      researchAllocatedByRound: {},
-      regionLogistics,
-      teamLogisticsProgress,
-      logisticsAllocatedByRound: {},
-      createdAt: new Date().toISOString() as any,
-      updatedAt: new Date().toISOString() as any,
-      botConfig: teams.some(t => t.isBot) ? { enabled: true, seed: Math.floor(Math.random() * 1000000) } : null as any
-    };
   };
 
   const createClass = async (name: string, teams: Team[]): Promise<string> => {
@@ -1019,21 +928,54 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [classesLoaded, classes, currentClassId, currentRole, classesLoadError]);
 
+  const syntheticDemoClass = useMemo(() => {
+    if (!isDemoRoute) return null;
+    return {
+      id: 'demo',
+      name: 'Solo Demo Game',
+      code: 'DEMO',
+      facilitatorCode: 'DEMO',
+      createdAt: new Date().toISOString(),
+      teamCodes: {},
+      teamRegistry: [
+        { id: 'team_1', name: 'Your Company', color: '#22c55e' },
+        { id: 'team_2', name: 'Apex Robotics', color: '#ef4444' },
+        { id: 'team_3', name: 'CyberDyn Tech', color: '#3b82f6' },
+        { id: 'team_4', name: 'Titan Global', color: '#1f2937' },
+        { id: 'team_5', name: 'ValueCorp', color: '#eab308' },
+      ],
+    } as SimulationClass;
+  }, [isDemoRoute]);
+
+  const startDemo = async (config: import('@/demo/DemoStateProvider').DemoConfig) => {
+    // Handled by DemoStateProvider
+  };
+
+  const exitDemo = () => {
+    localStorage.removeItem('evalu8_demo_id');
+    localStorage.removeItem('evalu8_demo_state_mirror');
+    window.location.href = '/login';
+  };
+
   return (
     <SessionContext.Provider value={{
-      currentRole,
-      currentClassId,
-      currentTeamId,
+      currentRole: isDemoRoute ? 'STUDENT' : currentRole,
+      currentClassId: isDemoRoute ? null : currentClassId,
+      currentTeamId: isDemoRoute ? 'team_1' : currentTeamId,
       currentUserEmail,
       currentUserName,
       facilitators,
       classes,
       classesLoaded,
-      activeClass,
+      activeClass: isDemoRoute ? syntheticDemoClass : activeClass,
       currentClassTeams,
-      isReadOnly,
-      isCeo,
+      isReadOnly: isDemoRoute ? false : isReadOnly,
+      isCeo: isDemoRoute ? true : isCeo,
       ceoName,
+      isDemo: isDemoRoute,
+      isDemoHost: isDemoRoute,
+      startDemo,
+      exitDemo,
       login,
       loginWithEmail,
       createFacilitatorAccount,
