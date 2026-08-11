@@ -1,10 +1,12 @@
 import React, { useMemo } from 'react';
+import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { GameState, Team, SimulationClass } from '@/types/game';
 import { calculatePlayOrderForState } from '@/hooks/useGameBoardState';
 import { GameIcon } from '@/components/dashboard/GameIcon';
 import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
-import { cn } from '@/lib/utils';
+import { cn, removeUndefined } from '@/lib/utils';
 
 interface TopBarProps {
   classData: SimulationClass;
@@ -70,6 +72,30 @@ export function TopBar({ classData, gameState }: TopBarProps) {
     }
     return null;
   }, [gameState, round, playOrder]);
+
+  // Handler to switch phase directly from Viewer TopBar
+  const handlePhaseClick = async (phaseKey: string) => {
+    if (phaseKey === 'improvement' && round >= 5) return;
+    if (!classData?.id || !gameState) return;
+    try {
+      const safeGameState = removeUndefined({
+        ...gameState,
+        currentPhase: phaseKey,
+        updatedAt: new Date().toISOString()
+      });
+
+      const gameRef = doc(db, 'classes', classData.id, 'state', 'game');
+      await setDoc(gameRef, { gameState: safeGameState }, { merge: true });
+
+      const classRef = doc(db, 'classes', classData.id);
+      await updateDoc(classRef, {
+        'gameState.currentPhase': phaseKey,
+        'gameState.updatedAt': new Date().toISOString()
+      }).catch(() => {});
+    } catch (err) {
+      console.error('Failed to change phase from Viewer TopBar:', err);
+    }
+  };
 
   // 8 Phases mapping with game icon keys
   const phases = [
@@ -146,6 +172,7 @@ export function TopBar({ classData, gameState }: TopBarProps) {
       <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-xl border border-slate-200/80">
         {phases.map((p, idx) => {
           const state = getPhaseState(idx);
+          const isDisabled = p.key === 'improvement' && round >= 5;
           
           let opacityClass = 'opacity-100';
           let borderClass = 'border-slate-200 bg-white shadow-xs';
@@ -166,13 +193,18 @@ export function TopBar({ classData, gameState }: TopBarProps) {
           }
 
           return (
-            <div 
+            <button 
               key={p.key}
+              onClick={() => handlePhaseClick(p.key)}
+              disabled={isDisabled}
+              title={isDisabled ? 'Improvement phase skipped in Round 5+' : `Switch to ${p.label}`}
               className={cn(
-                "relative flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all duration-550",
+                "relative flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all duration-300 select-none cursor-pointer",
                 borderClass,
                 opacityClass,
-                scaleClass
+                scaleClass,
+                !isDisabled && state !== 'active' && "hover:scale-105 hover:bg-white hover:border-slate-400 hover:shadow-md active:scale-95",
+                isDisabled && "cursor-not-allowed opacity-40"
               )}
             >
               <GameIcon type={p.key} size="sm" />
@@ -182,7 +214,7 @@ export function TopBar({ classData, gameState }: TopBarProps) {
               )}>
                 {p.label}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>

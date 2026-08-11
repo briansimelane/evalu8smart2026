@@ -126,7 +126,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onSnapshot(collection(db, 'classes'), (snapshot) => {
       const classList: SimulationClass[] = [];
       snapshot.forEach((docSnap) => {
-        classList.push(docSnap.data() as SimulationClass);
+        classList.push({ id: docSnap.id, ...docSnap.data() } as SimulationClass);
       });
       setClasses(classList);
       setClassesLoaded(true);
@@ -149,7 +149,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onSnapshot(collection(db, 'classes', currentClassId, 'teams'), (snapshot) => {
       const teamsMap: Record<string, ClassTeam> = {};
       snapshot.forEach((docSnap) => {
-        teamsMap[docSnap.id] = docSnap.data() as ClassTeam;
+        teamsMap[docSnap.id] = { id: docSnap.id, ...docSnap.data() } as ClassTeam;
       });
       setCurrentClassTeams(teamsMap);
     }, (error) => {
@@ -161,8 +161,8 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   // Sync active class details when currentClassId or classes update
   useEffect(() => {
-    if (currentClassId) {
-      const found = classes.find(c => c.id === currentClassId);
+    if (currentClassId && Array.isArray(classes)) {
+      const found = classes.find(c => c && c.id === currentClassId);
       setActiveClass(found || null);
     } else {
       setActiveClass(null);
@@ -171,7 +171,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   // Derived state: CEO and Read-Only control
   const currentTeamDoc = currentTeamId ? currentClassTeams[currentTeamId] : null;
-  const activeTeam = currentTeamDoc || activeClass?.gameState?.teams.find(t => t.id === currentTeamId);
+  const activeTeam = currentTeamDoc || (activeClass?.gameState?.teams || []).find(t => t?.id === currentTeamId);
 
   const isCeo = currentRole === 'STUDENT' && !!activeTeam?.ceoPin && localCeoPin === activeTeam.ceoPin;
   const isReadOnly = currentRole === 'STUDENT' && !isCeo;

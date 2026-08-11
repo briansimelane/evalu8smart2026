@@ -8,7 +8,6 @@ import { RegionLayer } from './RegionLayer';
 import { TechPanel } from './TechPanel';
 import { ImprovementStrip } from './ImprovementStrip';
 import { MotionProvider, useMotion } from './motion/MotionContext';
-import { EventTicker } from './EventTicker';
 import { cn } from '@/lib/utils';
 import './viewer.css';
 import { Maximize2, Monitor } from 'lucide-react';
@@ -88,11 +87,8 @@ function BoardContent({ classData, gameState, toggleFullscreen }: BoardContentPr
       {/* Top Bar (Height: 120px) */}
       <TopBar classData={classData} gameState={gameState} />
 
-      {/* Event Ticker (Height: 34px, Top: 120px) */}
-      <EventTicker />
-
-      {/* Main Board Section (Between Event Ticker 154px and Bottom Research Strip 150px) */}
-      <div className={cn("absolute top-[154px] bottom-[150px] left-0 right-0 transition-all duration-700", m.settling && "mo-settle")}>
+      {/* Main Board Section (Between TopBar 120px and Bottom Research Strip 150px) */}
+      <div className={cn("absolute top-[120px] bottom-[150px] left-0 right-0 transition-all duration-700", m.settling && "mo-settle")}>
         {/* Price Ladder Left Rail (Width: 140px) */}
         <PriceLadder gameState={gameState} />
 

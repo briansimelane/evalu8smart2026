@@ -44,8 +44,11 @@ export function PriceLadder({ gameState }: PriceLadderProps) {
     const targetPrices: Record<string, number> = {};
     gameState.teams.forEach(team => {
       const tData = roundData?.teamData[team.id];
-      if (tData && tData.price && tData.price > 0) {
-        targetPrices[team.id] = tData.price;
+      if (tData && tData.price !== undefined && tData.price !== null) {
+        const numPrice = Number(tData.price);
+        if (numPrice > 0) {
+          targetPrices[team.id] = numPrice;
+        }
       }
     });
 
@@ -78,9 +81,12 @@ export function PriceLadder({ gameState }: PriceLadderProps) {
 
     if (!isPlanning) {
       gameState.teams.forEach(team => {
-        const p = displayedPrices[team.id];
-        if (p && mapping[p]) {
-          mapping[p].push(team);
+        const rawP = displayedPrices[team.id];
+        if (rawP !== undefined && rawP !== null) {
+          const p = Number(rawP);
+          if (mapping[p]) {
+            mapping[p].push(team);
+          }
         }
       });
     }
@@ -112,64 +118,46 @@ export function PriceLadder({ gameState }: PriceLadderProps) {
         </span>
         
         <div className="relative flex flex-col justify-between w-full flex-1 py-1">
-          {prices.map(price => (
-            <div key={price} className="relative flex items-center justify-between h-[90px] border-b border-slate-300 last:border-b-0 px-1">
-              {/* Price Tag with larger in-game red badge */}
-              <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-red-600 text-white font-mono text-lg font-black shadow-md shrink-0">
-                ${price}
-              </div>
-              
-              {/* Offset space for absolutely positioned team tokens */}
-              <div className="flex-1 min-w-[80px]" />
-            </div>
-          ))}
+          {prices.map(price => {
+            const teamsAtThisPrice = teamsByPrice[price] || [];
 
-          {/* Absolute tokens layer */}
-          <div className="absolute inset-0 pointer-events-none">
-            {gameState.teams.map((team, orderIndex) => {
-              const price = displayedPrices[team.id];
-              const isVisible = !isPlanning && price !== undefined;
-              if (!isVisible) return null;
-
-              const rowIndex = prices.indexOf(price);
-              if (rowIndex === -1) return null;
-
-              const teamsAtThisPrice = teamsByPrice[price] || [];
-              const teamOffsetIndex = teamsAtThisPrice.indexOf(team);
-              const xOffset = teamOffsetIndex * -30;
-
-              const priceKey = `price:${team.id}`;
-              const priceClass = getMotionClass(m, priceKey, 'sm');
-              const priceStyles = getMotionStyles(m, priceKey, team.color);
-
-              const textColor = getContrastTextColor(team.color);
-              const delay = orderIndex * 140;
-
-              return (
-                <div
-                  key={team.id}
-                  style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: 0,
-                    transform: `translate(${xOffset}px, calc(${rowIndex} * (100% / 7) + (100% / 14) - 14px))`,
-                    transition: 'transform var(--mo-announce) var(--mo-ease-pop), opacity var(--mo-quick) var(--mo-ease-soft)',
-                    transitionDelay: `${delay}ms`,
-                    backgroundColor: team.color,
-                    color: textColor,
-                    ...priceStyles
-                  }}
-                  className={cn(
-                    "w-7 h-7 rounded-full shadow-lg ring-2 ring-white flex items-center justify-center font-black text-xs shrink-0 border border-black/10 pointer-events-auto transition-all",
-                    priceClass
-                  )}
-                  title={`${team.name}: $${price}`}
-                >
-                  {team.name.charAt(0).toUpperCase()}
+            return (
+              <div key={price} className="relative flex items-center justify-between h-[90px] border-b border-slate-300 last:border-b-0 px-1 gap-1">
+                {/* Price Tag with larger in-game red badge */}
+                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-red-600 text-white font-mono text-lg font-black shadow-md shrink-0 z-10">
+                  ${price}
                 </div>
-              );
-            })}
-          </div>
+                
+                {/* Flex container using all available space to the right of the price badge */}
+                <div className="flex items-center justify-end flex-wrap gap-1.5 flex-1 min-w-0 pr-0.5 pointer-events-auto">
+                  {teamsAtThisPrice.map(team => {
+                    const priceKey = `price:${team.id}`;
+                    const priceClass = getMotionClass(m, priceKey, 'sm');
+                    const priceStyles = getMotionStyles(m, priceKey, team.color);
+                    const textColor = getContrastTextColor(team.color);
+
+                    return (
+                      <div
+                        key={team.id}
+                        style={{
+                          backgroundColor: team.color,
+                          color: textColor,
+                          ...priceStyles
+                        }}
+                        className={cn(
+                          "w-9 h-9 aspect-square rounded-full shadow-md ring-2 ring-white flex items-center justify-center font-black text-sm shrink-0 border border-black/10 transition-all duration-300",
+                          priceClass
+                        )}
+                        title={`${team.name}: $${price}`}
+                      >
+                        {team.name.charAt(0).toUpperCase()}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Unrevealed Prices Tray */}
@@ -184,7 +172,7 @@ export function PriceLadder({ gameState }: PriceLadderProps) {
                   <div 
                     key={team.id}
                     className={cn(
-                      "w-6 h-6 rounded-full border border-black/20 flex items-center justify-center font-extrabold text-[10px] shadow-md ring-2 ring-white shrink-0 transition-all",
+                      "w-7 h-7 aspect-square rounded-full border border-black/20 flex items-center justify-center font-black text-xs shadow-md ring-2 ring-white shrink-0 transition-all",
                       m.isRecent(priceKey) && 'mo-recent'
                     )}
                     style={{ backgroundColor: team.color, color: textColor }}

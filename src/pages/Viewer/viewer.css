@@ -144,23 +144,12 @@
 /* The one permitted infinite animation on the whole board */
 .mo-turn { animation: mo-breathe var(--mo-breathe) var(--mo-ease-soft) infinite; }
 
-/* Spotlight styling */
+/* Spotlight styling: Keep full board opacity crisp; highlight active changes directly */
 .mo-board { --mo-dim: 1; }
 
 .mo-board[data-spotlight='on'] .mo-dimmable:not([data-changed='1']) {
-  opacity: var(--mo-dim-opacity);
-  filter: saturate(var(--mo-dim-saturation));
-}
-
-/* Asymmetric: engage fast so the contrast moment lands, release slowly */
-.mo-dimmable {
-  transition: opacity var(--mo-release) var(--mo-ease-dim-out),
-              filter  var(--mo-release) var(--mo-ease-dim-out);
-}
-
-.mo-board[data-spotlight='on'] .mo-dimmable {
-  transition: opacity var(--mo-instant) var(--mo-ease-dim-in),
-              filter  var(--mo-instant) var(--mo-ease-dim-in);
+  opacity: 1;
+  filter: none;
 }
 
 .mo-settle {

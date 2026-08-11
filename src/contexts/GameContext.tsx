@@ -55,7 +55,22 @@ export const useGame = () => {
   return context;
 };
 
-export const GameProvider = ({ children }: { children: ReactNode }) => {
+function toValidDate(val: any): Date {
+  if (!val) return new Date();
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? new Date() : val;
+  }
+  if (typeof val?.toDate === 'function') {
+    return val.toDate();
+  }
+  if (typeof val?.seconds === 'number') {
+    return new Date(val.seconds * 1000);
+  }
+  const parsed = new Date(val);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+export function GameProvider({ children }: { children: ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const { currentClassId, activeClass } = useSession();
@@ -65,8 +80,10 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       const next = updater(prev);
       if (next) {
         const safeState = { ...next };
-        if (safeState.createdAt instanceof Date) safeState.createdAt = safeState.createdAt.toISOString() as any;
-        safeState.updatedAt = new Date().toISOString() as any;
+        const createdDate = safeState.createdAt ? toValidDate(safeState.createdAt) : new Date();
+        const updatedDate = new Date();
+        safeState.createdAt = createdDate.toISOString() as any;
+        safeState.updatedAt = updatedDate.toISOString() as any;
 
         setTimeout(() => {
           if (currentClassId) {

@@ -193,8 +193,10 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
     <div 
       style={{ width: `${cardWidth}px` }}
       className={cn(
-        "absolute h-[165px] bg-white border border-slate-300 rounded-xl p-3 shadow-md flex flex-col justify-between backdrop-blur-sm group hover:border-slate-500 hover:shadow-xl transition-all duration-300 text-slate-900 z-10 mo-dimmable",
-        cardChanged && "z-20"
+        "absolute h-[165px] bg-white rounded-xl p-3 flex flex-col justify-between backdrop-blur-sm group hover:border-slate-500 hover:shadow-xl transition-all duration-300 text-slate-900 z-10 mo-dimmable",
+        cardChanged 
+          ? "border-2 border-amber-500 ring-4 ring-amber-400/90 ring-offset-2 shadow-2xl scale-105 z-30 font-bold" 
+          : "border border-slate-300 shadow-md"
       )}
       data-changed={cardChanged ? '1' : undefined}
     >

@@ -92,8 +92,8 @@ export const CeoClaimBar: React.FC = () => {
   }
 
   const team = (currentTeamId && currentClassTeams[currentTeamId])
-    || activeClass?.teamRegistry?.find(t => t.id === currentTeamId)
-    || activeClass?.gameState?.teams.find(t => t.id === currentTeamId);
+    || (activeClass?.teamRegistry || []).find(t => t?.id === currentTeamId)
+    || (activeClass?.gameState?.teams || []).find(t => t?.id === currentTeamId);
 
   if (!team) {
     return (
