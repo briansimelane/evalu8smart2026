@@ -177,7 +177,21 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
                   style={{
                     background: `conic-gradient(${team.color} 0deg ${degrees}deg, #e2e8f0 ${degrees}deg 360deg)`
                   }}
-                />
+                >
+                  {logisticsCost > 1 && (
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" viewBox="0 0 24 24">
+                      {Array.from({ length: logisticsCost }).map((_, i) => {
+                        const angle = (i * 360) / logisticsCost;
+                        const rad = (angle - 90) * (Math.PI / 180);
+                        const x2 = 12 + 12 * Math.cos(rad);
+                        const y2 = 12 + 12 * Math.sin(rad);
+                        return (
+                          <line key={i} x1="12" y1="12" x2={x2} y2={y2} stroke="#0f172a" strokeWidth="2" strokeOpacity="0.95" />
+                        );
+                      })}
+                    </svg>
+                  )}
+                </div>
               </WorldMarker>
             );
           })}
