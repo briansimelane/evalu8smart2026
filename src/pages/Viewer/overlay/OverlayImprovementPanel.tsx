@@ -1,8 +1,9 @@
 import React from 'react';
 import { GameState } from '@/types/game';
-import { WorldTag } from './WorldMarker';
-import { getContrastTextColor } from './WorldMarker';
-import { Sparkles } from 'lucide-react';
+import { AVAILABLE_IMPROVEMENT_CARDS } from '@/data/improvements';
+import { GameIcon } from '@/components/dashboard/GameIcon';
+import { WorldTag, getContrastTextColor } from './WorldMarker';
+import { Plus, Minus } from 'lucide-react';
 
 interface OverlayImprovementPanelProps {
   gameStateA: GameState;
@@ -10,18 +11,79 @@ interface OverlayImprovementPanelProps {
 }
 
 export const OverlayImprovementPanel: React.FC<OverlayImprovementPanelProps> = ({ gameStateA, gameStateB }) => {
+  const renderEffectSlot = (iconType: string) => {
+    if (iconType === 'Price and Product') {
+      return (
+        <div className="flex items-center gap-1">
+          <div className="relative inline-block" title="Price Decrease (-$1)">
+            <GameIcon type="price" size="sm" showLabel={false} />
+            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-slate-900 border border-red-500 flex items-center justify-center shadow-xs">
+              <Minus className="h-2.5 w-2.5 text-red-500 stroke-[3]" />
+            </div>
+          </div>
+          <GameIcon type="production" size="sm" showLabel={false} />
+        </div>
+      );
+    }
+    
+    if (iconType === 'Price Plus') {
+      return (
+        <div className="relative inline-block" title="Price Increase (+$1)">
+          <GameIcon type="price" size="sm" showLabel={false} />
+          <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-slate-900 border border-emerald-500 flex items-center justify-center shadow-xs">
+            <Plus className="h-2.5 w-2.5 text-emerald-400 stroke-[3]" />
+          </div>
+        </div>
+      );
+    }
+
+    if (iconType === 'Price Minus') {
+      return (
+        <div className="relative inline-block" title="Price Decrease (-$1)">
+          <GameIcon type="price" size="sm" showLabel={false} />
+          <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-slate-900 border border-red-500 flex items-center justify-center shadow-xs">
+            <Minus className="h-2.5 w-2.5 text-red-500 stroke-[3]" />
+          </div>
+        </div>
+      );
+    }
+
+    if (iconType === 'Research') return <GameIcon type="research" size="sm" showLabel={false} />;
+    if (iconType === 'Product') return <GameIcon type="production" size="sm" showLabel={false} />;
+    if (iconType === 'Logistic') return <GameIcon type="logistics" size="sm" showLabel={false} />;
+
+    return <GameIcon type={iconType} size="sm" showLabel={false} />;
+  };
+
   const renderImprovementCards = (world: 'A' | 'B', gState: GameState) => {
     const cards = gState.improvementCards || [];
     const poolIds = gState.improvementPoolByRound?.[gState.currentRound] || [];
     
-    // Filter to current round pool cards or first 4
-    const displayCards = cards.filter(c => poolIds.length === 0 || poolIds.includes(c.id)).slice(0, 4);
+    // Filter to current round pool cards or fallback to available cards
+    let displayCards = cards.filter(c => poolIds.length === 0 || poolIds.includes(c.id)).slice(0, 4);
+
+    if (displayCards.length === 0 && poolIds.length > 0) {
+      displayCards = poolIds.map(id => {
+        const found = cards.find(c => c.id === id);
+        if (found) return found;
+        const staticData = AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === id);
+        return {
+          id,
+          icon1: staticData?.icon1 || 'Research',
+          icon2: staticData?.icon2 || 'Product',
+          availableForTeam: null
+        } as any;
+      }).slice(0, 4);
+    }
 
     return (
       <div className="grid grid-cols-2 gap-1.5">
         {displayCards.map(card => {
+          const staticData = AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === card.id);
+          const icon1 = card.icon1 || staticData?.icon1 || 'Research';
+          const icon2 = card.icon2 || staticData?.icon2 || 'Product';
+
           const claimer = card.availableForTeam ? gState.teams.find(t => t.id === card.availableForTeam) : null;
-          const isTaken = Boolean(claimer);
 
           return (
             <div
@@ -31,16 +93,21 @@ export const OverlayImprovementPanel: React.FC<OverlayImprovementPanelProps> = (
                 borderLeft: world === 'A' ? '3px solid #7c3aed' : '3px solid #475569'
               }}
             >
-              {/* Effect Slots */}
-              <div className="flex items-center gap-1 text-[11px] text-slate-800 font-extrabold">
-                <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
-                <span>{card.icon1} + {card.icon2}</span>
+              {/* Effect Icons Slot */}
+              <div className="flex items-center justify-center gap-1 w-full py-1">
+                <div className="flex items-center justify-center p-1 rounded bg-slate-50 border border-slate-200 shadow-2xs flex-1 h-8">
+                  {renderEffectSlot(icon1)}
+                </div>
+                <span className="text-slate-300 text-[10px] font-black">+</span>
+                <div className="flex items-center justify-center p-1 rounded bg-slate-50 border border-slate-200 shadow-2xs flex-1 h-8">
+                  {renderEffectSlot(icon2)}
+                </div>
               </div>
 
-              {/* Claimed Ribbon */}
+              {/* Claimed Ribbon or Available Tag */}
               {claimer ? (
                 <div
-                  className="mt-1 text-[8px] font-black uppercase px-1 py-0.5 rounded text-center truncate shadow-2xs"
+                  className="mt-0.5 text-[8px] font-black uppercase px-1 py-0.5 rounded text-center truncate shadow-2xs"
                   style={{
                     backgroundColor: claimer.color,
                     color: getContrastTextColor(claimer.color),
@@ -50,13 +117,19 @@ export const OverlayImprovementPanel: React.FC<OverlayImprovementPanelProps> = (
                   TAKEN BY: {claimer.name}
                 </div>
               ) : (
-                <div className="mt-1 text-[8px] font-bold text-slate-400 uppercase tracking-wider text-center">
+                <div className="mt-0.5 text-[8px] font-bold text-slate-400 uppercase tracking-wider text-center">
                   AVAILABLE
                 </div>
               )}
             </div>
           );
         })}
+
+        {displayCards.length === 0 && (
+          <div className="col-span-2 p-3 text-center text-xs font-bold text-slate-400 italic bg-white/60 rounded-lg border border-dashed border-slate-200">
+            No improvements this round
+          </div>
+        )}
       </div>
     );
   };
