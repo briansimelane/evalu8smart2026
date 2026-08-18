@@ -75,6 +75,11 @@ export const Dashboard = () => {
   useDemoHost();
 
   const handleReturnToHub = () => {
+    if (isDemo) {
+      exitDemo();
+      navigate('/login');
+      return;
+    }
     selectClass(null);
     selectTeam(null);
     navigate(currentRole === 'ADMIN' ? '/admin' : '/facilitator/classes');

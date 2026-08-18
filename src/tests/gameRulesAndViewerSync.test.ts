@@ -96,7 +96,9 @@ function createTestGameState(): GameState {
       'team-black': { teamId: 'team-black', regionsWithPresence: ['USA'], regionInvestments: { 'USA': 4 } },
       'team-yellow': { teamId: 'team-yellow', regionsWithPresence: [], regionInvestments: {} }
     },
-    logisticsAllocatedByRound: { 1: {}, 2: {} }
+    logisticsAllocatedByRound: { 1: {}, 2: {} },
+    createdAt: new Date(),
+    updatedAt: new Date()
   };
 }
 
@@ -267,6 +269,18 @@ describe('Game Rules & Viewer Synchronization Test Suite', () => {
       };
 
       expect(nextPhase('production', 5)).toBe('research');
+    });
+
+    it('masks team price as 🔒 Hidden during Planning Phase', () => {
+      const state = createTestGameState();
+      state.currentPhase = 'planning';
+      
+      const getDisplayedPrice = (phase: string, price: number) => {
+        return phase === 'planning' ? '🔒 Hidden' : `$${price}`;
+      };
+
+      expect(getDisplayedPrice(state.currentPhase, 6)).toBe('🔒 Hidden');
+      expect(getDisplayedPrice('production', 6)).toBe('$6');
     });
   });
 

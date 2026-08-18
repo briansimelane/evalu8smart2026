@@ -113,7 +113,9 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
                             <div className="flex flex-col items-center p-1 bg-muted/40 rounded-lg">
                               <GameIcon type="price" size="xs" />
                               <span className="text-[10px] text-muted-foreground mt-0.5">Price</span>
-                              <span className="text-xs font-bold">${teamRoundData.price}</span>
+                              <span className="text-xs font-bold">
+                                {(gameState.currentPhase || 'planning') === 'planning' ? '🔒 Hidden' : `$${teamRoundData.price}`}
+                              </span>
                             </div>
                             <div className="flex flex-col items-center p-1 bg-muted/40 rounded-lg">
                               <GameIcon type="production" size="xs" />
@@ -127,7 +129,7 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
                             </div>
                             <div className="flex flex-col items-center p-1 bg-muted/40 rounded-lg">
                               <GameIcon type="research" size="xs" />
-                              <span className="text-[10px] text-muted-foreground mt-0.5">Res</span>
+                              <span className="text-[10px] text-muted-foreground mt-0.5">R&D</span>
                               <span className="text-xs font-bold">{teamRoundData.researchIcons}</span>
                             </div>
                             <div className="flex flex-col items-center p-1 bg-muted/40 rounded-lg">
@@ -216,7 +218,9 @@ export const CurrentState = ({ onEditTeamData }: CurrentStateProps) => {
                                   <span className="font-medium">{team.name}</span>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.price}</TableCell>
+                              <TableCell className="text-center font-medium py-1 text-base">
+                                {(gameState.currentPhase || 'planning') === 'planning' ? '🔒 Hidden' : `$${teamRoundData.price}`}
+                              </TableCell>
                               <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.productsProduced}</TableCell>
                               <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.improvementCards}</TableCell>
                               <TableCell className="text-center font-medium py-1 text-base">{teamRoundData.researchIcons}</TableCell>

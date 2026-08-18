@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDemoState, DemoConfig, DemoBotSetup } from './DemoStateProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { TEAM_COLORS, getTeamColorName } from '@/data/combinations';
 import { BotProfile, BotDifficulty } from '@/types/game';
 import { GameIcon } from '@/components/dashboard/GameIcon';
-import { Play, Bot, User, Sparkles, Clock, ShieldCheck } from 'lucide-react';
+import { Play, Bot, User, Sparkles, Clock, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 const DEFAULT_BOTS: DemoBotSetup[] = [
@@ -19,6 +20,7 @@ const DEFAULT_BOTS: DemoBotSetup[] = [
 ];
 
 export function DemoSetup() {
+  const navigate = useNavigate();
   const { startDemo } = useDemoState();
   const [humanName, setHumanName] = useState('Your Company');
   const [humanColor, setHumanColor] = useState('#22c55e'); // Green
@@ -64,6 +66,19 @@ export function DemoSetup() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col justify-center items-center p-4 md:p-6">
       <div className="max-w-3xl w-full space-y-6">
+        {/* Top Back Navigation */}
+        <div className="flex items-center justify-between">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/login')}
+            className="text-xs font-bold text-muted-foreground hover:text-foreground border-border bg-card shadow-xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Sign In</span>
+          </Button>
+        </div>
+
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider">
@@ -231,6 +246,15 @@ export function DemoSetup() {
               </span>
             )}
           </Button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            className="text-xs text-muted-foreground hover:text-foreground font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer pt-1"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Want to sign in instead? Back to Login</span>
+          </button>
         </div>
       </div>
     </div>

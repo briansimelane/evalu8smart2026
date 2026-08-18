@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useGame } from '@/contexts/GameContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useDemoState } from './DemoStateProvider';
@@ -7,11 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { GameIcon } from '@/components/dashboard/GameIcon';
-import { Play, FastForward, RotateCcw, Monitor, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Play, FastForward, RotateCcw, Monitor, CheckCircle, AlertTriangle, LogOut } from 'lucide-react';
 import { GamePhase } from '@/types/game';
 import { ViewerBoard } from '@/pages/Viewer/ViewerPage';
 
 export function DemoControlBar() {
+  const navigate = useNavigate();
   const { gameState, updatePhase, advanceRound, endGame } = useGame();
   const { isDemo } = useSession();
   const { resetDemo, isReadOnlyTab, revealAllScores } = useDemoState();
@@ -146,6 +148,20 @@ export function DemoControlBar() {
           >
             <RotateCcw className="w-3.5 h-3.5 mr-1" />
             Restart Demo
+          </Button>
+
+          {/* Exit Demo to Login */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              resetDemo();
+              navigate('/login');
+            }}
+            className="h-8 border-border text-muted-foreground hover:text-foreground hover:bg-muted text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Return to Login</span>
           </Button>
         </div>
       </div>

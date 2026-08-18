@@ -115,7 +115,9 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                       <div className="flex items-center gap-3 shrink-0">
                          <div className="flex items-center gap-1.5">
                            <GameIcon type="price" size="sm" />
-                           <span className="text-base font-medium">${teamRoundData.price}</span>
+                           <span className="text-base font-medium">
+                             {(gameState.currentPhase || 'planning') === 'planning' ? '🔒 Hidden' : `$${teamRoundData.price}`}
+                           </span>
                          </div>
                         <div className="flex items-center gap-1.5">
                           <GameIcon type="production" size="sm" />

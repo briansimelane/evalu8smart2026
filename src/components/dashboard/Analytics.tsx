@@ -45,15 +45,18 @@ export const Analytics = () => {
 
   // Price comparison
   const priceData = gameState.rounds.map(round => {
+    const isCurrentRoundPlanning = round.roundNumber === gameState.currentRound && (gameState.currentPhase || 'planning') === 'planning';
     const dataPoint: any = { round: round.roundNumber };
-    gameState.teams.forEach(team => {
-      const teamData = round.teamData[team.id];
-      if (teamData) {
-        dataPoint[team.name] = teamData.price;
-      }
-    });
+    if (!isCurrentRoundPlanning) {
+      gameState.teams.forEach(team => {
+        const teamData = round.teamData[team.id];
+        if (teamData && teamData.price > 0) {
+          dataPoint[team.name] = teamData.price;
+        }
+      });
+    }
     return dataPoint;
-  });
+  }).filter(dp => Object.keys(dp).length > 1);
 
   // Research allocation stacked by Team (X-axis: Teams, Stacked segments: Rounds/Periods)
   const researchByTeamData = gameState.teams.map(team => {
