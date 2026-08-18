@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { GameState, Team } from '@/types/game';
 import { WorldMarker, WorldTag } from './WorldMarker';
+import { useOptionalMotion } from '../motion/MotionContext';
+import { getMotionClass, getMotionStyles } from '../motion/motionClass';
+import { cn } from '@/lib/utils';
 
 interface OverlayPriceLadderProps {
   gameStateA: GameState;
@@ -8,6 +11,7 @@ interface OverlayPriceLadderProps {
 }
 
 export const OverlayPriceLadder: React.FC<OverlayPriceLadderProps> = ({ gameStateA, gameStateB }) => {
+  const m = useOptionalMotion();
   const prices = [8, 7, 6, 5, 4, 3, 2];
 
   const roundDataA = gameStateA.rounds.find(r => r.roundNumber === gameStateA.currentRound);
@@ -71,49 +75,75 @@ export const OverlayPriceLadder: React.FC<OverlayPriceLadderProps> = ({ gameStat
               {/* Sub-lanes Container */}
               <div className="flex flex-col justify-center flex-1 min-w-0 gap-1 pl-1">
                 {/* World A Sub-lane (top) */}
-                <div className="flex items-center gap-1 min-h-[22px] bg-purple-50/80 rounded px-1 border border-purple-100">
-                  <WorldTag world="A" label="A" className="text-[8px] px-1 py-0 h-4" />
+                <div className="flex items-center gap-1 min-h-[20px] px-0.5">
+                  <WorldTag world="A" label="A" className="text-[7px] px-1 py-0 h-3.5" />
                   <div className="flex items-center gap-1 flex-wrap flex-1 overflow-hidden">
                     {isPlanningA ? (
                       <span className="text-[9px] font-bold text-purple-400 italic">Hidden</span>
                     ) : teamsA.length === 0 ? (
                       <span className="text-[9px] font-medium text-slate-300">—</span>
                     ) : (
-                      teamsA.map(team => (
-                        <WorldMarker
-                          key={`A-${team.id}`}
-                          world="A"
-                          teamColor={team.color}
-                          size="xs"
-                          title={`World A · ${team.name}: $${price}`}
-                        >
-                          {team.name.charAt(0).toUpperCase()}
-                        </WorldMarker>
-                      ))
+                      teamsA.map(team => {
+                        const tData = roundDataA?.teamData[team.id];
+                        const produced = tData?.productsProduced || 0;
+                        const sold = tData?.customersSold?.length || 0;
+                        const unsold = Math.max(0, produced - sold);
+                        const priceKey = `price:${team.id}`;
+                        const isNewPrice = m ? m.tierFor(priceKey) === 1 : false;
+                        const priceClass = m ? getMotionClass(m, priceKey, 'sm') : '';
+                        const priceStyles = m ? getMotionStyles(m, priceKey, team.color) : {};
+
+                        return (
+                          <WorldMarker
+                            key={`A-${team.id}`}
+                            world="A"
+                            teamColor={team.color}
+                            size="xs"
+                            className={cn(priceClass, isNewPrice && 'mo-arrive')}
+                            style={{ ...priceStyles }}
+                            title={`World A · ${team.name}: $${price} (${produced} units produced${produced > 0 ? `, ${unsold} unsold` : ''})`}
+                          >
+                            {team.name.charAt(0).toUpperCase()}
+                          </WorldMarker>
+                        );
+                      })
                     )}
                   </div>
                 </div>
 
                 {/* World B Sub-lane (bottom) */}
-                <div className="flex items-center gap-1 min-h-[22px] bg-slate-100/90 rounded px-1 border border-slate-200">
-                  <WorldTag world="B" label="B" className="text-[8px] px-1 py-0 h-4" />
+                <div className="flex items-center gap-1 min-h-[20px] px-0.5">
+                  <WorldTag world="B" label="B" className="text-[7px] px-1 py-0 h-3.5" />
                   <div className="flex items-center gap-1 flex-wrap flex-1 overflow-hidden">
                     {isPlanningB ? (
                       <span className="text-[9px] font-bold text-slate-400 italic">Hidden</span>
                     ) : teamsB.length === 0 ? (
                       <span className="text-[9px] font-medium text-slate-300">—</span>
                     ) : (
-                      teamsB.map(team => (
-                        <WorldMarker
-                          key={`B-${team.id}`}
-                          world="B"
-                          teamColor={team.color}
-                          size="xs"
-                          title={`World B · ${team.name}: $${price}`}
-                        >
-                          {team.name.charAt(0).toUpperCase()}
-                        </WorldMarker>
-                      ))
+                      teamsB.map(team => {
+                        const tData = roundDataB?.teamData[team.id];
+                        const produced = tData?.productsProduced || 0;
+                        const sold = tData?.customersSold?.length || 0;
+                        const unsold = Math.max(0, produced - sold);
+                        const priceKey = `price:${team.id}`;
+                        const isNewPrice = m ? m.tierFor(priceKey) === 1 : false;
+                        const priceClass = m ? getMotionClass(m, priceKey, 'sm') : '';
+                        const priceStyles = m ? getMotionStyles(m, priceKey, team.color) : {};
+
+                        return (
+                          <WorldMarker
+                            key={`B-${team.id}`}
+                            world="B"
+                            teamColor={team.color}
+                            size="xs"
+                            className={cn(priceClass, isNewPrice && 'mo-arrive')}
+                            style={{ ...priceStyles }}
+                            title={`World B · ${team.name}: $${price} (${produced} units produced${produced > 0 ? `, ${unsold} unsold` : ''})`}
+                          >
+                            {team.name.charAt(0).toUpperCase()}
+                          </WorldMarker>
+                        );
+                      })
                     )}
                   </div>
                 </div>

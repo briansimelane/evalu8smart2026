@@ -90,9 +90,15 @@ export const SalesPhase = () => {
   const selectedTeamData = selectedTeam && currentRoundData?.teamData[selectedTeam];
   const teamName = selectedTeam ? gameState.teams.find(t => t.id === selectedTeam)?.name : '';
   
-  // Get team's present regions
+  // Get team's present regions (derived from both logistics progress and board presence)
   const teamLogistics = selectedTeam ? getTeamLogisticsProgress(selectedTeam) : null;
-  const teamRegions = [...(teamLogistics?.regionsWithPresence || [])].sort((a, b) => {
+  const regionsFromProgress = teamLogistics?.regionsWithPresence || [];
+  const regionsFromBoard = selectedTeam 
+    ? Object.entries(gameState.regionLogistics || {})
+        .filter(([_, reg]) => reg.teamsPresent && reg.teamsPresent.includes(selectedTeam))
+        .map(([rName]) => rName)
+    : [];
+  const teamRegions = Array.from(new Set([...regionsFromProgress, ...regionsFromBoard])).sort((a, b) => {
     return REGION_CUSTOMERS.findIndex(r => r.region === a) - 
            REGION_CUSTOMERS.findIndex(r => r.region === b);
   });
@@ -130,8 +136,11 @@ export const SalesPhase = () => {
             priceCount++;
           }
         } else if (customer.type === 'value') {
-          if (customer.technology && completedTechs.has(customer.technology)) {
-            valueCount++;
+          if (customer.technology) {
+            const reqNorm = customer.technology.toUpperCase();
+            if (Array.from(completedTechs).some(t => (t || '').toUpperCase() === reqNorm)) {
+              valueCount++;
+            }
           }
         }
       });
@@ -187,7 +196,9 @@ export const SalesPhase = () => {
     if (customer.type === 'price') {
       return selectedTeamData.price <= (customer.price || 0);
     } else {
-      return customer.technology ? completedTechs.has(customer.technology) : false;
+      if (!customer.technology) return false;
+      const reqNorm = customer.technology.toUpperCase();
+      return Array.from(completedTechs).some(t => (t || '').toUpperCase() === reqNorm);
     }
   };
 

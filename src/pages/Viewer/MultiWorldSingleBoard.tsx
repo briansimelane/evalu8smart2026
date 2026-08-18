@@ -4,12 +4,16 @@ import { MultiWorldSession } from '@/types/multiworld';
 import { ViewerScaler } from './ViewerScaler';
 import { Globe, Trophy } from 'lucide-react';
 import { calculateTeamTotalScore } from '@/types/game';
+import { GameIcon } from '@/components/dashboard/GameIcon';
+import { cn } from '@/lib/utils';
 
 import { WorldTag, WorldMarker } from './overlay/WorldMarker';
 import { OverlayPriceLadder } from './overlay/OverlayPriceLadder';
 import { OverlayRegionCard } from './overlay/OverlayRegionCard';
 import { OverlayTechPanel } from './overlay/OverlayTechPanel';
 import { OverlayImprovementPanel } from './overlay/OverlayImprovementPanel';
+import { MotionProvider, useOptionalMotion } from './motion/MotionContext';
+import { getMotionClass, getMotionStyles } from './motion/motionClass';
 
 interface MultiWorldSingleBoardProps {
   session: MultiWorldSession;
@@ -34,35 +38,41 @@ const REGION_POSITIONS: Record<string, { left: number; top: number }> = {
   'Australia': { left: 1026, top: 590 },
 };
 
-export function MultiWorldSingleBoard({ session, gameStateA, gameStateB }: MultiWorldSingleBoardProps) {
-  if (!gameStateA || !gameStateB) {
-    return (
-      <div className="w-full h-[600px] bg-slate-100 flex items-center justify-center text-slate-500 font-semibold">
-        Waiting for World A & World B state...
-      </div>
-    );
-  }
-
+function SingleBoardContent({ session, gameStateA, gameStateB }: { session: MultiWorldSession; gameStateA: GameState; gameStateB: GameState }) {
+  const m = useOptionalMotion();
   const currentRound = Math.max(gameStateA.currentRound, gameStateB.currentRound);
+  const roundDataA = gameStateA.rounds.find(r => r.roundNumber === gameStateA.currentRound);
+  const roundDataB = gameStateB.rounds.find(r => r.roundNumber === gameStateB.currentRound);
 
-  // Combined Top Scores for TopBar Leaderboard
-  const topScores = useMemo(() => {
-    const list: Array<{ team: Team; score: number; world: 'A' | 'B' }> = [];
-    gameStateA.teams.forEach(t => {
-      const s = calculateTeamTotalScore(t.id, gameStateA.currentRound, gameStateA);
-      list.push({ team: t, score: s.totalScore, world: 'A' });
-    });
-    gameStateB.teams.forEach(t => {
-      const s = calculateTeamTotalScore(t.id, gameStateB.currentRound, gameStateB);
-      list.push({ team: t, score: s.totalScore, world: 'B' });
-    });
-    list.sort((a, b) => b.score - a.score);
-    return list.slice(0, 5);
-  }, [gameStateA, gameStateB]);
+  // Turn order calculation (sorted by price ascending, hidden during planning)
+  const turnOrderA = useMemo(() => {
+    if (gameStateA.currentPhase === 'planning' || !roundDataA?.teamData) return [];
+    return gameStateA.teams
+      .map(team => ({ team, price: roundDataA.teamData[team.id]?.price || 0 }))
+      .filter(t => t.price > 0)
+      .sort((a, b) => a.price - b.price);
+  }, [gameStateA.teams, gameStateA.currentPhase, roundDataA]);
+
+  const turnOrderB = useMemo(() => {
+    if (gameStateB.currentPhase === 'planning' || !roundDataB?.teamData) return [];
+    return gameStateB.teams
+      .map(team => ({ team, price: roundDataB.teamData[team.id]?.price || 0 }))
+      .filter(t => t.price > 0)
+      .sort((a, b) => a.price - b.price);
+  }, [gameStateB.teams, gameStateB.currentPhase, roundDataB]);
+
+  const isPlanningPhase = (gameStateA.currentPhase || 'planning') === 'planning' && (gameStateB.currentPhase || 'planning') === 'planning';
 
   return (
     <ViewerScaler>
-      <div className="relative w-[1920px] h-[1080px] bg-slate-100 text-slate-900 overflow-hidden font-sans select-none border border-slate-300 shadow-2xl mo-board">
+      <div
+        className={cn(
+          "relative w-[1920px] h-[1080px] bg-slate-100 text-slate-900 overflow-hidden font-sans select-none border border-slate-300 shadow-2xl mo-board",
+          m?.spotlight && "mo-spotlight",
+          m?.settling && "mo-settle"
+        )}
+        data-spotlight={m?.spotlight ? 'on' : undefined}
+      >
         {/* Solid Light Grey Background behind map */}
         <div className="absolute inset-0 bg-slate-100 pointer-events-none" />
 
@@ -74,7 +84,7 @@ export function MultiWorldSingleBoard({ session, gameStateA, gameStateB }: Multi
               <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                 {session.name}
                 <span className="px-2.5 py-0.5 rounded-md bg-purple-100 text-purple-800 text-xs font-bold border border-purple-200">
-                  SINGLE BOARD OVERLAY (10 TEAMS)
+                  SINGLE BOARD OVERLAY
                 </span>
               </h1>
               <div className="text-xs text-slate-500 font-bold flex items-center gap-4 mt-0.5">
@@ -89,31 +99,138 @@ export function MultiWorldSingleBoard({ session, gameStateA, gameStateB }: Multi
             </div>
           </div>
 
-          {/* Top 5 Leaderboard Pill in Header with World Markers */}
-          <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 shadow-xs">
-            <Trophy className="h-5 w-5 text-amber-500 shrink-0" />
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider mr-1">Top Ranks:</span>
-            <div className="flex items-center gap-2">
-              {topScores.map((item) => (
-                <div
-                  key={`${item.world}-${item.team.id}`}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-extrabold shadow-xs bg-white border border-slate-200"
-                  title={`${item.world === 'A' ? session.worldALabel : session.worldBLabel} - ${item.team.name}`}
-                >
-                  <WorldMarker
-                    world={item.world}
-                    teamColor={item.team.color}
-                    size="xs"
-                  >
-                    {item.team.name.charAt(0).toUpperCase()}
-                  </WorldMarker>
-                  <span className="text-slate-800">{item.team.name}</span>
-                  <span className="text-amber-600 font-mono">({item.score})</span>
+          {/* Turn Order Header Bar for Current Round (Hidden during Planning) */}
+          {!isPlanningPhase ? (
+            <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200 shadow-xs text-xs">
+              <div className="flex items-center gap-1 font-black text-slate-800 uppercase tracking-wider pr-1">
+                <span className="text-purple-600">⚡</span>
+                <span>Turn Order (Rd {currentRound}):</span>
+              </div>
+
+              {/* World A Turn Order */}
+              <div className="flex items-center gap-1.5 bg-purple-50/90 px-2.5 py-1 rounded-lg border border-purple-200">
+                <WorldTag world="A" label="A" className="text-[8px] px-1 py-0 h-4" />
+                <div className="flex items-center gap-1">
+                  {turnOrderA.length === 0 ? (
+                    <span className="text-[10px] text-purple-400 font-bold italic">Planning in Progress</span>
+                  ) : (
+                    turnOrderA.map((t, idx) => (
+                      <div key={`turn-A-${t.team.id}`} className="flex items-center gap-1">
+                        {idx > 0 && <span className="text-slate-400 font-bold text-[10px]">→</span>}
+                        <WorldMarker world="A" teamColor={t.team.color} size="xs" title={`${t.team.name}: $${t.price}`}>
+                          {t.team.name.charAt(0).toUpperCase()}
+                        </WorldMarker>
+                        <span className="font-mono text-[10px] font-extrabold text-slate-800">${t.price}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
-              ))}
+              </div>
+
+              {/* World B Turn Order */}
+              <div className="flex items-center gap-1.5 bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200">
+                <WorldTag world="B" label="B" className="text-[8px] px-1 py-0 h-4" />
+                <div className="flex items-center gap-1">
+                  {turnOrderB.length === 0 ? (
+                    <span className="text-[10px] text-slate-400 font-bold italic">Planning in Progress</span>
+                  ) : (
+                    turnOrderB.map((t, idx) => (
+                      <div key={`turn-B-${t.team.id}`} className="flex items-center gap-1">
+                        {idx > 0 && <span className="text-slate-400 font-bold text-[10px]">→</span>}
+                        <WorldMarker world="B" teamColor={t.team.color} size="xs" title={`${t.team.name}: $${t.price}`}>
+                          {t.team.name.charAt(0).toUpperCase()}
+                        </WorldMarker>
+                        <span className="font-mono text-[10px] font-extrabold text-slate-800">${t.price}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 italic shadow-2xs">
+              <span>📋 Planning Phase Active — Turn Order & Pricing Hidden</span>
+            </div>
+          )}
+        </div>
+
+        {/* Units Produced & Unsold Inventory Floating Bar for World A & World B (Hidden during Planning) */}
+        {!isPlanningPhase && (
+          <div className="absolute top-[96px] left-[780px] -translate-x-1/2 bg-white border-2 border-slate-300 rounded-xl px-3.5 py-1.5 shadow-2xl flex items-center gap-3 z-30 backdrop-blur-md select-none">
+            <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase tracking-wider border-r border-slate-300 pr-3 shrink-0">
+              <GameIcon type="production" size="xs" />
+              <span>Units Produced:</span>
+            </div>
+
+            {/* World A Units */}
+            <div className="flex items-center gap-1.5 bg-purple-50/90 px-2.5 py-1 rounded-lg border border-purple-200">
+              <WorldTag world="A" label="A" className="text-[8px] px-1 py-0 h-4" />
+              <div className="flex items-center gap-1.5">
+                {gameStateA.teams.map(team => {
+                  const tData = roundDataA?.teamData[team.id];
+                  const produced = tData?.productsProduced || 0;
+                  const sold = tData?.customersSold?.length || 0;
+                  const unsold = Math.max(0, produced - sold);
+
+                  return (
+                    <div
+                      key={`prod-A-${team.id}`}
+                      className={cn(
+                        "flex items-center gap-1 px-2 py-0.5 rounded text-xs font-black shadow-2xs border transition-all",
+                        produced > 0 ? "bg-white border-purple-200" : "bg-slate-50 border-slate-200 opacity-60"
+                      )}
+                      title={`World A · ${team.name}: ${produced} Produced, ${sold} Sold, ${unsold} Unsold`}
+                    >
+                      <WorldMarker world="A" teamColor={team.color} size="xs">
+                        {team.name.charAt(0).toUpperCase()}
+                      </WorldMarker>
+                      <span className="font-mono text-slate-900 font-extrabold">{produced}</span>
+                      {produced > 0 && (
+                        <span className="text-[10px] text-slate-500 font-bold" title={`${unsold} unsold remaining`}>
+                          ({unsold})
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* World B Units */}
+            <div className="flex items-center gap-1.5 bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200">
+              <WorldTag world="B" label="B" className="text-[8px] px-1 py-0 h-4" />
+              <div className="flex items-center gap-1.5">
+                {gameStateB.teams.map(team => {
+                  const tData = roundDataB?.teamData[team.id];
+                  const produced = tData?.productsProduced || 0;
+                  const sold = tData?.customersSold?.length || 0;
+                  const unsold = Math.max(0, produced - sold);
+
+                  return (
+                    <div
+                      key={`prod-B-${team.id}`}
+                      className={cn(
+                        "flex items-center gap-1 px-2 py-0.5 rounded text-xs font-black shadow-2xs border transition-all",
+                        produced > 0 ? "bg-white border-slate-300" : "bg-slate-50 border-slate-200 opacity-60"
+                      )}
+                      title={`World B · ${team.name}: ${produced} Produced, ${sold} Sold, ${unsold} Unsold`}
+                    >
+                      <WorldMarker world="B" teamColor={team.color} size="xs">
+                        {team.name.charAt(0).toUpperCase()}
+                      </WorldMarker>
+                      <span className="font-mono text-slate-900 font-extrabold">{produced}</span>
+                      {produced > 0 && (
+                        <span className="text-[10px] text-slate-500 font-bold" title={`${unsold} unsold remaining`}>
+                          ({unsold})
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* 2. Main Board Canvas (Top 120px to Bottom 150px) */}
         <div className="absolute top-[120px] bottom-[150px] left-0 right-0">
@@ -169,5 +286,21 @@ export function MultiWorldSingleBoard({ session, gameStateA, gameStateB }: Multi
         <OverlayTechPanel gameStateA={gameStateA} gameStateB={gameStateB} />
       </div>
     </ViewerScaler>
+  );
+}
+
+export function MultiWorldSingleBoard({ session, gameStateA, gameStateB, classDataA, classDataB }: MultiWorldSingleBoardProps) {
+  if (!gameStateA || !gameStateB) {
+    return (
+      <div className="w-full h-[600px] bg-slate-100 flex items-center justify-center text-slate-500 font-semibold">
+        Waiting for World A & World B state...
+      </div>
+    );
+  }
+
+  return (
+    <MotionProvider gameState={gameStateA}>
+      <SingleBoardContent session={session} gameStateA={gameStateA} gameStateB={gameStateB} />
+    </MotionProvider>
   );
 }

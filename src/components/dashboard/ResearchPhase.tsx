@@ -586,7 +586,7 @@ export const ResearchPhase = () => {
                             const p = getTeamResearchProgress(t.id);
                             const inv = p?.technologyInvestments[tech.name] || 0;
                             const c = getTechnologyCostForTeam(t.id, tech.name);
-                            const isDone = p?.completedTechnologies.includes(tech.name) || false;
+                            const isDone = Boolean(p?.completedTechnologies?.includes(tech.name) || (inv >= c && c > 0));
 
                             return (
                               <div key={t.id} className="flex items-center gap-1.5 bg-secondary/40 rounded-full pr-2.5 pl-0.5 py-0.5 border border-border/50 shadow-2xs">

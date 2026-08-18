@@ -47,9 +47,19 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
 
   // Check if improvement phase for current round has been completed
   const isImprovementCompleted = ['research', 'innovation', 'logistics', 'expansion', 'sales', 'control', 'scoring'].includes(currentPhase);
+
+  // Check if all teams with >0 improvement points have claimed cards
+  const currentRoundData = gameState.rounds.find(r => r.roundNumber === round);
+  const teamsWithPoints = gameState.teams.filter(t => (currentRoundData?.teamData[t.id]?.improvementCards || 0) > 0);
+  const allClaimed = teamsWithPoints.length > 0 && teamsWithPoints.every(t =>
+    (gameState.improvementCards || []).some(c =>
+      (c.availableForTeam === t.id || c.usedBy === t.id) &&
+      (c.allocatedInRound === undefined || Number(c.allocatedInRound) === Number(round))
+    )
+  );
   
-  // Show upcoming round cards if improvement phase for current round is completed and round < 4
-  const isUpcomingPreview = (isImprovementCompleted && round < 4) || (isScoringPhase && scoringTab === 'upcoming' && round < 4);
+  // Show upcoming round cards if improvement phase for current round is completed (or all claimed) and round < 4
+  const isUpcomingPreview = ((isImprovementCompleted || allClaimed) && round < 4) || (isScoringPhase && scoringTab === 'upcoming' && round < 4);
   const activeDisplayRound = isUpcomingPreview ? round + 1 : round;
 
   // Determine card pool for activeDisplayRound
@@ -95,7 +105,10 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
       const cardData = AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === cardId);
       
       const claimedCard = !isUpcomingPreview 
-        ? gameState.improvementCards.find(c => c.id === cardId && c.allocatedInRound === round)
+        ? (gameState.improvementCards || []).find(c =>
+            Number(c.id) === Number(cardId) &&
+            (c.allocatedInRound === undefined || Number(c.allocatedInRound) === Number(round))
+          )
         : null;
 
       return {
@@ -182,11 +195,17 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
 
           {/* Vertical Market Cards List */}
           <div className="flex flex-col gap-2 justify-start shrink-0">
-            {marketCards.map(({ id, data, claimed }) => {
+            {round >= 5 ? (
+              <div className="w-[250px] p-4 bg-amber-50 rounded-xl border border-amber-200 text-xs font-bold text-amber-900 text-center shadow-xs">
+                <span>⚠️ No Improvement Phase in Round 5</span>
+              </div>
+            ) : (
+              marketCards.map(({ id, data, claimed }) => {
               if (!data) return null;
 
-              const claimingTeam = claimed?.availableForTeam 
-                ? gameState.teams.find(t => t.id === claimed.availableForTeam) 
+              const claimerId = claimed?.availableForTeam || claimed?.usedBy;
+              const claimingTeam = claimerId 
+                ? gameState.teams.find(t => t.id === claimerId) 
                 : null;
 
               const impKey = `improvement:${id}`;
@@ -237,7 +256,8 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
                   )}
                 </div>
               );
-            })}
+            })
+          )}
 
             {/* Empty slot placeholders */}
             {pool.length === 0 && (

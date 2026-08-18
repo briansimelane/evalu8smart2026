@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { GameState, Team } from '@/types/game';
+import { GameState, Team, getPatentPointsForTech } from '@/types/game';
 import { Award, Check, MapPin, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
 import { getTechnologyCostForTeamForState } from '@/hooks/useGameBoardState';
 import { GameIcon } from '@/components/dashboard/GameIcon';
@@ -7,13 +7,15 @@ import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn } from '@/lib/utils';
 
-const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  'GPS': MapPin,
-  'Wifi': Wifi,
-  'Gaming': Gamepad2,
-  'Battery': Battery,
-  'NFC': Radio,
-  '4G': Signal,
+const getTechIconComponent = (techName: string) => {
+  const norm = (techName || '').toUpperCase();
+  if (norm.includes('GPS')) return MapPin;
+  if (norm.includes('WIFI')) return Wifi;
+  if (norm.includes('GAMING')) return Gamepad2;
+  if (norm.includes('BATTERY')) return Battery;
+  if (norm.includes('NFC')) return Radio;
+  if (norm.includes('4G')) return Signal;
+  return Wifi;
 };
 
 // Helper to calculate high-contrast text color (black vs white) for any background hex
@@ -119,7 +121,7 @@ export function TechPanel({ gameState }: TechPanelProps) {
         {sortedTechs.map(tech => {
           const patentHolderId = gameState.patents[tech.name];
           const patentHolder = patentHolderId ? gameState.teams.find(t => t.id === patentHolderId) : null;
-          const TechIcon = TECHNOLOGY_ICONS[tech.name] || MapPin;
+          const TechIcon = getTechIconComponent(tech.name);
 
           const patentKey = `patent:${tech.name}`;
           const isNewPatent = m.tierFor(patentKey) === 1;
@@ -139,9 +141,12 @@ export function TechPanel({ gameState }: TechPanelProps) {
             >
               {/* Header: Tech Name + Specific Tech Icon + Patent Badge */}
               <div className="flex items-center justify-between border-b border-slate-150 pb-1.5">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <TechIcon className="w-4 h-4 text-purple-700 stroke-[2.5]" />
                   <span className="font-display font-black text-sm text-slate-900 tracking-tight">{tech.name.toUpperCase()}</span>
+                  <span className="text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded shadow-2xs">
+                    🏆 {getPatentPointsForTech(tech.name)} pts
+                  </span>
                 </div>
 
                 {patentHolder ? (
@@ -171,8 +176,8 @@ export function TechPanel({ gameState }: TechPanelProps) {
                 {gameState.teams.map(team => {
                   const progress = gameState.teamResearchProgress[team.id];
                   const pointsInvested = progress?.technologyInvestments[tech.name] || 0;
-                  const isCompleted = progress?.completedTechnologies.includes(tech.name) || false;
                   const targetCost = getTechnologyCostForTeamForState(gameState, team.id, tech.name);
+                  const isCompleted = Boolean(progress?.completedTechnologies?.includes(tech.name) || (pointsInvested >= targetCost && targetCost > 0));
 
                   return (
                     <React.Fragment key={team.id}>

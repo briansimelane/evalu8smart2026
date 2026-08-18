@@ -177,15 +177,25 @@ export function useBotRunner() {
 
           const profile = (currentBotTeam as any)?.botProfile || 'BALANCED';
           const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
-          const cardIdToClaim = decideImprovement(currentState, teamId, profile, difficulty);
+          let cardIdToClaim = decideImprovement(currentState, teamId, profile, difficulty);
+
+          if (cardIdToClaim === null) {
+            const poolIds = currentState.improvementPoolByRound?.[round] || [];
+            const claimedInRound = currentState.improvementCards
+              .filter(c => c.allocatedInRound === round && c.availableForTeam)
+              .map(c => c.id);
+            const availableCardId = poolIds.find(id => !claimedInRound.includes(id));
+            if (availableCardId !== undefined) {
+              cardIdToClaim = availableCardId;
+            } else {
+              cardIdToClaim = -100;
+            }
+          }
 
           if (cardIdToClaim !== null) {
             claimImprovementCard(cardIdToClaim, teamId);
             toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} claimed an improvement card.`);
-          } else {
-            toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} skipped improvement card selection.`);
           }
-
         } else if (phase === 'research') {
           if (!currentTeamData) return;
 

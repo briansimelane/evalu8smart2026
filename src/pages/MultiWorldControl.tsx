@@ -59,7 +59,12 @@ const PHASE_LABELS: Record<string, string> = {
 function getNextPhaseAndRound(currentPhase: GamePhase, currentRound: number): { nextPhase: GamePhase; nextRound: number; isGameEnd: boolean } {
   const currentIndex = PHASE_SEQUENCE.indexOf(currentPhase);
   if (currentIndex >= 0 && currentIndex < PHASE_SEQUENCE.length - 1) {
-    return { nextPhase: PHASE_SEQUENCE[currentIndex + 1], nextRound: currentRound, isGameEnd: false };
+    let nextPhase = PHASE_SEQUENCE[currentIndex + 1];
+    // In Round 5, skip Improvement phase and go directly to Innovation (Research)
+    if (currentRound >= 5 && nextPhase === 'improvement') {
+      nextPhase = 'innovation';
+    }
+    return { nextPhase, nextRound: currentRound, isGameEnd: false };
   } else {
     if (currentRound >= 5) {
       return { nextPhase: 'scoring', nextRound: 5, isGameEnd: true };

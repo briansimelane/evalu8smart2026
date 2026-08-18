@@ -12,6 +12,10 @@ export function useMotion(): MotionState {
   return context;
 }
 
+export function useOptionalMotion(): MotionState | undefined {
+  return useContext(MotionContext);
+}
+
 interface MotionProviderProps {
   gameState: GameState | null;
   children: ReactNode;

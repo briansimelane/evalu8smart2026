@@ -380,7 +380,12 @@ export function decideSales(
   const productsAvailable = teamData.productsProduced;
 
   const logistics = gameState.teamLogisticsProgress[teamId];
-  const teamRegions = logistics?.regionsWithPresence || [];
+  const regionsFromProgress = logistics?.regionsWithPresence || [];
+  const regionsFromBoard = Object.entries(gameState.regionLogistics || {})
+    .filter(([_, reg]) => reg.teamsPresent && reg.teamsPresent.includes(teamId))
+    .map(([rName]) => rName);
+
+  const teamRegions = Array.from(new Set([...regionsFromProgress, ...regionsFromBoard]));
 
   const research = gameState.teamResearchProgress[teamId];
   const completedTechs = research?.completedTechnologies || [];

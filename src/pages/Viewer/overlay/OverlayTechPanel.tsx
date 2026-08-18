@@ -1,17 +1,19 @@
 import React, { useMemo } from 'react';
-import { GameState, Team } from '@/types/game';
+import { GameState, Team, getPatentPointsForTech } from '@/types/game';
 import { getTechnologyCostForTeamForState } from '@/hooks/useGameBoardState';
 import { GameIcon } from '@/components/dashboard/GameIcon';
 import { MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Award, Check } from 'lucide-react';
 import { WorldMarker, WorldTag } from './WorldMarker';
 
-const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  'GPS': MapPin,
-  'Wifi': Wifi,
-  'Gaming': Gamepad2,
-  'Battery': Battery,
-  'NFC': Radio,
-  '4G': Signal,
+const getTechIconComponent = (techName: string) => {
+  const norm = (techName || '').toUpperCase();
+  if (norm.includes('GPS')) return MapPin;
+  if (norm.includes('WIFI')) return Wifi;
+  if (norm.includes('GAMING')) return Gamepad2;
+  if (norm.includes('BATTERY')) return Battery;
+  if (norm.includes('NFC')) return Radio;
+  if (norm.includes('4G')) return Signal;
+  return Wifi;
 };
 
 const DESIRED_TECH_ORDER = ['GPS', 'WIFI', 'GAMING', 'BATTERY', 'NFC', '4G'];
@@ -32,9 +34,9 @@ export const OverlayTechPanel: React.FC<OverlayTechPanelProps> = ({ gameStateA, 
 
   const renderTechProgressCircle = (world: 'A' | 'B', team: Team, techName: string, gState: GameState) => {
     const progress = gState.teamResearchProgress[team.id];
-    const isCompleted = progress?.completedTechnologies?.includes(techName);
     const invested = progress?.technologyInvestments?.[techName] || 0;
     const cost = getTechnologyCostForTeamForState(gState, team.id, techName);
+    const isCompleted = Boolean(progress?.completedTechnologies?.includes(techName) || (invested >= cost && cost > 0));
 
     const fraction = isCompleted ? 1 : Math.min(1, Math.max(0, invested / Math.max(1, cost)));
     const degrees = fraction * 360;
@@ -94,7 +96,7 @@ export const OverlayTechPanel: React.FC<OverlayTechPanelProps> = ({ gameStateA, 
         {sortedTechs.map(tech => {
           const patentA = gameStateA.patents[tech.name] ? gameStateA.teams.find(t => t.id === gameStateA.patents[tech.name]) : null;
           const patentB = gameStateB.patents[tech.name] ? gameStateB.teams.find(t => t.id === gameStateB.patents[tech.name]) : null;
-          const Icon = TECHNOLOGY_ICONS[tech.name] || MapPin;
+          const Icon = getTechIconComponent(tech.name);
 
           return (
             <div
@@ -107,6 +109,9 @@ export const OverlayTechPanel: React.FC<OverlayTechPanelProps> = ({ gameStateA, 
                   <Icon className="w-4 h-4 text-purple-700 stroke-[2.5]" />
                   <span className="font-display font-black text-xs text-slate-900 tracking-tight">
                     {tech.name.toUpperCase()}
+                  </span>
+                  <span className="text-[9px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded shadow-2xs">
+                    🏆 {getPatentPointsForTech(tech.name)} pts
                   </span>
                 </div>
               </div>

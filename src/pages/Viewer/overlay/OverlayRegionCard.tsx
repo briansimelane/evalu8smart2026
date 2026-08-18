@@ -7,6 +7,9 @@ import { MapPin, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
 import { WorldMarker, WorldTag, getContrastTextColor } from './WorldMarker';
 import { cn } from '@/lib/utils';
 
+import { useOptionalMotion } from '../motion/MotionContext';
+import { getMotionClass, getMotionStyles } from '../motion/motionClass';
+
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
   'Wifi': Wifi,
@@ -23,6 +26,7 @@ interface OverlayRegionCardProps {
 }
 
 export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: OverlayRegionCardProps) {
+  const m = useOptionalMotion();
   const roundA = gameStateA.currentRound;
   const roundB = gameStateB.currentRound;
 
@@ -213,10 +217,27 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
   const slotCount = customerData.length;
   const cardWidth = Math.max(280, slotCount * 54 + 42);
 
+  const controlKey = `control:${regionName}`;
+  const cardChanged = Boolean(
+    m && (
+      m.tierFor(controlKey) > 0 ||
+      customerData.some(c => m.tierFor(`customer:${regionName}:${c.id}`) > 0) ||
+      (regA?.teamsPresent || []).some(id => m.tierFor(`office:${regionName}:${id}`) > 0) ||
+      (regB?.teamsPresent || []).some(id => m.tierFor(`office:${regionName}:${id}`) > 0)
+    )
+  );
+
   return (
     <div
       style={{ width: `${cardWidth}px` }}
-      className="absolute h-[180px] bg-white rounded-xl p-2.5 flex flex-col justify-between border border-slate-300 shadow-md backdrop-blur-sm hover:border-slate-500 hover:shadow-xl transition-all duration-300 text-slate-900 z-10 select-none"
+      className={cn(
+        "absolute h-[180px] bg-white rounded-xl p-2.5 flex flex-col justify-between backdrop-blur-sm group hover:border-slate-500 hover:shadow-xl transition-all duration-300 text-slate-900 z-10 select-none mo-dimmable",
+        cardChanged 
+          ? "border-2 border-amber-500 ring-4 ring-amber-400/90 ring-offset-2 shadow-2xl scale-105 z-30 font-bold" 
+          : "border border-slate-300 shadow-md",
+        m && getMotionClass(m, controlKey, 'lg')
+      )}
+      data-changed={cardChanged ? '1' : undefined}
     >
       {/* Corner Control Badges: Top-Left (World A), Top-Right (World B) */}
       {controlLeadersA && (controlLeadersA.first || controlLeadersA.second) && (

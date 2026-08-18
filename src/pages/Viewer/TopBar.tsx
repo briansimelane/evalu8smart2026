@@ -145,29 +145,35 @@ export function TopBar({ classData, gameState }: TopBarProps) {
         <div className="h-10 w-[1px] bg-slate-200" />
         <div className="flex items-center gap-2.5">
           <span className="text-xs font-black text-slate-600 uppercase tracking-widest mr-1">Turn Order:</span>
-          {playOrder.map((team, idx) => {
-            const isActive = activeTurnTeam?.id === team.id;
-            const textColor = getContrastTextColor(team.color);
-            const isTeamChanged = m.tierFor(`price:${team.id}`) > 0 || m.tierFor(`money:${team.id}`) > 0;
+          {isProductionOrLater ? (
+            playOrder.map((team, idx) => {
+              const isActive = activeTurnTeam?.id === team.id;
+              const textColor = getContrastTextColor(team.color);
+              const isTeamChanged = m.tierFor(`price:${team.id}`) > 0 || m.tierFor(`money:${team.id}`) > 0;
 
-            return (
-              <div 
-                key={team.id}
-                style={{ backgroundColor: team.color, color: textColor }}
-                className={cn(
-                  "relative w-10 h-10 rounded-full shadow-md flex items-center justify-center text-sm font-black transition-all duration-500 border border-black/10 shrink-0 mo-dimmable",
-                  isActive 
-                    ? 'mo-turn ring-4 ring-offset-2 ring-emerald-500 scale-110 z-10 font-extrabold' 
-                    : 'opacity-85 hover:opacity-100',
-                  isTeamChanged && "z-20"
-                )}
-                data-changed={isTeamChanged ? '1' : undefined}
-                title={`${idx + 1}. ${team.name}`}
-              >
-                <span>{idx + 1}</span>
-              </div>
-            );
-          })}
+              return (
+                <div 
+                  key={team.id}
+                  style={{ backgroundColor: team.color, color: textColor }}
+                  className={cn(
+                    "relative w-10 h-10 rounded-full shadow-md flex items-center justify-center text-sm font-black transition-all duration-500 border border-black/10 shrink-0 mo-dimmable",
+                    isActive 
+                      ? 'mo-turn ring-4 ring-offset-2 ring-emerald-500 scale-110 z-10 font-extrabold' 
+                      : 'opacity-85 hover:opacity-100',
+                    isTeamChanged && "z-20"
+                  )}
+                  data-changed={isTeamChanged ? '1' : undefined}
+                  title={`${idx + 1}. ${team.name}`}
+                >
+                  <span>{idx + 1}</span>
+                </div>
+              );
+            })
+          ) : (
+            <span className="text-xs font-bold italic text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+              Hidden during Planning Phase
+            </span>
+          )}
         </div>
       </div>
 

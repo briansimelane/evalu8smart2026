@@ -183,10 +183,10 @@ export function useBoardMotion(gameState: GameState | null): MotionState {
       const newTickerEntries: TickerEntry[] = [];
 
       finalEventsToAnimate.forEach(e => {
-        const delay = staggerIndex * 140; // 140ms stagger
+        const delay = staggerIndex * 350; // 350ms stagger (slower, clearer sequence)
         staggerIndex++;
 
-        const duration = e.tier === 1 ? 1000 : 500;
+        const duration = e.tier === 1 ? 2200 : 1400; // 2.2s for tier-1, 1.4s for tier-2 (much slower)
 
         if (shouldAnimate) {
           highlightMapRef.current.set(e.key, {
@@ -207,7 +207,7 @@ export function useBoardMotion(gameState: GameState | null): MotionState {
         const color = e.teamColor || '#f59e0b';
         recentMapRef.current.set(e.key, {
           teamColor: color,
-          expiredAt: commitTime + delay + duration + 9000
+          expiredAt: commitTime + delay + duration + 15000 // 15s afterglow
         });
       });
 
@@ -222,7 +222,7 @@ export function useBoardMotion(gameState: GameState | null): MotionState {
         const color = e.teamColor || '#f59e0b';
         recentMapRef.current.set(e.key, {
           teamColor: color,
-          expiredAt: commitTime + 9000
+          expiredAt: commitTime + 15000
         });
       });
 
@@ -235,14 +235,14 @@ export function useBoardMotion(gameState: GameState | null): MotionState {
 
       // Spotlight engages for tier-1 updates
       if (shouldAnimate && tier1Count > 0) {
-        const maxAnimationTime = staggerIndex * 140 + 1000;
+        const maxAnimationTime = staggerIndex * 350 + 2200;
         setSpotlight(true);
         if (spotlightTimeoutRef.current) {
           clearTimeout(spotlightTimeoutRef.current);
         }
         spotlightTimeoutRef.current = setTimeout(() => {
           setSpotlight(false);
-        }, maxAnimationTime + 250);
+        }, maxAnimationTime + 400);
       }
 
       // Prune and cap active afterglow items at 5

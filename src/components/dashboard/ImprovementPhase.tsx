@@ -537,62 +537,111 @@ export const ImprovementPhase = () => {
         </Card>
       )}
 
-      {/* Allocated Cards Summary (once confirmed) */}
-      {(isAllocated || allocationsCompleted) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Allocated Improvement Cards - Round {gameState.currentRound}</CardTitle>
-            <CardDescription>
-              Improvement cards assigned to teams for this round
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {gameState.teams.map(team => {
-                const teamCards = gameState.improvementCards.filter(c => 
-                  c.availableForTeam === team.id && c.allocatedInRound === gameState.currentRound
-                );
-                
-                return (
-                  <div key={team.id} className="p-4 border rounded-lg space-y-3 bg-card/50">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: team.color }}
-                      />
-                      <span className="font-semibold">{team.name}</span>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-2">
-                      {teamCards.length > 0 ? (
-                        teamCards.map(card => (
-                          <div key={card.id} className="flex gap-2 items-center p-2 bg-background border rounded">
+      {/* Allocated Cards Summary (Round Decisions & Claims) */}
+      {(() => {
+        const hasAnyClaimsThisRound = gameState.teams.some(team =>
+          gameState.improvementCards.some(c =>
+            (c.availableForTeam === team.id || c.usedBy === team.id) &&
+            Number(c.allocatedInRound) === Number(gameState.currentRound)
+          ) || Object.values(allocations).includes(team.id)
+        );
+
+        if (!hasAnyClaimsThisRound && !(isAllocated || allocationsCompleted)) {
+          return null;
+        }
+
+        return (
+          <Card className="border-primary/40 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <CheckCircle2 className="h-5 w-5 text-success" />
+                Round {gameState.currentRound} Improvement Decisions & Claims
+              </CardTitle>
+              <CardDescription>
+                Improvement cards claimed by teams for Round {gameState.currentRound}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {gameState.teams.map(team => {
+                  const teamCards = gameState.improvementCards.filter(c => 
+                    (c.availableForTeam === team.id || c.usedBy === team.id) &&
+                    Number(c.allocatedInRound) === Number(gameState.currentRound)
+                  );
+
+                  // Also check local pending allocations
+                  const pendingCardId = Object.entries(allocations).find(([_, tId]) => tId === team.id)?.[0];
+                  const pendingCard = pendingCardId ? AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === parseInt(pendingCardId)) : null;
+
+                  return (
+                    <div key={team.id} className="p-4 border rounded-lg space-y-3 bg-card/60">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-4 h-4 rounded-full"
+                            style={{ backgroundColor: team.color }}
+                          />
+                          <span className="font-bold text-sm">{team.name}</span>
+                          {team.isBot && <span className="text-xs">🤖</span>}
+                        </div>
+                        {teamCards.length > 0 || pendingCard ? (
+                          <Badge className="bg-success/15 text-success border border-success/30 text-[10px] font-bold">
+                            Claimed
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                            Pending
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        {teamCards.length > 0 ? (
+                          teamCards.map(card => (
+                            <div key={card.id} className="flex gap-2 items-center p-2 bg-background border rounded-lg shadow-2xs">
+                              <div className="flex gap-1">
+                                <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
+                                  {getIconElement(card.icon1)}
+                                </div>
+                                {card.id > 0 && card.icon2 && card.icon2 !== 'None' && (
+                                  <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
+                                    {getIconElement(card.icon2)}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-xs font-bold text-slate-700">
+                                {card.id < 0 ? 'Product Card' : 'Improvement Card'}
+                              </span>
+                            </div>
+                          ))
+                        ) : pendingCard ? (
+                          <div className="flex gap-2 items-center p-2 bg-background border border-amber-300 rounded-lg shadow-2xs">
                             <div className="flex gap-1">
                               <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
-                                {getIconElement(card.icon1)}
+                                {getIconElement(pendingCard.icon1)}
                               </div>
-                              {card.id > 0 && card.icon2 && card.icon2 !== 'None' && (
+                              {pendingCard.icon2 && pendingCard.icon2 !== 'None' && (
                                 <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
-                                  {getIconElement(card.icon2)}
+                                  {getIconElement(pendingCard.icon2)}
                                 </div>
                               )}
                             </div>
-                            <span className="text-xs text-muted-foreground text-center">
-                              {card.id < 0 ? 'Product Card' : 'Improvement Card'}
+                            <span className="text-xs font-bold text-amber-700">
+                              Selected
                             </span>
                           </div>
-                        ))
-                      ) : (
-                        <span className="text-xs text-muted-foreground">No cards allocated this round</span>
-                      )}
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">No card claimed yet</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Next Round Preview - Only show if not Round 4 */}
       {(isAllocated || allocationsCompleted) && nextRoundCards.length > 0 && gameState.currentRound < 4 && (

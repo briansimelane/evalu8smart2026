@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { GameState, Team } from '../types/game';
 import { diffGameState, isBulkTransition } from '../pages/Viewer/motion/boardDiff';
 
@@ -84,7 +85,7 @@ function createMockGameState(): GameState {
   };
 }
 
-async function runTests() {
+test('runs board diff tests', () => {
   console.log('--------------------------------------------------');
   console.log('RUNNING BOARD DIFF ENGINE UNIT TESTS');
   console.log('--------------------------------------------------\n');
@@ -168,14 +169,5 @@ async function runTests() {
     passed = false;
   }
 
-  console.log('\n--------------------------------------------------');
-  if (passed) {
-    console.log('BOARD DIFF TESTS SUMMARY: ALL PASSED');
-    process.exit(0);
-  } else {
-    console.log('BOARD DIFF TESTS SUMMARY: SOME TESTS FAILED');
-    process.exit(1);
-  }
-}
-
-runTests();
+  expect(passed).toBe(true);
+});

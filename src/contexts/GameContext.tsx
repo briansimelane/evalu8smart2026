@@ -433,6 +433,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!effectiveGameState) return [];
 
     const currentRound = effectiveGameState.currentRound;
+    if (currentRound >= 5) return [];
 
     // If pool already exists for this round, return it
     const existingIds = effectiveGameState.improvementPoolByRound?.[currentRound];
@@ -602,9 +603,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     mutateGameState(prev => {
       if (!prev) return prev;
 
+      let targetPhase = phase;
+      if (prev.currentRound >= 5 && targetPhase === 'improvement') {
+        targetPhase = 'research';
+      }
+
       return {
         ...prev,
-        currentPhase: phase,
+        currentPhase: targetPhase,
         updatedAt: new Date()
       };
     });
@@ -1097,7 +1103,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const getTeamLogisticsProgress = useCallback((teamId: string) => {
     if (!effectiveGameState) return undefined;
-    return effectiveGameState.teamLogisticsProgress[teamId];
+    const progress = effectiveGameState.teamLogisticsProgress[teamId];
+    const boardRegions = Object.entries(effectiveGameState.regionLogistics || {})
+      .filter(([_, reg]) => reg.teamsPresent && reg.teamsPresent.includes(teamId))
+      .map(([rName]) => rName);
+
+    const mergedPresence = Array.from(new Set([...(progress?.regionsWithPresence || []), ...boardRegions]));
+
+    return {
+      ...(progress || { teamId, regionInvestments: {}, regionsWithPresence: [] }),
+      regionsWithPresence: mergedPresence
+    };
   }, [effectiveGameState]);
 
   const canExpandToRegion = useCallback((teamId: string, regionName: string): boolean => {

@@ -20,6 +20,7 @@ interface WorldMarkerProps {
   children?: React.ReactNode;
   title?: string;
   showWorldLetter?: boolean;
+  style?: React.CSSProperties;
 }
 
 const SIZE_CLASSES = {
@@ -37,6 +38,7 @@ export const WorldMarker: React.FC<WorldMarkerProps> = ({
   children,
   title,
   showWorldLetter = false,
+  style,
 }) => {
   const accent = WORLD_ACCENT[world];
   const textColor = getContrastTextColor(teamColor);
@@ -51,7 +53,8 @@ export const WorldMarker: React.FC<WorldMarkerProps> = ({
       style={{
         backgroundColor: teamColor,
         color: textColor,
-        boxShadow: `0 0 0 2px #ffffff, 0 0 0 4px ${accent.ring}`,
+        boxShadow: `0 0 0 1.5px #ffffff, 0 1px 3px rgba(0,0,0,0.3)`,
+        ...style,
       }}
       title={title}
     >

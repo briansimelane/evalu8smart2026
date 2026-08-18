@@ -118,14 +118,51 @@ export function useMultiWorldBotRunner(classId: string | undefined, gameState: G
             totalMoney: 0,
           };
         } else if (phase === 'improvement') {
-          const cardIdToClaim = decideImprovement(nextState, teamId, profile, difficulty);
+          // Ensure pool exists for round
+          if (!nextState.improvementPoolByRound) nextState.improvementPoolByRound = {};
+          if (!nextState.improvementPoolByRound[round] || nextState.improvementPoolByRound[round].length === 0) {
+            const usedCardIds = (nextState.improvementCards || []).filter(c => c.used).map(c => c.id);
+            const availablePool = AVAILABLE_IMPROVEMENT_CARDS.filter(c => !usedCardIds.includes(c.id));
+            nextState.improvementPoolByRound[round] = availablePool.slice(0, nextState.teams.length).map(c => c.id);
+          }
+
+          let cardIdToClaim = decideImprovement(nextState, teamId, profile, difficulty);
+
+          if (cardIdToClaim === null) {
+            const poolIds = nextState.improvementPoolByRound[round] || [];
+            const claimedInRound = (nextState.improvementCards || [])
+              .filter(c => c.allocatedInRound === round && c.availableForTeam)
+              .map(c => c.id);
+            const availableCardId = poolIds.find(id => !claimedInRound.includes(id));
+            if (availableCardId !== undefined) {
+              cardIdToClaim = availableCardId;
+            } else {
+              cardIdToClaim = -(Math.floor(Math.random() * 1000) + 1);
+            }
+          }
+
+          if (!nextState.improvementCards) nextState.improvementCards = [];
+
           if (cardIdToClaim !== null) {
-            nextState.improvementCards = nextState.improvementCards.map(c => {
-              if (c.id === cardIdToClaim) {
-                return { ...c, availableForTeam: teamId, allocatedInRound: round };
-              }
-              return c;
-            });
+            const existingIdx = nextState.improvementCards.findIndex(c => c.id === cardIdToClaim);
+            if (existingIdx !== -1) {
+              nextState.improvementCards[existingIdx] = {
+                ...nextState.improvementCards[existingIdx],
+                availableForTeam: teamId,
+                allocatedInRound: round
+              };
+            } else {
+              const cardData = AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === cardIdToClaim);
+              nextState.improvementCards.push({
+                id: cardIdToClaim,
+                icon1: cardData?.icon1 || 'Research',
+                icon2: cardData?.icon2 || 'Product',
+                availableForTeam: teamId,
+                used: false,
+                isInitial: false,
+                allocatedInRound: round
+              });
+            }
           }
         } else if (phase === 'research') {
           const allocatedMap = nextState.researchAllocatedByRound[round] || {};
@@ -153,6 +190,21 @@ export function useMultiWorldBotRunner(classId: string | undefined, gameState: G
                   }
                 }
                 nextState.teamResearchProgress[teamId] = prog;
+
+                // Re-evaluate tech completion for ALL teams in case a patent was awarded or cost dropped
+                nextState.teams.forEach(t => {
+                  const tProg = nextState.teamResearchProgress[t.id] || {
+                    teamId: t.id,
+                    technologyInvestments: {},
+                    completedTechnologies: []
+                  };
+                  const tInvested = tProg.technologyInvestments[techName] || 0;
+                  const tCost = getTechnologyCostForTeam(nextState, t.id, techName);
+                  if (tInvested >= tCost && !tProg.completedTechnologies.includes(techName)) {
+                    tProg.completedTechnologies = [...tProg.completedTechnologies, techName];
+                  }
+                  nextState.teamResearchProgress[t.id] = tProg;
+                });
               }
             });
 
@@ -183,6 +235,15 @@ export function useMultiWorldBotRunner(classId: string | undefined, gameState: G
                   reg.teamsPresent.push(teamId);
                 }
                 nextState.regionLogistics[regionName] = reg;
+
+                // Sync teamLogisticsProgress
+                const teamLog = nextState.teamLogisticsProgress[teamId] || { teamId, regionsWithPresence: [], regionProgress: {} };
+                if (newInvested >= reg.logisticsCost && !teamLog.regionsWithPresence.includes(regionName)) {
+                  teamLog.regionsWithPresence = [...teamLog.regionsWithPresence, regionName];
+                }
+                teamLog.regionProgress = teamLog.regionProgress || {};
+                teamLog.regionProgress[regionName] = newInvested;
+                nextState.teamLogisticsProgress[teamId] = teamLog;
               }
             });
 

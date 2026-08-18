@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import { GameState, Team } from '../types/game';
 import { decideResearch, decideLogistics } from '../bots/botEngine';
 import { getTechnologyCostForTeam, canExpandToRegion } from '../lib/rules';
@@ -248,8 +249,7 @@ function validateLogisticsAllocation(state: GameState, teamId: string, regionNam
   return { valid: true };
 }
 
-// Running the tests
-async function runTests() {
+test('runs simulation rules tests', () => {
   console.log('--------------------------------------------------');
   console.log('RUNNING BOARD GAME SIMULATION RULES VALIDATION TEST');
   console.log('--------------------------------------------------\n');
@@ -390,15 +390,5 @@ async function runTests() {
     passed = false;
   }
 
-  console.log('\n--------------------------------------------------');
-  if (passed) {
-    console.log('TEST SUMMARY: ALL TESTS PASSED');
-    process.exit(0);
-  } else {
-    console.log('TEST SUMMARY: SOME TESTS FAILED');
-    process.exit(1);
-  }
-  console.log('--------------------------------------------------');
-}
-
-runTests();
+  expect(passed).toBe(true);
+});

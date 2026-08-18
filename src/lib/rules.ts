@@ -123,6 +123,8 @@ export function isCustomerEligible(
   if (customer.type === 'price') {
     return teamPrice <= (customer.price || 0);
   } else {
-    return customer.technology ? completedTechs.includes(customer.technology) : false;
+    if (!customer.technology) return false;
+    const reqNorm = customer.technology.toUpperCase();
+    return completedTechs.some(t => (t || '').toUpperCase() === reqNorm);
   }
 }
