@@ -300,6 +300,45 @@ describe('Game Rules & Viewer Synchronization Test Suite', () => {
       expect(selectedPos).toBe(2);
       expect(selectedCards).toEqual({ 1: 'use', 2: 'product' });
     });
+
+    it('allows teams to unclaim improvement cards to re-select during Improvement Phase', () => {
+      const state = createTestGameState();
+      state.currentPhase = 'improvement';
+      state.currentRound = 1;
+      state.improvementCards = [
+        { id: 1, icon1: 'Research', icon2: 'None' as any, availableForTeam: 'team-blue', used: false, isInitial: false, allocatedInRound: 1 }
+      ];
+
+      const unclaim = (teamId: string, round: number) => {
+        state.improvementCards = state.improvementCards.filter(c =>
+          !(c.availableForTeam === teamId && c.allocatedInRound === round)
+        );
+      };
+
+      unclaim('team-blue', 1);
+      expect(state.improvementCards).toHaveLength(0);
+    });
+
+    it('filters out teams with 0 improvement icons from Improvement Phase turn order', () => {
+      const state = createTestGameState();
+      state.currentRound = 1;
+      state.rounds = [
+        {
+          roundNumber: 1,
+          teamData: {
+            'team-green': { teamId: 'team-green', combination: 1, position: 1, price: 5, productsProduced: 3, improvementCards: 1, researchIcons: 1, logisticsIcons: 1, revenue: 0, technologiesResearched: [], expansionLocations: [], salesByRegion: {}, regionControlPoints: {}, controlValue: 0, totalMoney: 0 },
+            'team-blue': { teamId: 'team-blue', combination: 1, position: 1, price: 5, productsProduced: 3, improvementCards: 0, researchIcons: 1, logisticsIcons: 1, revenue: 0, technologiesResearched: [], expansionLocations: [], salesByRegion: {}, regionControlPoints: {}, controlValue: 0, totalMoney: 0 }
+          }
+        }
+      ];
+
+      const fullPlayOrder = state.teams;
+      const roundData = state.rounds[0];
+      const improvementPlayOrder = fullPlayOrder.filter(t => (roundData.teamData[t.id]?.improvementCards || 0) > 0);
+
+      expect(improvementPlayOrder).toHaveLength(1);
+      expect(improvementPlayOrder[0].id).toBe('team-green');
+    });
   });
 
   // 5. VIEWER ICON MAPPING

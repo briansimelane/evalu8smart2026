@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/contexts/GameContext';
 import { Badge } from '@/components/ui/badge';
-import { FlaskConical, Truck, Package, TrendingUp, TrendingDown, Wrench, Shuffle, Microscope, CirclePlus, CircleMinus, AlertCircle, AlertTriangle, Trophy, CheckCircle2, Plus, Minus } from 'lucide-react';
+import { FlaskConical, Truck, Package, TrendingUp, TrendingDown, Wrench, Shuffle, Microscope, CirclePlus, CircleMinus, AlertCircle, AlertTriangle, Trophy, CheckCircle2, Plus, Minus, RotateCcw } from 'lucide-react';
 import { GameIcon } from './GameIcon';
 import { AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,7 +15,7 @@ import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
 
 export const ImprovementPhase = () => {
-  const { gameState, allocateImprovementCards, selectRandomCards, reshuffleRoundCards, previewNextRoundCards, claimImprovementCard, calculatePlayOrder } = useGame();
+  const { gameState, allocateImprovementCards, selectRandomCards, reshuffleRoundCards, previewNextRoundCards, claimImprovementCard, unclaimImprovementCard, calculatePlayOrder } = useGame();
   const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam, isDemo } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const { toast } = useToast();
@@ -274,21 +274,41 @@ export const ImprovementPhase = () => {
             {(isAllocated || allocationsCompleted) ? 'Allocation complete.' + (gameState.currentRound < 4 ? ' Preview of next round below.' : '') : 'Allocate improvement cards to teams based on their performance'}
           </p>
         </div>
-        {!(isAllocated || allocationsCompleted) && currentRole !== 'STUDENT' && (
-          <Button onClick={handleReshuffle} variant="outline">
-            <Shuffle className="h-4 w-4 mr-2" />
-            Reshuffle Cards
-          </Button>
+        {currentRole !== 'STUDENT' && (
+          <div className="flex items-center gap-2">
+            <Button onClick={handleReshuffle} variant="outline" size="sm">
+              <Shuffle className="h-4 w-4 mr-2" />
+              Reshuffle Cards
+            </Button>
+            {gameState.improvementCards.some(c => c.allocatedInRound === gameState.currentRound) && (
+              <Button 
+                onClick={() => {
+                  gameState.teams.forEach(t => unclaimImprovementCard(t.id, gameState.currentRound));
+                  setAllocations({});
+                  toast({
+                    title: "Selections Reset",
+                    description: "All card claims for this round have been reset so teams can re-select."
+                  });
+                }} 
+                variant="outline" 
+                size="sm"
+                className="text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/10 font-bold"
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Reset Choices
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
       {/* Turn Order & Improvement Overview */}
       {(() => {
-        const playOrder = calculatePlayOrder(gameState.currentRound);
-        const activeTurnTeam = playOrder.find(t => {
-          const count = currentRoundData?.teamData[t.id]?.improvementCards || 0;
+        const fullPlayOrder = calculatePlayOrder(gameState.currentRound);
+        const improvementPlayOrder = fullPlayOrder.filter(t => (currentRoundData?.teamData[t.id]?.improvementCards || 0) > 0);
+        const activeTurnTeam = improvementPlayOrder.find(t => {
           const isDone = isTeamAllocated(t.id) || gameState.improvementCards.some(c => (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === gameState.currentRound);
-          return count > 0 && !isDone;
+          return !isDone;
         });
 
         return (
@@ -296,7 +316,7 @@ export const ImprovementPhase = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Trophy className="h-4 w-4 text-warning" />
-                <span>Turn Order & Improvement Points — Round {gameState.currentRound}</span>
+                <span>Turn Order (Teams with Improvement Icons) — Round {gameState.currentRound}</span>
               </h3>
               <div className="flex items-center gap-2">
                 {activeTurnTeam ? (
@@ -307,7 +327,7 @@ export const ImprovementPhase = () => {
                 ) : (
                   <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
                     <CheckCircle2 className="h-3 w-3 text-success" />
-                    Improvements Complete
+                    {improvementPlayOrder.length === 0 ? 'No Teams Earning Improvement Cards' : 'Improvements Complete'}
                   </Badge>
                 )}
                 <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground bg-muted/40 hidden md:inline-flex">
@@ -317,7 +337,7 @@ export const ImprovementPhase = () => {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 pt-1">
-              {playOrder.map((team, index) => {
+              {improvementPlayOrder.map((team, index) => {
                 const teamData = currentRoundData?.teamData[team.id];
                 const improvementCount = teamData?.improvementCards || 0;
                 const isClaimedOrAllocated = isTeamAllocated(team.id) || gameState.improvementCards.some(c => (c.availableForTeam === team.id || c.usedBy === team.id) && c.allocatedInRound === gameState.currentRound);
@@ -390,11 +410,11 @@ export const ImprovementPhase = () => {
       })()}
 
       {/* Teams with Improvement */}
-      {!(isAllocated || allocationsCompleted) && teamsWithImprovement.length > 0 && (
+      {teamsWithImprovement.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Teams Earning Improvement Cards</CardTitle>
-            <CardDescription>Select a card for each team below</CardDescription>
+            <CardDescription>Select a card for each team below or edit your selection</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -403,11 +423,19 @@ export const ImprovementPhase = () => {
                 const allocatedCardId = Object.entries(allocations).find(
                   ([_, teamId]) => teamId === team.id
                 )?.[0];
+
+                const claimedCard = gameState.improvementCards.find(c =>
+                  (c.availableForTeam === team.id || c.usedBy === team.id) &&
+                  Number(c.allocatedInRound) === Number(gameState.currentRound)
+                );
+                const claimedCardData = claimedCard ? (claimedCard.id < 0 ? { id: claimedCard.id, icon1: 'Product', icon2: 'None' } : AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === claimedCard.id)) : null;
+
                 const isMyTeam = currentRole === 'STUDENT' && team.id === currentTeamId;
+                const canChangeSelection = (isMyTeam || currentRole !== 'STUDENT') && activePhase === 'improvement' && !isReadOnly;
                 const isOtherTeamStudent = currentRole === 'STUDENT' && team.id !== currentTeamId;
 
                 return (
-                  <div key={team.id} className="p-4 border rounded-lg space-y-3">
+                  <div key={team.id} className="p-4 border rounded-lg space-y-3 bg-card shadow-xs">
                     <div className="flex items-center gap-2">
                       <div
                         className="w-4 h-4 rounded-full"
@@ -419,19 +447,43 @@ export const ImprovementPhase = () => {
                       </Badge>
                     </div>
                     
-                    {isOtherTeamStudent ? (
+                    {claimedCardData ? (
+                      <div className="p-3 bg-success/10 border border-success/30 rounded-lg space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-success flex items-center gap-1">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                            Card Claimed:
+                          </span>
+                          <div className="flex items-center gap-1.5 bg-background/80 px-2 py-1 rounded border">
+                            {getIconElement(claimedCardData.icon1)}
+                            {getIconElement(claimedCardData.icon2)}
+                          </div>
+                        </div>
+                        {canChangeSelection && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs font-bold h-7 border-amber-500/40 text-amber-800 dark:text-amber-200 hover:bg-amber-500/10 gap-1.5"
+                            onClick={() => {
+                              unclaimImprovementCard(team.id, gameState.currentRound);
+                              toast({
+                                title: "Selection Reset",
+                                description: `Card selection for ${team.name} has been reset. You can now choose any available card.`
+                              });
+                            }}
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            Change Choice
+                          </Button>
+                        )}
+                      </div>
+                    ) : isOtherTeamStudent ? (
                       <div className="p-3 bg-muted/40 rounded-lg border text-xs space-y-1">
                         <div className="flex items-center justify-between text-muted-foreground">
                           <span>Team Status:</span>
-                          {isTeamAllocated(team.id) ? (
-                            <Badge className="bg-success/20 text-success dark:text-success border-success/30 text-[10px] font-bold">
-                              Card Claimed
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-warning/10 text-warning dark:text-warning border-warning/30 text-[10px] font-bold">
-                              Selecting Card...
-                            </Badge>
-                          )}
+                          <Badge variant="outline" className="bg-warning/10 text-warning dark:text-warning border-warning/30 text-[10px] font-bold">
+                            Selecting Card...
+                          </Badge>
                         </div>
                       </div>
                     ) : (
@@ -462,7 +514,7 @@ export const ImprovementPhase = () => {
                           </SelectContent>
                         </Select>
 
-                        {isMyTeam && activePhase === 'improvement' && !isReadOnly && (
+                        {(isMyTeam || currentRole !== 'STUDENT') && activePhase === 'improvement' && !isReadOnly && (
                           <Button
                             size="sm"
                             className="w-full mt-2 bg-success hover:bg-success text-white font-semibold"
@@ -472,7 +524,7 @@ export const ImprovementPhase = () => {
                                 claimImprovementCard(parseInt(allocatedCardId), team.id);
                                 toast({
                                   title: "Card Claimed",
-                                  description: "Your team has claimed this improvement card successfully."
+                                  description: `${team.name} has claimed their improvement card successfully.`
                                 });
                               }
                             }}
@@ -491,7 +543,7 @@ export const ImprovementPhase = () => {
       )}
 
       {/* Available Cards Display */}
-      {!(isAllocated || allocationsCompleted) && (
+      {activePhase === 'improvement' && (
         <Card>
           <CardHeader>
             <CardTitle>Available Improvement Cards</CardTitle>
@@ -603,7 +655,7 @@ export const ImprovementPhase = () => {
                                 <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
                                   {getIconElement(card.icon1)}
                                 </div>
-                                {card.id > 0 && card.icon2 && card.icon2 !== 'None' && (
+                                {card.id > 0 && card.icon2 && (card.icon2 as string) !== 'None' && (
                                   <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
                                     {getIconElement(card.icon2)}
                                   </div>
@@ -620,7 +672,7 @@ export const ImprovementPhase = () => {
                               <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
                                 {getIconElement(pendingCard.icon1)}
                               </div>
-                              {pendingCard.icon2 && pendingCard.icon2 !== 'None' && (
+                              {pendingCard.icon2 && (pendingCard.icon2 as string) !== 'None' && (
                                 <div className="flex items-center justify-center p-1.5 rounded bg-white border border-gray-200">
                                   {getIconElement(pendingCard.icon2)}
                                 </div>

@@ -26,6 +26,7 @@ export interface GameContextType {
   allocateImprovementCards: (allocations: Record<number, string>) => void;
   advanceRound: () => void;
   claimImprovementCard: (cardId: number, teamId: string) => void;
+  unclaimImprovementCard: (teamId: string, roundNumber?: number) => void;
   setBotThinking: (teamId: string, thinking: boolean) => void;
   markImprovementCardUsed: (cardId: number) => void;
   clearNonInitialCards: () => void;
@@ -608,8 +609,34 @@ export function GameProvider({ children }: { children: ReactNode }) {
         targetPhase = 'research';
       }
 
+      const newCards = [...(prev.improvementCards || [])];
+      if (targetPhase === 'improvement') {
+        const currentRoundData = prev.rounds.find(r => r.roundNumber === prev.currentRound);
+        if (currentRoundData) {
+          prev.teams.forEach(t => {
+            const tData = currentRoundData.teamData[t.id];
+            const hasCard = newCards.some(c => 
+              c.availableForTeam === t.id && c.allocatedInRound === prev.currentRound
+            );
+            if (tData && tData.improvementCards === 0 && !hasCard) {
+              const productCardId = -(newCards.filter(c => c.id < 0).length + 1);
+              newCards.push({
+                id: productCardId,
+                icon1: 'Product',
+                icon2: 'None' as any,
+                availableForTeam: t.id,
+                used: false,
+                isInitial: false,
+                allocatedInRound: prev.currentRound,
+              });
+            }
+          });
+        }
+      }
+
       return {
         ...prev,
+        improvementCards: newCards,
         currentPhase: targetPhase,
         updatedAt: new Date()
       };
@@ -716,6 +743,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
       return {
         ...prev,
         improvementCards: newCards,
+        updatedAt: new Date()
+      };
+    });
+  };
+
+  const unclaimImprovementCard = (teamId: string, roundNumber?: number) => {
+    if (!effectiveGameState) return;
+
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      const targetRound = roundNumber || prev.currentRound;
+
+      const updatedCards = prev.improvementCards.filter(c =>
+        !(c.availableForTeam === teamId && c.allocatedInRound === targetRound)
+      );
+
+      return {
+        ...prev,
+        improvementCards: updatedCards,
         updatedAt: new Date()
       };
     });
@@ -1295,6 +1341,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         advanceRound,
         updatePhase,
         claimImprovementCard,
+        unclaimImprovementCard,
         setBotThinking,
         markImprovementCardUsed,
         clearNonInitialCards,
