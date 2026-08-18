@@ -586,11 +586,9 @@ export function CombinationsGuideModal({
                       {getSortIcon('logisticsPoints')}
                     </div>
                   </TableHead>
-                  {onSelectCombination && (
-                    <TableHead className="text-right font-extrabold text-xs text-foreground">
-                      Action
-                    </TableHead>
-                  )}
+                  <TableHead className="text-right font-extrabold text-xs text-foreground">
+                    Action
+                  </TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -598,7 +596,7 @@ export function CombinationsGuideModal({
                 {filteredAndSortedData.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={onSelectCombination ? 9 : 8}
+                      colSpan={9}
                       className="h-24 text-center text-xs text-muted-foreground"
                     >
                       No matching combinations found.
@@ -618,37 +616,28 @@ export function CombinationsGuideModal({
                         }`}
                       >
                         <TableCell className="font-bold font-sans">
-                          <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-bold">
-                            Combo {row.combination}
-                          </span>
+                          Combination {row.combination}
                         </TableCell>
-                        <TableCell className="font-bold">
-                          Pos {row.position}
+                        <TableCell className="font-bold font-sans">
+                          Position {row.position}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1">
-                            <span
-                              className={
-                                priceAdj > 0
-                                  ? 'text-emerald-600 font-bold'
-                                  : priceAdj < 0
-                                  ? 'text-red-500 font-bold'
-                                  : 'text-muted-foreground font-semibold'
-                              }
-                            >
-                              {priceAdjFormatted}
-                            </span>
-                            {cardBonusSummary.priceEffect !== 0 && (
-                              <span className="text-[11px] text-purple-600 font-bold">
-                                ({cardBonusSummary.priceEffect > 0 ? '+' : ''}${cardBonusSummary.priceEffect})
-                              </span>
-                            )}
-                          </div>
+                          <span
+                            className={`font-bold ${
+                              priceAdj > 0
+                                ? 'text-red-500'
+                                : priceAdj < 0
+                                ? 'text-emerald-600'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            {priceAdjFormatted}
+                          </span>
                         </TableCell>
-                        <TableCell className="bg-purple-500/5 font-extrabold text-purple-700 dark:text-purple-300">
-                          ${row.calculatedPrice.toFixed(2)}
+                        <TableCell className="font-bold text-foreground">
+                          ${row.calculatedPrice}
                         </TableCell>
-                        <TableCell className="font-bold">
+                        <TableCell>
                           <div className="flex items-center gap-1">
                             <GameIcon type="production" size="xs" />
                             <span>{row.productsAvailable}</span>
@@ -687,22 +676,27 @@ export function CombinationsGuideModal({
                             )}
                           </div>
                         </TableCell>
-                        {onSelectCombination && (
-                          <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => {
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              if (onSelectCombination) {
                                 onSelectCombination(row.combination, row.position, cardUsages);
-                                setOpen(false);
-                              }}
-                              className="h-7 text-[11px] font-bold bg-purple-600 text-white hover:bg-purple-700 transition-all shadow-xs"
-                            >
-                              <Check className="w-3 h-3 mr-1" />
-                              Select
-                            </Button>
-                          </TableCell>
-                        )}
+                              }
+                              window.dispatchEvent(
+                                new CustomEvent('select_combination_from_guide', {
+                                  detail: { combination: row.combination, position: row.position, cardUsages }
+                                })
+                              );
+                              setOpen(false);
+                            }}
+                            className="h-7 text-[11px] font-bold bg-purple-600 text-white hover:bg-purple-700 transition-all shadow-xs"
+                          >
+                            <Check className="w-3 h-3 mr-1" />
+                            Select
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   })

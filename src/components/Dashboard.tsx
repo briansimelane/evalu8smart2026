@@ -93,6 +93,14 @@ export const Dashboard = () => {
   const planningPhaseRef = useRef<{ loadTeamPlan: (roundNumber: number, teamId: string) => void }>(null);
   const prevRoundRef = useRef(gameState?.currentRound);
 
+  useEffect(() => {
+    const handleSelectFromGuide = () => {
+      setActiveTab('planning');
+    };
+    window.addEventListener('select_combination_from_guide', handleSelectFromGuide);
+    return () => window.removeEventListener('select_combination_from_guide', handleSelectFromGuide);
+  }, []);
+
   const handleOpenViewer = () => {
     const code = activeClass?.facilitatorCode || activeClass?.id || '';
     if (code) {

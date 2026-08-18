@@ -45,6 +45,27 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     }
   }, [currentTeamId]);
 
+  useEffect(() => {
+    const handleGuideSelect = (e: Event) => {
+      const customEvt = e as CustomEvent<{ combination: number; position: number; cardUsages?: Record<number, 'use' | 'product' | 'none'> }>;
+      if (customEvt.detail) {
+        const { combination, position, cardUsages: guideCardUsages } = customEvt.detail;
+        setSelectedCombination(String(combination));
+        setSelectedPosition(String(position));
+        if (guideCardUsages && Object.keys(guideCardUsages).length > 0) {
+          setCardUsages(guideCardUsages);
+        }
+        setIsEditingSubmittedPlan(true);
+        toast.success(`Selected Combination ${combination}, Position ${position} and card choices!`);
+      }
+    };
+
+    window.addEventListener('select_combination_from_guide', handleGuideSelect);
+    return () => {
+      window.removeEventListener('select_combination_from_guide', handleGuideSelect);
+    };
+  }, []);
+
   const getIconElement = (iconType: string) => {
     if (iconType === 'Price and Product') {
       return (
