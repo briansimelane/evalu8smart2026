@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { GameState, SimulationClass } from '@/types/game';
+import { toValidDate } from '@/lib/utils';
 
 export function useGameBoardState(classCode: string) {
   const [classData, setClassData] = useState<SimulationClass | null>(null);
@@ -69,8 +70,8 @@ export function useGameBoardState(classCode: string) {
             const data = snap.data();
             const gState = data?.gameState as GameState;
             if (gState) {
-              if (gState.createdAt) gState.createdAt = new Date(gState.createdAt as any);
-              if (gState.updatedAt) gState.updatedAt = new Date(gState.updatedAt as any);
+              gState.createdAt = toValidDate(gState.createdAt);
+              gState.updatedAt = toValidDate(gState.updatedAt);
               setGameState(gState);
             } else {
               setGameState(null);

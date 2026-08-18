@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw, Globe, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Team, SimulationClass, ClassTeam, BotProfile, BotDifficulty } from '@/types/game';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MultiWorldCreationModal } from '@/components/multiworld/MultiWorldCreationModal';
+import { MultiWorldSession } from '@/types/multiworld';
 
 // Predefined colors for teams
 const DEFAULT_TEAMS = [
@@ -272,7 +274,23 @@ export const FacilitatorHub: React.FC = () => {
   const [teamConfigs, setTeamConfigs] = useState<typeof DEFAULT_TEAMS>(DEFAULT_TEAMS);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [expandedClasses, setExpandedClasses] = useState<Record<string, boolean>>({});
+  const [isMultiWorldModalOpen, setIsMultiWorldModalOpen] = useState(false);
+  const [multiWorldSessions, setMultiWorldSessions] = useState<MultiWorldSession[]>([]);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'multiworld_sessions'), (snap) => {
+      const list: MultiWorldSession[] = [];
+      snap.forEach((d) => {
+        list.push({ id: d.id, ...d.data() } as MultiWorldSession);
+      });
+      setMultiWorldSessions(list);
+    }, (err) => {
+      console.error("Error fetching multiworld sessions:", err);
+    });
+
+    return () => unsub();
+  }, []);
 
   const toggleExpandClass = (id: string) => {
     setExpandedClasses(prev => ({
@@ -339,15 +357,25 @@ export const FacilitatorHub: React.FC = () => {
       {/* Top Navbar */}
       <div className="flex items-center justify-between border-b border-border pb-5 mb-8">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent">
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
             Facilitator Dashboard
           </h1>
           <p className="text-muted-foreground text-sm mt-1">Manage game sessions, teams, and view access codes</p>
         </div>
-        <Button variant="destructive" onClick={logout} className="gap-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600">
-          <LogOut className="h-4 w-4" />
-          Logout
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => setIsMultiWorldModalOpen(true)}
+            className="gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow-sm"
+          >
+            <Globe className="h-4 w-4" />
+            <Sparkles className="h-3.5 w-3.5" />
+            Create Multi-World Session (10 Teams)
+          </Button>
+          <Button variant="destructive" onClick={logout} className="gap-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600">
+            <LogOut className="h-4 w-4" />
+            Logout
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -497,7 +525,7 @@ export const FacilitatorHub: React.FC = () => {
 
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600 text-white font-bold py-6 rounded-lg transition-all active:scale-[0.98]"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition-all shadow-sm"
               >
                 Create Class
               </Button>
@@ -505,12 +533,92 @@ export const FacilitatorHub: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Classes List */}
-        <div className="lg:col-span-2 space-y-6">
-          <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Settings className="h-5 w-5 text-blue-600" />
-            Active Classes
-          </h2>
+        {/* Right Column: Classes and Multi-World Sessions */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Multi-World Sessions Section */}
+          {multiWorldSessions.length > 0 && (
+            <div>
+              <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                <Globe className="h-5 w-5 text-purple-600" />
+                Multi-World Sessions (10-Team Scaled)
+              </h2>
+              <Card className="bg-card border-border overflow-hidden shadow-sm">
+                <Table>
+                  <TableHeader className="bg-muted/40">
+                    <TableRow className="border-border">
+                      <TableHead className="text-foreground font-semibold">Session Name</TableHead>
+                      <TableHead className="text-foreground font-semibold">Session Code</TableHead>
+                      <TableHead className="text-foreground font-semibold">Mode</TableHead>
+                      <TableHead className="text-foreground font-semibold">Created Date</TableHead>
+                      <TableHead className="text-right text-foreground font-semibold">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {multiWorldSessions.map((mw) => (
+                      <TableRow key={mw.id} className="border-border hover:bg-muted/10 transition-colors">
+                        <TableCell className="font-semibold text-foreground flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-purple-500" />
+                          {mw.name}
+                        </TableCell>
+                        <TableCell className="font-mono text-purple-700 dark:text-purple-400 font-bold text-xs">
+                          {mw.sessionCode}
+                        </TableCell>
+                        <TableCell className="capitalize text-xs font-medium">
+                          <span className="px-2 py-0.5 rounded border border-purple-200 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                            {mw.advanceMode || 'lockstep'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {new Date(mw.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              size="sm"
+                              onClick={() => navigate(`/facilitator/multiworld/${mw.id}`)}
+                              className="bg-purple-600 hover:bg-purple-700 text-white gap-1.5 h-8 text-xs font-semibold"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Multi-World Control
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => navigate(`/viewer/multi/${mw.sessionCode}`)}
+                              className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:text-purple-300 gap-1.5 h-8 text-xs font-semibold"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              Combined Viewer
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={async () => {
+                                if (confirm(`Are you sure you want to delete Multi-World Session "${mw.name}"?`)) {
+                                  await deleteDoc(doc(db, 'multiworld_sessions', mw.id));
+                                  toast.success(`Session "${mw.name}" deleted.`);
+                                }
+                              }}
+                              className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 h-8"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            </div>
+          )}
+
+          {/* Active Single Classes Section */}
+          <div>
+            <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+              <Settings className="h-5 w-5 text-blue-600" />
+              Active Classes
+            </h2>
 
           {visibleClasses.length === 0 ? (
             <Card className="bg-card border-border p-8 text-center text-muted-foreground">
@@ -616,8 +724,14 @@ export const FacilitatorHub: React.FC = () => {
               </Table>
             </Card>
           )}
+          </div>
         </div>
       </div>
+
+      <MultiWorldCreationModal
+        isOpen={isMultiWorldModalOpen}
+        onClose={() => setIsMultiWorldModalOpen(false)}
+      />
     </div>
   );
 };

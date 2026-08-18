@@ -12,6 +12,8 @@ import { Login } from "./pages/Login";
 import { FacilitatorHub } from "./pages/FacilitatorHub";
 import { AdminHub } from "./pages/AdminHub";
 import ViewerPage from "./pages/Viewer/ViewerPage";
+import MultiWorldControl from "./pages/MultiWorldControl";
+import CombinedViewerPage from "./pages/Viewer/CombinedViewerPage";
 
 import { DemoStateProvider, useDemoState } from "./demo/DemoStateProvider";
 import { DemoSetup } from "./demo/DemoSetup";
@@ -115,6 +117,11 @@ const App = () => (
                     <FacilitatorHub />
                   </SessionProviderWrapper>
                 } />
+                <Route path="/facilitator/multiworld/:sessionId" element={
+                  <SessionProviderWrapper roles={['FACILITATOR', 'ADMIN']}>
+                    <MultiWorldControl />
+                  </SessionProviderWrapper>
+                } />
                 <Route path="/admin" element={
                   <SessionProviderWrapper roles={['ADMIN']}>
                     <AdminHub />
@@ -122,6 +129,7 @@ const App = () => (
                 } />
                 <Route path="/class/:classId" element={<ClassControl />} />
                 <Route path="/dashboard" element={<StudentDashboard />} />
+                <Route path="/viewer/multi/:sessionCode" element={<CombinedViewerPage />} />
                 <Route path="/viewer/:classCode" element={<ViewerPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

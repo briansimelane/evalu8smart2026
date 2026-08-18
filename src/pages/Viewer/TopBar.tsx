@@ -6,7 +6,7 @@ import { calculatePlayOrderForState } from '@/hooks/useGameBoardState';
 import { GameIcon } from '@/components/dashboard/GameIcon';
 import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
-import { cn, removeUndefined } from '@/lib/utils';
+import { cn, removeUndefined, safeIsoString } from '@/lib/utils';
 
 interface TopBarProps {
   classData: SimulationClass;
@@ -78,11 +78,14 @@ export function TopBar({ classData, gameState }: TopBarProps) {
     if (phaseKey === 'improvement' && round >= 5) return;
     if (!classData?.id || !gameState) return;
     try {
-      const safeGameState = removeUndefined({
+      const sanitizedState = {
         ...gameState,
         currentPhase: phaseKey,
-        updatedAt: new Date().toISOString()
-      });
+        createdAt: safeIsoString(gameState.createdAt),
+        updatedAt: safeIsoString(new Date())
+      };
+
+      const safeGameState = removeUndefined(sanitizedState);
 
       const gameRef = doc(db, 'classes', classData.id, 'state', 'game');
       await setDoc(gameRef, { gameState: safeGameState }, { merge: true });

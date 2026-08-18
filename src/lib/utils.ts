@@ -23,3 +23,33 @@ export function removeUndefined<T>(obj: T): T {
   return result;
 }
 
+export function toValidDate(val: any): Date {
+  if (!val) return new Date();
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? new Date() : val;
+  }
+  if (typeof val?.toDate === 'function') {
+    try {
+      const d = val.toDate();
+      return isNaN(d.getTime()) ? new Date() : d;
+    } catch {
+      return new Date();
+    }
+  }
+  if (typeof val?.seconds === 'number') {
+    const d = new Date(val.seconds * 1000);
+    return isNaN(d.getTime()) ? new Date() : d;
+  }
+  try {
+    const parsed = new Date(val);
+    return isNaN(parsed.getTime()) ? new Date() : parsed;
+  } catch {
+    return new Date();
+  }
+}
+
+export function safeIsoString(val: any): string {
+  return toValidDate(val).toISOString();
+}
+
+

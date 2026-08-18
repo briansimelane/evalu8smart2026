@@ -19,6 +19,11 @@ service cloud.firestore {
       match /state/{doc} { allow read, write: if true; }
       match /teams/{teamId} { allow read, write: if true; }
     }
+
+    match /multiworld_sessions/{sessionId} {
+      allow read, write: if true;
+    }
+
     match /{document=**} {
       allow read, write: if true;
     }
