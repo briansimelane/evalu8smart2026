@@ -58,8 +58,8 @@ export function ImprovementStrip({ gameState }: ImprovementStripProps) {
     )
   );
   
-  // Show upcoming round cards if improvement phase for current round is completed (or all claimed) and round < 4
-  const isUpcomingPreview = ((isImprovementCompleted || allClaimed) && round < 4) || (isScoringPhase && scoringTab === 'upcoming' && round < 4);
+  // Show upcoming round cards if improvement phase for current round is completed and round < 4
+  const isUpcomingPreview = (isImprovementCompleted && round < 4) || (isScoringPhase && scoringTab === 'upcoming' && round < 4);
   const activeDisplayRound = isUpcomingPreview ? round + 1 : round;
 
   // Determine card pool for activeDisplayRound

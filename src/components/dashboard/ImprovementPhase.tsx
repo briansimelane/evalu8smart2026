@@ -23,25 +23,34 @@ export const ImprovementPhase = () => {
   const [nextRoundCards, setNextRoundCards] = useState<ImprovementCardData[]>([]);
   const [isAllocated, setIsAllocated] = useState(false);
 
-  // Compute availableCards in real time from Firestore gameState
+  // Compute availableCards in real time from Firestore gameState (with fallback matching Viewer logic)
   const availableCards = useMemo(() => {
     if (!gameState) return [];
-    const poolIds = gameState.improvementPoolByRound?.[gameState.currentRound] || [];
+    const round = gameState.currentRound || 1;
+    let poolIds = gameState.improvementPoolByRound?.[round] || [];
+    
+    if (poolIds.length === 0) {
+      const usedCardIds = (gameState.improvementCards || []).filter(c => c.used).map(c => c.id);
+      const available = AVAILABLE_IMPROVEMENT_CARDS.filter(c => !usedCardIds.includes(c.id));
+      const numTeams = gameState.teams?.length || 4;
+      poolIds = available.slice(0, numTeams).map(c => c.id);
+    }
+
     return poolIds
       .map(id => AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === id))
       .filter(Boolean) as ImprovementCardData[];
-  }, [gameState?.improvementPoolByRound, gameState?.currentRound]);
+  }, [gameState?.improvementPoolByRound, gameState?.currentRound, gameState?.improvementCards, gameState?.teams]);
 
-  // Facilitator or Demo mode initializes the card pool once on Firestore
+  // Ensure card pool for current round is persisted on Firestore
   useEffect(() => {
-    if ((currentRole !== 'STUDENT' || isDemo) && gameState) {
+    if (gameState) {
       const currentRound = gameState.currentRound;
       const existingIds = gameState.improvementPoolByRound?.[currentRound] || [];
       if (existingIds.length === 0) {
         selectRandomCards();
       }
     }
-  }, [gameState?.currentRound, currentRole, isDemo, selectRandomCards]);
+  }, [gameState?.currentRound, selectRandomCards]);
 
   if (!gameState) return null;
 
@@ -70,7 +79,7 @@ export const ImprovementPhase = () => {
       const td = currentRoundData?.teamData[t.id];
       return td && td.improvementCards > 0;
     });
-    if (teamsNeedingCards.length === 0) return true;
+    if (teamsNeedingCards.length === 0) return false;
 
     return teamsNeedingCards.every(t =>
       gameState.improvementCards.some(c =>
@@ -410,7 +419,19 @@ export const ImprovementPhase = () => {
       })()}
 
       {/* Teams with Improvement */}
-      {teamsWithImprovement.length > 0 && (
+      {teamsWithImprovement.length === 0 ? (
+        <Card className="border-border bg-card">
+          <CardContent className="pt-6 pb-6 text-center space-y-2">
+            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+              <Package className="h-5 w-5 text-primary" />
+              <span className="font-bold text-sm text-foreground">No Teams Earning Improvement Cards in Round {gameState.currentRound}</span>
+            </div>
+            <p className="text-xs text-muted-foreground max-w-md mx-auto">
+              All teams selected strategies with 0 improvement icons. Each team automatically receives 1 default Product Card. Review the round's available cards below, then proceed to Research & Expansion.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
         <Card>
           <CardHeader>
             <CardTitle>Teams Earning Improvement Cards</CardTitle>

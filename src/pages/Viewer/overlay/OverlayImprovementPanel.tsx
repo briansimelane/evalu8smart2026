@@ -72,7 +72,7 @@ export const OverlayImprovementPanel: React.FC<OverlayImprovementPanelProps> = (
       (gState.improvementCards || []).some(c => (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === round)
     );
 
-    const isUpcomingPreview = (isImprovementCompleted || allClaimed) && round < 4;
+    const isUpcomingPreview = isImprovementCompleted && round < 4;
     const activeDisplayRound = isUpcomingPreview ? round + 1 : round;
 
     // Retrieve pool IDs for activeDisplayRound
