@@ -54,11 +54,16 @@ export type SortField =
   | 'logisticsPoints';
 
 export interface CombinationsGuideModalProps {
-  onSelectCombination?: (combination: number, position: number) => void;
+  onSelectCombination?: (
+    combination: number,
+    position: number,
+    cardUsages?: Record<number, 'use' | 'product' | 'none'>
+  ) => void;
   triggerLabel?: string;
   triggerVariant?: 'default' | 'outline' | 'secondary' | 'ghost';
   triggerClassName?: string;
   activeTeamId?: string;
+  initialCardUsages?: Record<number, 'use' | 'product' | 'none'>;
 }
 
 export function CombinationsGuideModal({
@@ -67,6 +72,7 @@ export function CombinationsGuideModal({
   triggerVariant = 'outline',
   triggerClassName = '',
   activeTeamId,
+  initialCardUsages,
 }: CombinationsGuideModalProps) {
   const [open, setOpen] = useState(false);
   const { gameState, getCombinations } = useGame();
@@ -78,7 +84,13 @@ export function CombinationsGuideModal({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortField, setSortField] = useState<SortField>('combination');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [cardUsages, setCardUsages] = useState<Record<number, 'use' | 'product' | 'none'>>({});
+  const [cardUsages, setCardUsages] = useState<Record<number, 'use' | 'product' | 'none'>>(initialCardUsages || {});
+
+  React.useEffect(() => {
+    if (open && initialCardUsages) {
+      setCardUsages(initialCardUsages);
+    }
+  }, [open, initialCardUsages]);
 
   const combinationsData = useMemo(() => {
     const dynamicCombos = getCombinations ? getCombinations() : [];
@@ -681,7 +693,7 @@ export function CombinationsGuideModal({
                               size="sm"
                               variant="secondary"
                               onClick={() => {
-                                onSelectCombination(row.combination, row.position);
+                                onSelectCombination(row.combination, row.position, cardUsages);
                                 setOpen(false);
                               }}
                               className="h-7 text-[11px] font-bold bg-purple-600 text-white hover:bg-purple-700 transition-all shadow-xs"

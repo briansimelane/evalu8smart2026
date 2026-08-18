@@ -282,6 +282,24 @@ describe('Game Rules & Viewer Synchronization Test Suite', () => {
       expect(getDisplayedPrice(state.currentPhase, 6)).toBe('🔒 Hidden');
       expect(getDisplayedPrice('production', 6)).toBe('$6');
     });
+
+    it('passes improvement card usages along with combination and position when selected from guide', () => {
+      let selectedCombo = 0;
+      let selectedPos = 0;
+      let selectedCards: Record<number, 'use' | 'product' | 'none'> = {};
+
+      const onSelect = (combo: number, pos: number, usages?: Record<number, 'use' | 'product' | 'none'>) => {
+        selectedCombo = combo;
+        selectedPos = pos;
+        if (usages) selectedCards = usages;
+      };
+
+      onSelect(3, 2, { 1: 'use', 2: 'product' });
+
+      expect(selectedCombo).toBe(3);
+      expect(selectedPos).toBe(2);
+      expect(selectedCards).toEqual({ 1: 'use', 2: 'product' });
+    });
   });
 
   // 5. VIEWER ICON MAPPING

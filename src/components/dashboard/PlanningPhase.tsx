@@ -507,13 +507,17 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
 
         <CombinationsGuideModal
           activeTeamId={selectedTeam}
+          initialCardUsages={cardUsages}
           triggerLabel="Combinations & Cards Guide"
           triggerVariant="default"
           triggerClassName="bg-purple-600 hover:bg-purple-700 text-white shadow-md text-xs h-9 font-bold"
-          onSelectCombination={(combo, pos) => {
+          onSelectCombination={(combo, pos, selectedCardUsages) => {
             setSelectedCombination(String(combo));
             setSelectedPosition(String(pos));
-            toast.success(`Selected Combination ${combo}, Position ${pos}!`);
+            if (selectedCardUsages && Object.keys(selectedCardUsages).length > 0) {
+              setCardUsages(selectedCardUsages);
+            }
+            toast.success(`Selected Combination ${combo}, Position ${pos} and card choices!`);
           }}
         />
       </CardHeader>
