@@ -1256,11 +1256,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
       };
 
       const isMultiOfficeActive = isRuleActiveForTeam(prev.ruleAdjustments, 'multiple_offices_per_region', teamId);
-      const officeCost = getLogisticsCostForTeam(prev, teamId, regionName); // single source of truth
+      const baseCost = region.logisticsCost || 2;
+      const discountedCost = Math.max(1, baseCost - 1);
       const alreadyHasPresence = region.teamsPresent.includes(teamId);
       const currentOffices = region.officeCounts?.[teamId] || (alreadyHasPresence ? 1 : 0);
 
-      const officesEarnedRaw = Math.floor(newInvestment / officeCost);
+      let officesEarnedRaw = 0;
+      if (isMultiOfficeActive) {
+        if (newInvestment >= baseCost) {
+          const extraInvest = newInvestment - baseCost;
+          officesEarnedRaw = 1 + Math.floor(extraInvest / discountedCost);
+        } else {
+          officesEarnedRaw = 0;
+        }
+      } else {
+        officesEarnedRaw = Math.floor(newInvestment / baseCost);
+      }
 
       let updatedOfficeCount: number;
       if (isMultiOfficeActive) {

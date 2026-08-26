@@ -415,8 +415,9 @@ export const LogisticsPhase = () => {
 
                 const isMultiOfficeActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'multiple_offices_per_region', selectedTeam);
                 const baseCost = region.logisticsCost || 2;
+                const discountedCost = Math.max(1, baseCost - 1);
                 const effectiveCost = getLogisticsCostForTeam(gameState, selectedTeam, region.name);
-                const isDiscountedCost = isMultiOfficeActive && effectiveCost < baseCost;
+                const isDiscountedCost = isMultiOfficeActive && status === 'present' && effectiveCost < baseCost;
 
                 const totalOfficesInRegion = Object.values(region.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
                 const occupiedSlots = isMultiOfficeActive
@@ -426,10 +427,20 @@ export const LogisticsPhase = () => {
 
                 const myOfficeCount = region.officeCounts?.[selectedTeam] || (status === 'present' ? 1 : 0);
 
-                const remainder = currentInvestment % effectiveCost;
-                const neededForNextOffice = status === 'present'
-                  ? (remainder === 0 ? effectiveCost : effectiveCost - remainder)
-                  : Math.max(0, effectiveCost - currentInvestment);
+                let neededForNextOffice: number;
+                let remainder: number;
+                let currentTargetCost: number;
+
+                if (status === 'present' && isMultiOfficeActive) {
+                  currentTargetCost = discountedCost;
+                  const extraInvest = Math.max(0, currentInvestment - baseCost);
+                  remainder = extraInvest % discountedCost;
+                  neededForNextOffice = remainder === 0 ? discountedCost : (discountedCost - remainder);
+                } else {
+                  currentTargetCost = baseCost;
+                  remainder = currentInvestment;
+                  neededForNextOffice = Math.max(0, baseCost - currentInvestment);
+                }
 
                 const canAllocate = !isSteveBlocking && (
                   (status !== 'unavailable' && status !== 'present' && occupiedSlots < region.maxTeams) ||
@@ -526,9 +537,9 @@ export const LogisticsPhase = () => {
                             <span className="text-muted-foreground font-medium">
                               {status === 'present' ? `Office #${myOfficeCount + 1} Progress` : 'Office Progress'}
                             </span>
-                            <span className="font-mono font-bold">{remainder} / {effectiveCost}</span>
+                            <span className="font-mono font-bold">{remainder} / {currentTargetCost}</span>
                           </div>
-                          <Progress value={(remainder / effectiveCost) * 100} />
+                          <Progress value={(remainder / currentTargetCost) * 100} />
                         </div>
                       )}
 

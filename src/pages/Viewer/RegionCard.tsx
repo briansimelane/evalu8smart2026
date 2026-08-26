@@ -99,7 +99,12 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
 
     if (sortedTeamsWithSales.length === 0) return null;
 
-    const teamsPresentCount = Math.max(1, teamsPresent.length);
+    const isMultiOfficeActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'multiple_offices_per_region');
+    const totalOfficesInRegion = Object.values(regionConfig?.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
+    const occupiedSlots = isMultiOfficeActive
+      ? Math.max(1, totalOfficesInRegion || teamsPresent.length)
+      : Math.max(1, teamsPresent.length);
+    const teamsPresentCount = Math.min(5, Math.max(1, occupiedSlots));
     const firstPlace = sortedTeamsWithSales[0];
     const firstPoints = getControlPointsForRegion(regionName, teamsPresentCount, 'first');
 
@@ -115,14 +120,23 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
       first: (firstPlace && firstPoints > 0) ? { team: firstPlace.team, points: firstPoints } : null,
       second: (secondPlace && secondPoints > 0) ? { team: secondPlace.team, points: secondPoints } : null,
     };
-  }, [gameState.rounds, gameState.teams, round, customerData, regionName, teamsPresent]);
+  }, [gameState.rounds, gameState.teams, round, customerData, regionName, teamsPresent, regionConfig?.officeCounts, gameState.ruleAdjustments]);
 
-  // Present teams (established office with letter inside)
-  const presentTeamObjs = useMemo(() => {
-    return teamsPresent
-      .map(id => gameState.teams.find(t => t.id === id))
-      .filter(Boolean) as Team[];
-  }, [teamsPresent, gameState.teams]);
+  const isMultiOfficeActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'multiple_offices_per_region');
+
+  // Present teams & offices (established office with letter inside)
+  const presentOfficeObjs = useMemo(() => {
+    const list: Array<{ team: Team; officeIndex: number }> = [];
+    teamsPresent.forEach(id => {
+      const team = gameState.teams.find(t => t.id === id);
+      if (!team) return;
+      const count = isMultiOfficeActive ? Math.max(1, regionConfig?.officeCounts?.[id] || 1) : 1;
+      for (let i = 0; i < count; i++) {
+        list.push({ team, officeIndex: i });
+      }
+    });
+    return list;
+  }, [teamsPresent, gameState.teams, regionConfig?.officeCounts, isMultiOfficeActive]);
 
   // In-progress teams (invested logistics points > 0, not yet present)
   const inProgressTeamObjs = useMemo(() => {
@@ -139,7 +153,7 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
   }, [gameState.teams, teamsPresent, regionConfig?.teamProgress, logisticsCost]);
 
   // Remaining empty office slots
-  const occupiedSlotCount = presentTeamObjs.length + inProgressTeamObjs.length;
+  const occupiedSlotCount = presentOfficeObjs.length + inProgressTeamObjs.length;
   const emptySlotCount = Math.max(0, maxTeams - occupiedSlotCount);
 
   // Helper to render segmented pie circle for in-progress logistics (matching Research style)
@@ -189,7 +203,7 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
   const controlKey = `control:${regionName}`;
   const cardChanged = m.tierFor(controlKey) > 0 ||
     customerStatus.some(({ customer }) => m.tierFor(`customer:${regionName}:${customer.id}`) > 0) ||
-    presentTeamObjs.some(t => m.tierFor(`office:${regionName}:${t.id}`) > 0) ||
+    presentOfficeObjs.some(({ team }) => m.tierFor(`office:${regionName}:${team.id}`) > 0) ||
     inProgressTeamObjs.some(({ team }) => m.tierFor(`logistics:${regionName}:${team.id}`) > 0);
 
   const isSteveBlockingRegion = isSteveBlockingRule(gameState, regionName);
@@ -272,13 +286,13 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
 
         {/* Office & Logistics Slots Row */}
         <div className="flex items-center gap-1.5">
-          {/* 1. Present Teams (Office Established - Letter Inside with Gold Ring & Bubble Pop) */}
-          {presentTeamObjs.map(team => {
+          {/* 1. Present Teams & Offices (Office Established - Letter Inside with Gold Ring & Bubble Pop) */}
+          {presentOfficeObjs.map(({ team, officeIndex }) => {
             const officeKey = `office:${regionName}:${team.id}`;
             const isNewOffice = m.tierFor(officeKey) === 1;
             return (
               <div 
-                key={`present-${team.id}`}
+                key={`present-${team.id}-${officeIndex}`}
                 style={{ 
                   backgroundColor: team.color,
                   color: getContrastTextColor(team.color),
@@ -289,7 +303,7 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
                   getMotionClass(m, officeKey, 'sm'),
                   isNewOffice && 'mo-arrive'
                 )}
-                title={`Office established by ${team.name} (Logistics Complete!)`}
+                title={`Office #${officeIndex + 1} established by ${team.name} (Logistics Complete!)`}
               >
                 {team.name[0]}
               </div>

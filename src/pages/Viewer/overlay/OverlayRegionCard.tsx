@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 
 import { useOptionalMotion } from '../motion/MotionContext';
 import { getMotionClass, getMotionStyles } from '../motion/motionClass';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -110,7 +111,13 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
 
     if (sortedTeams.length === 0) return null;
 
-    const presentCount = Math.max(1, (gState.regionLogistics[regionName]?.teamsPresent || []).length);
+    const isMultiActive = isRuleActiveForTeam(gState.ruleAdjustments, 'multiple_offices_per_region');
+    const regConfigData = gState.regionLogistics[regionName];
+    const totalOffices = Object.values(regConfigData?.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
+    const occupiedSlots = isMultiActive
+      ? Math.max(1, totalOffices || (regConfigData?.teamsPresent || []).length)
+      : Math.max(1, (regConfigData?.teamsPresent || []).length);
+    const presentCount = Math.min(5, Math.max(1, occupiedSlots));
     const firstPlace = sortedTeams[0];
     const firstPts = getControlPointsForRegion(regionName, presentCount, 'first');
 
@@ -133,8 +140,17 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
 
   // Office track helper for a single world
   const renderOfficeTrack = (world: 'A' | 'B', gState: GameState, regConfig: any, maxTeams: number) => {
+    const isMultiOfficeActive = isRuleActiveForTeam(gState.ruleAdjustments, 'multiple_offices_per_region');
     const presentIds = regConfig?.teamsPresent || [];
-    const presentTeams = presentIds.map((id: string) => gState.teams.find(t => t.id === id)).filter(Boolean) as Team[];
+    const presentOfficeList: Array<{ team: Team; officeIndex: number }> = [];
+    presentIds.forEach((id: string) => {
+      const team = gState.teams.find(t => t.id === id);
+      if (!team) return;
+      const count = isMultiOfficeActive ? Math.max(1, regConfig?.officeCounts?.[id] || 1) : 1;
+      for (let i = 0; i < count; i++) {
+        presentOfficeList.push({ team, officeIndex: i });
+      }
+    });
 
     const inProgressTeams = gState.teams
       .filter(team => {
@@ -144,21 +160,21 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
       })
       .map(team => ({ team, invested: regConfig?.teamProgress?.[team.id] || 0 }));
 
-    const occupiedCount = presentTeams.length + inProgressTeams.length;
+    const occupiedCount = presentOfficeList.length + inProgressTeams.length;
     const emptyCount = Math.max(0, maxTeams - occupiedCount);
 
     return (
       <div className="flex items-center gap-1">
         <WorldTag world={world} label={world} className="text-[8px] px-1 py-0 h-4" />
         <div className="flex items-center gap-1">
-          {/* Present teams */}
-          {presentTeams.map(team => (
+          {/* Present teams & offices */}
+          {presentOfficeList.map(({ team, officeIndex }) => (
             <WorldMarker
-              key={`present-${world}-${team.id}`}
+              key={`present-${world}-${team.id}-${officeIndex}`}
               world={world}
               teamColor={team.color}
               size="xs"
-              title={`World ${world} · Office established by ${team.name}`}
+              title={`World ${world} · Office #${officeIndex + 1} established by ${team.name}`}
             >
               {team.name.charAt(0).toUpperCase()}
             </WorldMarker>

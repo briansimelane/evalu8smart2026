@@ -23,8 +23,11 @@ export function getLogisticsCostForTeam(gameState: GameState | null | undefined,
   if (!region) return 2;
   const baseCost = region.logisticsCost || 2;
   const isMultiOfficeActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'multiple_offices_per_region', teamId);
-  // OD-A resolved (a): while the rule is active, EVERY office (including the first) costs baseCost - 1, floored at 1.
-  return isMultiOfficeActive ? Math.max(1, baseCost - 1) : baseCost;
+  if (!isMultiOfficeActive) return baseCost;
+
+  // First office requires full baseCost; second and subsequent offices get -$1 discount (floored at 1).
+  const hasOfficeAlready = (region.teamsPresent?.includes(teamId)) || ((region.officeCounts?.[teamId] || 0) > 0);
+  return hasOfficeAlready ? Math.max(1, baseCost - 1) : baseCost;
 }
 
 export function calculatePlanStats(

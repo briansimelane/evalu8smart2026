@@ -331,27 +331,32 @@ describe('Facilitator Rules Engine Test Suite', () => {
     expect(canExpandToRegion(mockGameState as GameState, 'team_1', 'USA')).toBe(true); // USA is unblocked and has presence!
   });
 
-  test('getLogisticsCostForTeam discounts every office when rule is active, floored at 1', () => {
+  test('getLogisticsCostForTeam requires full cost for first office, and discounts subsequent offices when rule is active', () => {
     const rulesState = getDefaultRuleAdjustments();
     rulesState.rules['multiple_offices_per_region'].enabled = true;
 
     const mockGameState: Partial<GameState> = {
       ruleAdjustments: rulesState,
       regionLogistics: {
-        'USA': { name: 'USA', logisticsCost: 2, maxTeams: 3, connectedRegions: [], teamsPresent: [], teamProgress: {} },
+        'USA': { name: 'USA', logisticsCost: 3, maxTeams: 3, connectedRegions: [], teamsPresent: [], teamProgress: {} },
         'Europe': { name: 'Europe', logisticsCost: 1, maxTeams: 3, connectedRegions: [], teamsPresent: [], teamProgress: {} }
       }
     };
 
-    // USA baseCost 2 -> discounted to 1 even for first office
-    expect(getLogisticsCostForTeam(mockGameState as GameState, 'team_1', 'USA')).toBe(1);
+    // First office in USA (baseCost 3) -> team_1 has no office yet -> full cost 3
+    expect(getLogisticsCostForTeam(mockGameState as GameState, 'team_1', 'USA')).toBe(3);
 
-    // Europe baseCost 1 -> discounted floored at 1
+    // After establishing first office in USA -> team_1 is present -> cost for 2nd office becomes 2 (3 - 1)
+    mockGameState.regionLogistics!['USA'].teamsPresent = ['team_1'];
+    expect(getLogisticsCostForTeam(mockGameState as GameState, 'team_1', 'USA')).toBe(2);
+
+    // Europe baseCost 1 -> discounted floored at 1 for 2nd office
+    mockGameState.regionLogistics!['Europe'].teamsPresent = ['team_1'];
     expect(getLogisticsCostForTeam(mockGameState as GameState, 'team_1', 'Europe')).toBe(1);
 
-    // When rule is OFF -> returns full baseCost
+    // When rule is OFF -> returns full baseCost regardless of presence
     rulesState.rules['multiple_offices_per_region'].enabled = false;
-    expect(getLogisticsCostForTeam(mockGameState as GameState, 'team_1', 'USA')).toBe(2);
+    expect(getLogisticsCostForTeam(mockGameState as GameState, 'team_1', 'USA')).toBe(3);
   });
 
   test('rule-off parity: stale officeCounts do not affect slot counting when rule is OFF', () => {
@@ -402,5 +407,46 @@ describe('Facilitator Rules Engine Test Suite', () => {
     const clampedOffices = Math.min(Math.max(currentOffices, rawEarned), maxForTeam1);
 
     expect(clampedOffices).toBe(2); // Capped at 2 so total offices in region = 2 + 1 = 3 (maxTeams)!
+  });
+
+  test('viewer office slot expansion: multiple offices for a single team occupy multiple distinct slots', () => {
+    const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['multiple_offices_per_region'].enabled = true;
+
+    const mockGameState: Partial<GameState> = {
+      ruleAdjustments: rulesState,
+      teams: [
+        { id: 'team_1', name: 'Green Team', color: '#22c55e' }
+      ],
+      regionLogistics: {
+        'USA': {
+          name: 'USA',
+          logisticsCost: 2,
+          maxTeams: 3,
+          connectedRegions: [],
+          teamsPresent: ['team_1'],
+          teamProgress: {},
+          officeCounts: { 'team_1': 2 } // team_1 holds 2 offices
+        }
+      }
+    };
+
+    const isMultiActive = isRuleActiveForTeam(mockGameState.ruleAdjustments, 'multiple_offices_per_region');
+    const region = mockGameState.regionLogistics!['USA'];
+    const presentOfficeList: Array<{ teamId: string; officeIndex: number }> = [];
+    
+    region.teamsPresent.forEach(id => {
+      const count = isMultiActive ? Math.max(1, region.officeCounts?.[id] || 1) : 1;
+      for (let i = 0; i < count; i++) {
+        presentOfficeList.push({ teamId: id, officeIndex: i });
+      }
+    });
+
+    expect(presentOfficeList.length).toBe(2); // 2 slots occupied by team_1's offices!
+    expect(presentOfficeList[0]).toEqual({ teamId: 'team_1', officeIndex: 0 });
+    expect(presentOfficeList[1]).toEqual({ teamId: 'team_1', officeIndex: 1 });
+
+    const emptySlots = Math.max(0, region.maxTeams - presentOfficeList.length);
+    expect(emptySlots).toBe(1); // 3 total maxTeams - 2 occupied = 1 empty slot remaining!
   });
 });
