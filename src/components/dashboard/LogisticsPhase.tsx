@@ -15,7 +15,7 @@ import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
-import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
+import { isSteveBlocking as isSteveBlockingRule, getLogisticsCostForTeam } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -412,11 +412,31 @@ export const LogisticsPhase = () => {
                 const isSteveBlocking = isSteveBlockingRule(gameState, region.name, selectedTeam);
                 const status = isSteveBlocking ? 'unavailable' : getRegionStatus(region.name);
                 const currentInvestment = teamProgress?.regionInvestments[region.name] || 0;
-                const progressPercent = (currentInvestment / region.logisticsCost) * 100;
-                const isFull = isRegionFull(region.name);
-                const teamsInRegion = region.teamsPresent.map(tid => 
-                  gameState.teams.find(t => t.id === tid)
-                ).filter(Boolean);
+
+                const isMultiOfficeActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'multiple_offices_per_region', selectedTeam);
+                const baseCost = region.logisticsCost || 2;
+                const effectiveCost = getLogisticsCostForTeam(gameState, selectedTeam, region.name);
+                const isDiscountedCost = isMultiOfficeActive && effectiveCost < baseCost;
+
+                const totalOfficesInRegion = Object.values(region.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
+                const occupiedSlots = isMultiOfficeActive
+                  ? (region.officeCounts ? totalOfficesInRegion : region.teamsPresent.length)
+                  : region.teamsPresent.length;
+                const hasSpaceForMoreOffices = occupiedSlots < region.maxTeams;
+
+                const myOfficeCount = region.officeCounts?.[selectedTeam] || (status === 'present' ? 1 : 0);
+
+                const remainder = currentInvestment % effectiveCost;
+                const neededForNextOffice = status === 'present'
+                  ? (remainder === 0 ? effectiveCost : effectiveCost - remainder)
+                  : Math.max(0, effectiveCost - currentInvestment);
+
+                const canAllocate = !isSteveBlocking && (
+                  (status !== 'unavailable' && status !== 'present' && occupiedSlots < region.maxTeams) ||
+                  (status === 'present' && isMultiOfficeActive && hasSpaceForMoreOffices)
+                );
+
+                const isFull = occupiedSlots >= region.maxTeams;
 
                 return (
                   <Card
@@ -442,9 +462,11 @@ export const LogisticsPhase = () => {
                                   </Badge>
                                 )}
                                 {status === 'present' && (
-                                  <Badge variant="default" className="gap-1">
+                                  <Badge variant="default" className="gap-1 bg-emerald-600 text-white font-bold">
                                     <CheckCircle className="h-3 w-3" />
-                                    Present
+                                    {isMultiOfficeActive
+                                      ? `Present (${myOfficeCount} ${myOfficeCount === 1 ? 'Office' : 'Offices'})`
+                                      : 'Present'}
                                   </Badge>
                                 )}
                                 {status === 'unavailable' && (
@@ -460,16 +482,18 @@ export const LogisticsPhase = () => {
                               <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                                 <span className="flex items-center gap-1 font-medium">
                                   <Truck className="h-3.5 w-3.5" />
-                                  Logistics Cost: <strong className="text-foreground">{region.logisticsCost}</strong>
+                                  Logistics Cost: <strong className="text-foreground">{effectiveCost}</strong>
+                                  {isDiscountedCost && (
+                                    <Badge variant="outline" className="text-[10px] py-0 px-1 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 font-bold ml-1">
+                                      -$1 Multi-Office
+                                    </Badge>
+                                  )}
                                 </span>
-                                {isRuleActiveForTeam(gameState?.ruleAdjustments, 'multiple_offices_per_region', selectedTeam) ? (() => {
-                                  const rl = gameState?.regionLogistics?.[region.name];
-                                  const total = Object.values(rl?.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
-                                  const mine = rl?.officeCounts?.[selectedTeam] || 0;
+                                {isMultiOfficeActive ? (() => {
                                   return (
                                     <span className="flex items-center gap-1 font-medium">
                                       <Users className="h-3.5 w-3.5 text-indigo-500" />
-                                      Offices: <strong className="text-foreground">{mine} yours · {total}/{rl?.maxTeams ?? region.maxTeams} filled</strong>
+                                      Offices: <strong className="text-foreground">{myOfficeCount} yours · {occupiedSlots}/{region.maxTeams} filled</strong>
                                     </span>
                                   );
                                 })() : (
@@ -483,11 +507,11 @@ export const LogisticsPhase = () => {
                                 <span className="text-xs font-semibold text-muted-foreground">Control Points:</span>
                                 <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-bold gap-1 px-2 py-0.5">
                                   <Trophy className="h-3 w-3 text-warning" />
-                                  1st Place: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'first')} pts
+                                  1st Place: +{getControlPointsForRegion(region.name, Math.min(5, Math.max(1, occupiedSlots)), 'first')} pts
                                 </Badge>
-                                {getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second') > 0 && (
+                                {getControlPointsForRegion(region.name, Math.min(5, Math.max(1, occupiedSlots)), 'second') > 0 && (
                                   <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30 text-xs font-bold gap-1 px-2 py-0.5">
-                                    2nd Place: +{getControlPointsForRegion(region.name, Math.max(1, region.teamsPresent.length), 'second')} pts
+                                    2nd Place: +{getControlPointsForRegion(region.name, Math.min(5, Math.max(1, occupiedSlots)), 'second')} pts
                                   </Badge>
                                 )}
                               </div>
@@ -496,13 +520,15 @@ export const LogisticsPhase = () => {
                         </div>
 
                       {/* Progress Bar */}
-                      {currentInvestment > 0 && status !== 'present' && (
+                      {currentInvestment > 0 && (status !== 'present' || (isMultiOfficeActive && hasSpaceForMoreOffices)) && (
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Progress</span>
-                            <span className="font-medium">{currentInvestment} / {region.logisticsCost}</span>
+                            <span className="text-muted-foreground font-medium">
+                              {status === 'present' ? `Office #${myOfficeCount + 1} Progress` : 'Office Progress'}
+                            </span>
+                            <span className="font-mono font-bold">{remainder} / {effectiveCost}</span>
                           </div>
-                          <Progress value={progressPercent} />
+                          <Progress value={(remainder / effectiveCost) * 100} />
                         </div>
                       )}
 
@@ -514,13 +540,17 @@ export const LogisticsPhase = () => {
                             const isPresent = region.teamsPresent.includes(team.id);
                             const progress = getTeamLogisticsProgress(team.id);
                             const invested = progress?.regionInvestments[region.name] || 0;
+                            const teamOfficeCount = region.officeCounts?.[team.id] || (isPresent ? 1 : 0);
+                            const teamEffectiveCost = getLogisticsCostForTeam(gameState, team.id, region.name);
 
                             return (
                               <div key={team.id} className="flex items-center gap-1.5 bg-secondary/40 rounded-full pr-2.5 pl-0.5 py-0.5 border border-border/50 shadow-2xs">
-                                {renderLogisticsProgressCircle(team, invested, region.logisticsCost, isPresent)}
+                                {renderLogisticsProgressCircle(team, invested, teamEffectiveCost, isPresent)}
                                 <span className="text-[11px] font-bold truncate max-w-[85px]">{team.name}</span>
                                 <span className="text-[10px] text-muted-foreground font-mono font-bold">
-                                  {isPresent ? 'Present' : `${invested}/${region.logisticsCost}`}
+                                  {isPresent
+                                    ? (isMultiOfficeActive && teamOfficeCount > 1 ? `${teamOfficeCount} Offices` : 'Present')
+                                    : `${invested}/${teamEffectiveCost}`}
                                 </span>
                               </div>
                             );
@@ -556,7 +586,7 @@ export const LogisticsPhase = () => {
                           <SteveIcon size={16} />
                           <span>Steve is blocking expansion into {region.name}! (5 Wildcard Tokens required to clear Steve)</span>
                         </div>
-                      ) : status !== 'unavailable' && status !== 'present' && !isFull && (
+                      ) : canAllocate ? (
                         <div className="flex items-center gap-2 pt-2">
                           <label className="text-sm font-medium">Allocate:</label>
                           <Input
@@ -565,14 +595,18 @@ export const LogisticsPhase = () => {
                             max={iconsRemaining}
                             value={allocations[region.name] || ''}
                             onChange={(e) => handleAllocateChange(region.name, e.target.value)}
-                            className="w-20"
+                            className="w-20 font-mono text-sm font-bold"
                             disabled={isReadOnlyMode}
                           />
-                          <span className="text-xs text-muted-foreground">
-                            icons (need {Math.max(0, region.logisticsCost - currentInvestment)} more to complete)
+                          <span className="text-xs text-muted-foreground font-medium">
+                            icons (need <strong className="text-foreground">{neededForNextOffice}</strong> more {status === 'present' ? `for Office #${myOfficeCount + 1}` : 'to complete'})
                           </span>
                         </div>
-                      )}
+                      ) : status === 'present' && isMultiOfficeActive && !hasSpaceForMoreOffices ? (
+                        <div className="p-2 rounded bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 font-bold text-center mt-2">
+                          Region Full: Max offices ({region.maxTeams}) reached for this region.
+                        </div>
+                      ) : null}
 
                       {/* Customers Section */}
                       {(() => {
