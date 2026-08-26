@@ -174,15 +174,29 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, [currentClassId, isDemoRoute]);
 
-  // Sync active class details when currentClassId or classes update
+  // Sync active class details directly from document listener + classes array when currentClassId is set
   useEffect(() => {
-    if (currentClassId && Array.isArray(classes)) {
-      const found = classes.find(c => c && c.id === currentClassId);
-      setActiveClass(found || null);
-    } else {
-      setActiveClass(null);
+    if (isDemoRoute || !currentClassId) {
+      if (!isDemoRoute) setActiveClass(null);
+      return;
     }
-  }, [currentClassId, classes]);
+
+    const foundInList = classes.find(c => c && c.id === currentClassId);
+    if (foundInList) {
+      setActiveClass(foundInList);
+    }
+
+    const unsubscribe = onSnapshot(doc(db, 'classes', currentClassId), (docSnap) => {
+      if (docSnap.exists()) {
+        const clsData = { id: docSnap.id, ...docSnap.data() } as SimulationClass;
+        setActiveClass(clsData);
+      }
+    }, (err) => {
+      console.warn("Direct active class listener warning:", err);
+    });
+
+    return () => unsubscribe();
+  }, [currentClassId, classes, isDemoRoute]);
 
   // Derived state: CEO and Read-Only control
   const currentTeamDoc = currentTeamId ? currentClassTeams[currentTeamId] : null;
@@ -915,9 +929,9 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   // Validate class existence once loaded
   useEffect(() => {
     if (classesLoaded && currentClassId && !classesLoadError) {
-      const classExists = classes.some(c => c.id === currentClassId);
-      if (!classExists) {
-        console.warn(`Class ${currentClassId} not found in classes list. Clearing selection.`);
+      const classExistsInList = classes.some(c => c.id === currentClassId);
+      if (classes.length > 0 && !classExistsInList && !activeClass) {
+        console.warn(`Class ${currentClassId} not found in classes list or activeClass. Clearing selection.`);
         if (currentRole === 'STUDENT') {
           logout();
         } else {
@@ -926,7 +940,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     }
-  }, [classesLoaded, classes, currentClassId, currentRole, classesLoadError]);
+  }, [classesLoaded, classes, currentClassId, currentRole, classesLoadError, activeClass]);
 
   const syntheticDemoClass = useMemo(() => {
     if (!isDemoRoute) return null;

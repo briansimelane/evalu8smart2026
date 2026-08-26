@@ -135,6 +135,63 @@ export interface TeamLogisticsProgress {
 
 export type GamePhase = 'planning' | 'production' | 'improvement' | 'innovation' | 'expansion' | 'sales' | 'control' | 'scoring' | 'PLANNING' | 'PRODUCTION' | (string & {});
 
+export interface TeamRuleOverride {
+  enabled?: boolean; // Overrides global enabled state if defined
+  value?: number | string | boolean; // Team-specific requirement value
+}
+
+export type RuleCategory = 'General' | 'Production & Price' | 'Research & Tech' | 'Logistics' | 'Sales';
+
+export interface RuleAdjustment {
+  id: string; // Unique rule ID e.g. 'max_region_teams'
+  name: string;
+  description: string;
+  category: RuleCategory;
+  enabled: boolean; // Master toggle for this rule (ON/OFF)
+  globalValue: number | string | boolean; // Requirement parameter applied globally
+  defaultValue: number | string | boolean;
+  teamOverrides?: Record<string, TeamRuleOverride>; // teamId -> specific override
+}
+
+export interface RuleAdjustmentsState {
+  rules: Record<string, RuleAdjustment>;
+  lastUpdated?: string;
+}
+
+export interface SteveState {
+  activeRegion: string | null; // region name blocked by Steve
+  roundIntroduced?: number; // defaults to round 3
+  wildcardsContributed?: Record<string, number>; // teamId -> tokens contributed toward 5
+}
+
+export interface TeamWildcardTokens {
+  teamId: string;
+  totalTokens: number; // starts at 10
+  usedInRound: Record<number, number>; // roundNumber -> count used (max 2)
+  conversionsByRound?: Record<number, {
+    product?: number;
+    research?: number;
+    logistics?: number;
+    improvement?: number;
+  }>;
+}
+
+export interface ClaimedDirective {
+  id: string; // e.g. 'directive_2'
+  teamId: string;
+  roundNumber: number;
+  points: number; // 12
+  claimedAt: string;
+}
+
+export interface AdvancedRulesState {
+  steve?: SteveState;
+  wildcards?: Record<string, TeamWildcardTokens>; // teamId -> wildcard state
+  directives?: ClaimedDirective[];
+  carriedOverProducts?: Record<string, number>; // teamId -> count of carried over products (Wifi)
+  gpsBonusClaimed?: Record<string, boolean>; // teamId -> true if GPS +5 products awarded
+}
+
 export interface GameState {
   gameId: string;
   teams: Team[];
@@ -151,6 +208,8 @@ export interface GameState {
   teamLogisticsProgress: Record<string, TeamLogisticsProgress>; // teamId -> logistics progress
   logisticsAllocatedByRound: Record<number, Record<string, number>>; // roundNumber -> teamId -> icons spent
   combinationsData?: Combination[]; // custom combination overrides
+  ruleAdjustments?: RuleAdjustmentsState; // custom rule toggles & requirement overrides
+  advancedState?: AdvancedRulesState; // 5 Advanced Rules state tracking
   currentPhase?: GamePhase;
   createdAt: Date;
   updatedAt: Date;
@@ -364,11 +423,13 @@ export const calculateTeamTotalScore = (
   cumulativeRevenue: number;
   cumulativeControl: number;
   patentBonus: number;
+  wildcardBonus: number;
+  directiveBonus: number;
   totalScore: number;
 } => {
   const team = gameState.teams.find(t => t.id === teamId);
   if (!team) {
-    return { startValue: 0, cumulativeRevenue: 0, cumulativeControl: 0, patentBonus: 0, totalScore: 0 };
+    return { startValue: 0, cumulativeRevenue: 0, cumulativeControl: 0, patentBonus: 0, wildcardBonus: 0, directiveBonus: 0, totalScore: 0 };
   }
 
   const startValue = getInitialScore(team);
@@ -387,13 +448,32 @@ export const calculateTeamTotalScore = (
   }
 
   const patentBonus = getTeamPatentPoints(teamId, gameState.patents, targetRound, gameState.gameEnded, gameState.currentRound);
-  const totalScore = startValue + cumulativeRevenue + cumulativeControl + patentBonus;
+
+  // Wildcard bonus: 1 VP per remaining token at game end (targetRound >= 5 or gameEnded)
+  let wildcardBonus = 0;
+  const isEndGame = gameState.gameEnded || targetRound >= 5;
+  if (isEndGame && gameState.advancedState?.wildcards?.[teamId]) {
+    const wc = gameState.advancedState.wildcards[teamId];
+    const totalUsed = Object.values(wc.usedInRound || {}).reduce((a, b) => a + b, 0);
+    wildcardBonus = Math.max(0, (wc.totalTokens || 10) - totalUsed);
+  }
+
+  // Directive bonus: 12 VPs per claimed directive, calculated at the END of the game (targetRound >= 5 or gameEnded)
+  let directiveBonus = 0;
+  if (isEndGame && gameState.advancedState?.directives) {
+    const claimed = gameState.advancedState.directives.filter(d => d.teamId === teamId);
+    directiveBonus = claimed.reduce((sum, d) => sum + (d.points || 12), 0);
+  }
+
+  const totalScore = startValue + cumulativeRevenue + cumulativeControl + patentBonus + wildcardBonus + directiveBonus;
 
   return {
     startValue,
     cumulativeRevenue,
     cumulativeControl,
     patentBonus,
+    wildcardBonus,
+    directiveBonus,
     totalScore,
   };
 };

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
-import { GameState, Team, RoundData, TeamRoundData, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, GamePhase } from '@/types/game';
+import { GameState, Team, RoundData, TeamRoundData, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, GamePhase, RuleAdjustmentsState, calculateTeamTotalScore, getInitialScore } from '@/types/game';
 import { REGIONS, TECHNOLOGIES, TEAM_COLORS, COMBINATIONS, Combination, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS, AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
@@ -12,6 +12,7 @@ import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
 import { removeUndefined } from '@/lib/utils';
 import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule } from '@/lib/rules';
+import { getDefaultRuleAdjustments } from '@/lib/defaultRules';
 
 export interface GameContextType {
   gameState: GameState | null;
@@ -42,6 +43,13 @@ export interface GameContextType {
   isRegionFull: (regionName: string) => boolean;
   updateCombinations: (data: Combination[] | null) => void;
   getCombinations: () => Combination[];
+  getRuleAdjustments: () => RuleAdjustmentsState;
+  updateRuleAdjustments: (rulesState: RuleAdjustmentsState | null) => void;
+  allocateDirective: (teamId: string, directiveId: string) => void;
+  revokeDirective: (directiveId: string) => void;
+  moveSteve: (regionName: string | null) => void;
+  contributeWildcardsToSteve: (teamId: string, delta?: number) => void;
+  allocateWildcardToken: (teamId: string, conversionType: 'product' | 'research' | 'logistics' | 'improvement', delta?: number) => void;
   recalculateControlPoints: () => void;
   updatePhase: (phase: GamePhase) => void;
   endGame: () => void;
@@ -155,14 +163,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
             setGameState(null);
           }
         } else {
-          // Fallback check on legacy root gameState for unmigrated classes
+          // Fallback check on legacy root gameState or teamRegistry for new classes
           getDoc(doc(db, 'classes', currentClassId)).then(classSnap => {
             if (classSnap.exists()) {
-              const legacyData = classSnap.data() as SimulationClass;
-              if (legacyData.gameState) {
-                setGameState(legacyData.gameState);
+              const classData = classSnap.data() as SimulationClass;
+              if (classData.gameState) {
+                setGameState(classData.gameState);
               } else {
-                setGameState(null);
+                const teamsToInit: Team[] = (classData.teamRegistry && classData.teamRegistry.length > 0)
+                  ? classData.teamRegistry.map((t, idx) => ({
+                      id: t.id || `team_${idx + 1}`,
+                      name: t.name,
+                      color: t.color,
+                      isBot: !!t.isBot,
+                      botProfile: t.botProfile,
+                      botDifficulty: t.botDifficulty
+                    }))
+                  : [];
+                if (teamsToInit.length > 0) {
+                  initializeGame(teamsToInit);
+                } else {
+                  setGameState(null);
+                }
               }
             } else {
               setGameState(null);
@@ -397,8 +419,63 @@ export function GameProvider({ children }: { children: ReactNode }) {
         updatedTeamResearchProgress[t.id] = tp;
       });
 
+      let updatedRounds = prev.rounds;
+      const currentRound = prev.currentRound;
+      const roundIndex = prev.rounds.findIndex(r => r.roundNumber === currentRound);
+      if (roundIndex !== -1) {
+        const roundData = prev.rounds[roundIndex];
+        const updatedTeamDataMap = { ...roundData.teamData };
+        let hasChanges = false;
+
+        const tempState = {
+          ...prev,
+          teamResearchProgress: updatedTeamResearchProgress,
+          patents: newPatents,
+        };
+
+        prev.teams.forEach(t => {
+          const existingTeamData = roundData.teamData[t.id];
+          if (existingTeamData && existingTeamData.combination && existingTeamData.position) {
+            const newStats = calculatePlanStats(
+              tempState,
+              t.id,
+              existingTeamData.combination,
+              existingTeamData.position,
+              existingTeamData.cardUsages || {},
+              prev.combinationsData || COMBINATIONS
+            );
+
+            if (
+              existingTeamData.productsProduced !== newStats.productsAvailable ||
+              existingTeamData.logisticsIcons !== newStats.logisticsPoints ||
+              existingTeamData.researchIcons !== newStats.researchPoints ||
+              existingTeamData.price !== newStats.calculatedPrice
+            ) {
+              hasChanges = true;
+              updatedTeamDataMap[t.id] = {
+                ...existingTeamData,
+                price: newStats.calculatedPrice,
+                productsProduced: newStats.productsAvailable,
+                researchIcons: newStats.researchPoints,
+                logisticsIcons: newStats.logisticsPoints,
+                improvementCards: newStats.improvementPoints,
+              };
+            }
+          }
+        });
+
+        if (hasChanges) {
+          updatedRounds = [...prev.rounds];
+          updatedRounds[roundIndex] = {
+            ...roundData,
+            teamData: updatedTeamDataMap
+          };
+        }
+      }
+
       return {
         ...prev,
+        rounds: updatedRounds,
         patents: newPatents,
         teamResearchProgress: updatedTeamResearchProgress,
         updatedAt: new Date(),
@@ -969,8 +1046,63 @@ export function GameProvider({ children }: { children: ReactNode }) {
         },
       };
 
+      // Recalculate teamData stats in current round for all teams whose tech perks or completed technologies changed
+      let updatedRounds = prev.rounds;
+      const roundIndex = prev.rounds.findIndex(r => r.roundNumber === currentRound);
+      if (roundIndex !== -1) {
+        const roundData = prev.rounds[roundIndex];
+        const updatedTeamDataMap = { ...roundData.teamData };
+        let hasChanges = false;
+
+        const tempState = {
+          ...prev,
+          teamResearchProgress: currentTPAll,
+          patents: finalPatents,
+        };
+
+        prev.teams.forEach(t => {
+          const existingTeamData = roundData.teamData[t.id];
+          if (existingTeamData && existingTeamData.combination && existingTeamData.position) {
+            const newStats = calculatePlanStats(
+              tempState,
+              t.id,
+              existingTeamData.combination,
+              existingTeamData.position,
+              existingTeamData.cardUsages || {},
+              prev.combinationsData || COMBINATIONS
+            );
+
+            if (
+              existingTeamData.productsProduced !== newStats.productsAvailable ||
+              existingTeamData.logisticsIcons !== newStats.logisticsPoints ||
+              existingTeamData.researchIcons !== newStats.researchPoints ||
+              existingTeamData.price !== newStats.calculatedPrice
+            ) {
+              hasChanges = true;
+              updatedTeamDataMap[t.id] = {
+                ...existingTeamData,
+                price: newStats.calculatedPrice,
+                productsProduced: newStats.productsAvailable,
+                researchIcons: newStats.researchPoints,
+                logisticsIcons: newStats.logisticsPoints,
+                improvementCards: newStats.improvementPoints,
+              };
+            }
+          }
+        });
+
+        if (hasChanges) {
+          updatedRounds = [...prev.rounds];
+          updatedRounds[roundIndex] = {
+            ...roundData,
+            teamData: updatedTeamDataMap
+          };
+        }
+      }
+
       return {
         ...prev,
+        rounds: updatedRounds,
         teamResearchProgress: currentTPAll,
         technologies: {
           ...prev.technologies,
@@ -1014,33 +1146,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!effectiveGameState) return [];
 
     const roundData = effectiveGameState.rounds.find(r => r.roundNumber === roundNumber);
-    const previousRoundData = effectiveGameState.rounds.find(r => r.roundNumber === roundNumber - 1);
-    const round0Data = effectiveGameState.rounds.find(r => r.roundNumber === 0);
-
     if (!roundData) return effectiveGameState.teams;
 
     const teamsWithData = effectiveGameState.teams.map(team => {
       const currentData = roundData.teamData[team.id];
-      const previousData = previousRoundData?.teamData[team.id];
-      const round0Value = round0Data?.teamData[team.id];
+      const previousScore = roundNumber > 1
+        ? calculateTeamTotalScore(team.id, roundNumber - 1, effectiveGameState).totalScore
+        : getInitialScore(team);
 
       return {
         team,
         currentPrice: currentData?.price ?? Infinity,
-        previousTotalMoney: previousData?.totalMoney ?? Infinity,
-        round0TotalMoney: round0Value?.totalMoney ?? Infinity,
+        previousScore,
       };
     });
 
-    // Sort by: current price (lowest first), then previous round total money (lowest first), then round 0 total money (lowest first)
+    // Sort by: lowest price first, then lowest points from previous round first
     teamsWithData.sort((a, b) => {
       if (a.currentPrice !== b.currentPrice) {
         return a.currentPrice - b.currentPrice;
       }
-      if (a.previousTotalMoney !== b.previousTotalMoney) {
-        return a.previousTotalMoney - b.previousTotalMoney;
-      }
-      return a.round0TotalMoney - b.round0TotalMoney;
+      return a.previousScore - b.previousScore;
     });
 
     return teamsWithData.map(item => item.team);
@@ -1220,6 +1346,225 @@ export function GameProvider({ children }: { children: ReactNode }) {
     });
   }, [effectiveGameState]);
 
+  const getRuleAdjustments = useCallback((): RuleAdjustmentsState => {
+    if (effectiveGameState?.ruleAdjustments) {
+      return effectiveGameState.ruleAdjustments;
+    }
+    return getDefaultRuleAdjustments();
+  }, [effectiveGameState]);
+
+  const updateRuleAdjustments = useCallback((rulesState: RuleAdjustmentsState | null) => {
+    if (!effectiveGameState) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      const newState = { ...prev };
+      if (rulesState) {
+        newState.ruleAdjustments = {
+          ...rulesState,
+          lastUpdated: new Date().toISOString(),
+        };
+      } else {
+        delete newState.ruleAdjustments;
+      }
+      return newState;
+    });
+  }, [effectiveGameState]);
+
+  const allocateDirective = useCallback((teamId: string, directiveId: string) => {
+    if (!effectiveGameState) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      const currentAdvanced = prev.advancedState || {};
+      const claimedList = currentAdvanced.directives || [];
+
+      if (claimedList.some(d => d.id === directiveId)) return prev;
+      if (claimedList.some(d => d.teamId === teamId && d.roundNumber === prev.currentRound)) return prev;
+
+      const newClaim = {
+        id: directiveId,
+        teamId,
+        roundNumber: prev.currentRound,
+        points: 12,
+        claimedAt: new Date().toISOString(),
+      };
+
+      return {
+        ...prev,
+        advancedState: {
+          ...currentAdvanced,
+          directives: [...claimedList, newClaim],
+        },
+        updatedAt: new Date(),
+      };
+    });
+  }, [effectiveGameState]);
+
+  const revokeDirective = useCallback((directiveId: string) => {
+    if (!effectiveGameState) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      const currentAdvanced = prev.advancedState || {};
+      const claimedList = currentAdvanced.directives || [];
+      return {
+        ...prev,
+        advancedState: {
+          ...currentAdvanced,
+          directives: claimedList.filter(d => d.id !== directiveId),
+        },
+        updatedAt: new Date(),
+      };
+    });
+  }, [effectiveGameState]);
+
+  const moveSteve = useCallback((regionName: string | null) => {
+    if (!effectiveGameState) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      const currentAdvanced = prev.advancedState || {};
+      return {
+        ...prev,
+        advancedState: {
+          ...currentAdvanced,
+          steve: {
+            activeRegion: regionName,
+            roundIntroduced: prev.currentRound,
+            wildcardsContributed: {},
+          },
+        },
+        updatedAt: new Date(),
+      };
+    });
+  }, [effectiveGameState]);
+
+  const contributeWildcardsToSteve = useCallback((teamId: string, delta: number = 1) => {
+    if (!effectiveGameState) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      const currentAdvanced = prev.advancedState || {};
+      const steve = currentAdvanced.steve || { activeRegion: null, wildcardsContributed: {} };
+      const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
+      const tWildcard = wildcardsMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
+
+      const currentRound = prev.currentRound;
+      const usedInR = { ...(tWildcard.usedInRound || {}) };
+      const totalUsed = Object.values(usedInR).reduce((a, b) => Number(a) + Number(b), 0);
+      const remaining = Math.max(0, (tWildcard.totalTokens || 10) - totalUsed);
+
+      const steveContribs = { ...(steve.wildcardsContributed || {}) };
+      const currentTeamSteve = steveContribs[teamId] || 0;
+      const newTeamSteve = currentTeamSteve + delta;
+
+      if (newTeamSteve < 0 || newTeamSteve > 5) return prev;
+      if (delta > 0 && remaining < delta) return prev;
+
+      steveContribs[teamId] = newTeamSteve;
+      const newTotal = Object.values(steveContribs).reduce((a, b) => Number(a) + Number(b), 0);
+
+      // Track round token usage
+      usedInR[currentRound] = Math.max(0, (usedInR[currentRound] || 0) + delta);
+      wildcardsMap[teamId] = { ...tWildcard, usedInRound: usedInR };
+
+      return {
+        ...prev,
+        advancedState: {
+          ...currentAdvanced,
+          wildcards: wildcardsMap,
+          steve: {
+            ...steve,
+            activeRegion: steve.activeRegion,
+            wildcardsContributed: steveContribs,
+          },
+        },
+        updatedAt: new Date(),
+      };
+    });
+  }, [effectiveGameState]);
+
+  const allocateWildcardToken = useCallback((
+    teamId: string,
+    conversionType: 'product' | 'research' | 'logistics' | 'improvement',
+    delta: number = 1
+  ) => {
+    if (!effectiveGameState) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      const currentAdvanced = prev.advancedState || {};
+      const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
+      const tWildcard = wildcardsMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
+
+      const currentRound = prev.currentRound;
+      const usedInR = { ...(tWildcard.usedInRound || {}) };
+      const totalUsed = Object.values(usedInR).reduce((a, b) => Number(a) + Number(b), 0);
+
+      const convsByR = { ...(tWildcard.conversionsByRound || {}) };
+      const rConvs = { ...(convsByR[currentRound] || {}) };
+      const currentPhaseVal = rConvs[conversionType] || 0;
+
+      const newPhaseVal = currentPhaseVal + delta;
+      if (newPhaseVal < 0 || newPhaseVal > 2) return prev; // 0, 1, or 2 per phase
+
+      if (delta > 0 && totalUsed + delta > (tWildcard.totalTokens || 10)) return prev;
+
+      rConvs[conversionType] = newPhaseVal;
+      convsByR[currentRound] = rConvs;
+
+      const roundUsedTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
+      usedInR[currentRound] = roundUsedTotal;
+
+      wildcardsMap[teamId] = {
+        ...tWildcard,
+        usedInRound: usedInR,
+        conversionsByRound: convsByR,
+      };
+
+      const updatedAdvanced = {
+        ...currentAdvanced,
+        wildcards: wildcardsMap,
+      };
+
+      let updatedRounds = prev.rounds;
+      const roundIndex = prev.rounds.findIndex(r => r.roundNumber === currentRound);
+      if (roundIndex !== -1 && prev.rounds[roundIndex].teamData?.[teamId]) {
+        const roundData = prev.rounds[roundIndex];
+        const existingTeamData = roundData.teamData[teamId];
+        if (existingTeamData.combination && existingTeamData.position) {
+          const tempState = { ...prev, advancedState: updatedAdvanced };
+          const newStats = calculatePlanStats(
+            tempState,
+            teamId,
+            existingTeamData.combination,
+            existingTeamData.position,
+            existingTeamData.cardUsages || {},
+            prev.combinationsData || COMBINATIONS
+          );
+
+          updatedRounds = [...prev.rounds];
+          updatedRounds[roundIndex] = {
+            ...roundData,
+            teamData: {
+              ...roundData.teamData,
+              [teamId]: {
+                ...existingTeamData,
+                price: newStats.calculatedPrice,
+                productsProduced: newStats.productsAvailable,
+                researchIcons: newStats.researchPoints,
+                logisticsIcons: newStats.logisticsPoints,
+                improvementCards: newStats.improvementPoints,
+              }
+            }
+          };
+        }
+      }
+
+      return {
+        ...prev,
+        rounds: updatedRounds,
+        advancedState: updatedAdvanced,
+        updatedAt: new Date(),
+      };
+    });
+  }, [effectiveGameState]);
+
   const recalculateControlPoints = useCallback(() => {
     if (!effectiveGameState) return;
 
@@ -1357,6 +1702,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
         isRegionFull,
         getCombinations,
         updateCombinations,
+        getRuleAdjustments,
+        updateRuleAdjustments,
+        allocateDirective,
+        revokeDirective,
+        moveSteve,
+        contributeWildcardsToSteve,
+        allocateWildcardToken,
         recalculateControlPoints,
         endGame,
       }}

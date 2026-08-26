@@ -7,6 +7,7 @@ import { REGIONS } from '@/data/combinations';
 import { toast } from 'sonner';
 import { Save, AlertTriangle, Trophy, Medal } from 'lucide-react';
 import { GameIcon } from './GameIcon';
+import { SteveIcon } from './SteveIcon';
 import { Badge } from '@/components/ui/badge';
 import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
@@ -309,13 +310,20 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                   const isMyFirst = result.firstPlace?.teamId === currentTeamId && currentRole === 'STUDENT';
                   const isMySecond = result.secondPlace?.teamId === currentTeamId && currentRole === 'STUDENT';
 
+                  const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === result.region;
+
                   return (
-                    <Card key={result.region} className={`border-primary/20 ${(isMyFirst || isMySecond) ? 'ring-2 ring-warning/50 bg-warning/[0.02]' : ''}`}>
+                    <Card key={result.region} className={`border-primary/20 ${(isMyFirst || isMySecond) ? 'ring-2 ring-warning/50 bg-warning/[0.02]' : ''} ${isSteveBlocking ? 'border-red-500 bg-red-950/10' : ''}`}>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center justify-between">
                           <span className="flex items-center gap-2">
                             <Trophy className="h-4 w-4 text-warning" />
                             {result.region}
+                            {isSteveBlocking && (
+                              <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-[10px] flex items-center gap-1 font-bold [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
+                                <SteveIcon size={12} /> BLOCKED
+                              </Badge>
+                            )}
                           </span>
                           {(isMyFirst || isMySecond) && (
                             <Badge className="bg-warning text-white text-[10px]">

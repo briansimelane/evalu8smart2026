@@ -8,6 +8,7 @@ import { getControlPointsForRegion } from '@/data/control';
 import { toast } from 'sonner';
 import { Save, AlertTriangle, CheckCircle2, Package, Microscope, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Trophy, Users, Target, TrendingUp } from 'lucide-react';
 import { GameIcon } from './GameIcon';
+import { SteveIcon } from './SteveIcon';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
@@ -570,6 +571,7 @@ export const SalesPhase = () => {
                         const regionData = REGION_CUSTOMERS.find(r => r.region === regionName);
                         if (!regionData) return null;
 
+                        const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === regionName;
                         const regionLogisticsData = gameState.regionLogistics?.[regionName];
                         const teamsPresentCount = regionLogisticsData?.teamsPresent?.length || 0;
                         const effectiveTeamsCount = Math.max(1, teamsPresentCount);
@@ -577,12 +579,18 @@ export const SalesPhase = () => {
                         const secondPlaceControl = getControlPointsForRegion(regionName, effectiveTeamsCount, 'second');
 
                         return (
-                          <Card key={regionName}>
+                          <Card key={regionName} className={isSteveBlocking ? 'border-red-500 bg-red-950/10 ring-2 ring-red-500/40' : ''}>
                             <CardHeader className="pb-3">
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                 <CardTitle className="text-base flex items-center gap-2">
                                   <MapPin className="h-4 w-4 text-primary" />
                                   {regionName}
+                                  {isSteveBlocking && (
+                                    <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-xs font-bold gap-1 [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
+                                      <SteveIcon size={14} />
+                                      BLOCKED
+                                    </Badge>
+                                  )}
                                 </CardTitle>
                                 <div className="flex items-center gap-2 flex-wrap text-xs">
                                   <span className="text-muted-foreground font-semibold">Potential Control:</span>
@@ -600,51 +608,61 @@ export const SalesPhase = () => {
                               </div>
                             </CardHeader>
                             <CardContent>
-                              <div className="flex flex-wrap gap-2">
-                                {regionData.customers
-                                  .sort((a, b) => a.position - b.position)
-                                  .map(customer => {
-                                    const isEligible = isCustomerEligible(customer);
-                                    const isSoldByOther = soldCustomers.has(customer.id) && !selectedTeamData?.customersSold?.includes(customer.id);
-                                    const isSelected = selectedCustomers[regionName]?.includes(customer.id);
-                                    const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
+                              {isSteveBlocking ? (
+                                <div className="p-3 rounded-lg bg-red-950/20 border border-red-500/40 text-red-700 dark:text-red-300 flex items-center gap-2 text-xs font-bold">
+                                  <SteveIcon size={18} />
+                                  <span>Steve is blocking {regionName}! Product sales are disabled in this region.</span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap gap-2">
+                                  {regionData.customers
+                                    .sort((a, b) => a.position - b.position)
+                                    .map(customer => {
+                                      const isEligible = isCustomerEligible(customer);
+                                      const isSoldByOther = soldCustomers.has(customer.id) && !selectedTeamData?.customersSold?.includes(customer.id);
+                                      const isSelected = selectedCustomers[regionName]?.includes(customer.id);
+                                      const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
 
-                                    return (
-                                      <div
-                                        key={customer.id}
-                                        className={`relative flex items-center justify-center w-12 h-12 rounded-lg transition-all ${
-                                          isSoldByOther ? 'opacity-40 cursor-not-allowed' :
-                                          isSelected ? 'ring-2 ring-primary ring-offset-2' :
-                                          isEligible ? 'cursor-pointer hover:scale-105' :
-                                          'opacity-40 cursor-not-allowed'
-                                        }`}
-                                        onClick={() => {
-                                          if (isEligible && !isSoldByOther && !isReadOnlyMode) {
-                                            toggleCustomer(regionName, customer.id);
-                                          }
-                                        }}
-                                        title={customer.type === 'price' 
-                                          ? `Price Customer - Max ${customer.price}` 
-                                          : `Value Customer - Requires ${customer.technology}`}
-                                      >
-                                        <div className={`w-full h-full flex items-center justify-center rounded-lg ${
-                                          customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'
-                                        }`}>
-                                          {customer.type === 'price' ? (
-                                            <span className="text-white font-bold text-sm">{customer.price}</span>
-                                          ) : TechIcon ? (
-                                            <TechIcon className="w-6 h-6 text-white" />
-                                          ) : null}
-                                        </div>
-                                        {isSelected && (
-                                          <div className="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                                            <CheckCircle2 className="w-3 h-3 text-primary-foreground" />
+                                      return (
+                                        <div
+                                          key={customer.id}
+                                          className={`relative flex items-center justify-center w-12 h-12 rounded-lg transition-all ${
+                                            isSteveBlocking ? 'opacity-30 cursor-not-allowed' :
+                                            isSoldByOther ? 'opacity-40 cursor-not-allowed' :
+                                            isSelected ? 'ring-2 ring-primary ring-offset-2' :
+                                            isEligible ? 'cursor-pointer hover:scale-105' :
+                                            'opacity-40 cursor-not-allowed'
+                                          }`}
+                                          onClick={() => {
+                                            if (isEligible && !isSoldByOther && !isReadOnlyMode && !isSteveBlocking) {
+                                              toggleCustomer(regionName, customer.id);
+                                            }
+                                          }}
+                                          title={isSteveBlocking 
+                                            ? `Blocked by Steve - Sales disabled`
+                                            : customer.type === 'price' 
+                                            ? `Price Customer - Max ${customer.price}` 
+                                            : `Value Customer - Requires ${customer.technology}`}
+                                        >
+                                          <div className={`w-full h-full flex items-center justify-center rounded-lg ${
+                                            customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'
+                                          }`}>
+                                            {customer.type === 'price' ? (
+                                              <span className="text-white font-bold text-sm">{customer.price}</span>
+                                            ) : TechIcon ? (
+                                              <TechIcon className="w-6 h-6 text-white" />
+                                            ) : null}
                                           </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                              </div>
+                                          {isSelected && (
+                                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                                              <CheckCircle2 className="w-3 h-3 text-primary-foreground" />
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              )}
                             </CardContent>
                           </Card>
                         );
@@ -698,6 +716,7 @@ export const SalesPhase = () => {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {REGION_CUSTOMERS.map(({ region }) => {
+              const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === region;
               const regionStatus = regionSalesStatus[region];
               const hasSales = regionStatus.some(s => s.soldTo);
               const regionLogisticsData = gameState.regionLogistics?.[region];
@@ -712,10 +731,17 @@ export const SalesPhase = () => {
               });
 
               return (
-                <Card key={region} className={hasSales ? 'border-primary/50 flex flex-col' : 'flex flex-col'}>
+                <Card key={region} className={isSteveBlocking ? 'border-red-500 bg-red-950/10 ring-2 ring-red-500/40 flex flex-col' : hasSales ? 'border-primary/50 flex flex-col' : 'flex flex-col'}>
                   <CardHeader className="pb-2 border-b border-border/40 mb-2 px-3 pt-3">
                     <div className="flex items-center justify-between gap-1 flex-wrap">
-                      <CardTitle className="text-sm font-bold">{region}</CardTitle>
+                      <CardTitle className="text-sm font-bold flex items-center gap-1.5">
+                        {region}
+                        {isSteveBlocking && (
+                          <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-[10px] flex items-center gap-1 font-bold [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
+                            <SteveIcon size={12} /> BLOCKED
+                          </Badge>
+                        )}
+                      </CardTitle>
                       <div className="flex items-center gap-1 text-[10px]">
                         <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20 text-[10px] font-bold px-1.5 py-0">
                           1st: +{firstPlaceControl} pts

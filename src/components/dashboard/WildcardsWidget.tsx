@@ -1,0 +1,259 @@
+import React from 'react';
+import { useGame } from '@/contexts/GameContext';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Sparkles, Package, Microscope, Truck, Wrench, Plus, Minus } from 'lucide-react';
+import { toast } from 'sonner';
+import { SteveIcon } from './SteveIcon';
+
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
+
+interface WildcardsWidgetProps {
+  teamId: string;
+}
+
+export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
+  const { gameState, allocateWildcardToken, contributeWildcardsToSteve, moveSteve } = useGame();
+  const currentRound = gameState?.currentRound || 1;
+
+  const isWildcardsActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'wildcard_tokens_system', teamId);
+
+  if (!isWildcardsActive) {
+    return (
+      <Card className="p-3 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-xs flex items-center gap-2 rounded-xl">
+        <Sparkles className="h-4 w-4 text-slate-400 flex-shrink-0" />
+        <span>Wildcard Tokens System (Advanced Rule 2) is currently switched OFF by the facilitator (0 tokens issued).</span>
+      </Card>
+    );
+  }
+
+  const wildcardData = gameState?.advancedState?.wildcards?.[teamId] || {
+    teamId,
+    totalTokens: 10,
+    usedInRound: {},
+    conversionsByRound: {},
+  };
+
+  const usedTotal = Object.values(wildcardData.usedInRound || {}).reduce((a, b) => Number(a) + Number(b), 0);
+  const remainingTokens = Math.max(0, (wildcardData.totalTokens || 10) - usedTotal);
+
+  const currentRoundConvs = wildcardData.conversionsByRound?.[currentRound] || {};
+
+  const steveData = gameState?.advancedState?.steve || {
+    activeRegion: null,
+    wildcardsContributed: {},
+  };
+  const teamSteveContrib = steveData.wildcardsContributed?.[teamId] || 0;
+  const steveTotalContributed = Object.values(steveData.wildcardsContributed || {}).reduce((a, b) => Number(a) + Number(b), 0);
+
+  const handleAdjustToken = (
+    targetType: 'product' | 'research' | 'logistics' | 'improvement',
+    delta: number
+  ) => {
+    if (!gameState) return;
+    allocateWildcardToken(teamId, targetType, delta);
+    if (delta > 0) {
+      toast.success(`Converted 1 Wildcard Token to +1 ${targetType.toUpperCase()} icon!`, {
+        description: `Remaining tokens: ${remainingTokens - 1} • Leftover tokens earn 1 VP each at game end.`,
+      });
+    } else {
+      toast.info(`Removed 1 ${targetType.toUpperCase()} Wildcard icon.`);
+    }
+  };
+
+  const handleAdjustSteve = (delta: number) => {
+    if (!gameState) return;
+    if (!steveData.activeRegion && delta > 0) {
+      toast.info('Steve is not currently blocking any region.');
+      return;
+    }
+
+    contributeWildcardsToSteve(teamId, delta);
+    if (delta > 0) {
+      toast.success(`Contributed 1 Wildcard token toward clearing Steve (${steveTotalContributed + 1}/5 paid).`);
+    } else {
+      toast.info(`Removed 1 Wildcard token from Steve.`);
+    }
+  };
+
+  return (
+    <Card className="border border-indigo-200 dark:border-indigo-500/30 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm rounded-xl p-3.5 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+          <CardTitle className="text-sm font-bold">Wildcard Tokens</CardTitle>
+        </div>
+        <div className="flex items-center gap-1.5 font-mono">
+          <Badge variant="outline" className="text-xs border-indigo-300 dark:border-indigo-500/40 text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 font-bold">
+            {remainingTokens} / 10 Left
+          </Badge>
+        </div>
+      </div>
+
+      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+        Spend <span className="font-bold text-slate-700 dark:text-slate-200">0, 1, or 2 tokens per phase</span> (Production, Improvement, Research, Logistics), or <span className="font-bold text-slate-700 dark:text-slate-200">up to 5 tokens</span> during Planning for Steve removal. Leftover tokens earn <span className="font-bold text-indigo-600 dark:text-indigo-300">1 VP each</span> at game end.
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+        {/* Product Conversion */}
+        <div className="p-2 rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 truncate">
+            <Package className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+            <span className="font-bold truncate text-[11px]">Product</span>
+          </div>
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={(currentRoundConvs.product || 0) <= 0}
+              onClick={() => handleAdjustToken('product', -1)}
+              className="h-5 w-5 p-0 text-[10px] text-red-600"
+            >
+              <Minus className="h-2.5 w-2.5" />
+            </Button>
+            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.product || 0}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={(currentRoundConvs.product || 0) >= 2 || remainingTokens <= 0}
+              onClick={() => handleAdjustToken('product', 1)}
+              className="h-5 w-5 p-0 text-[10px] text-emerald-600"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Improvement Conversion */}
+        <div className="p-2 rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 truncate">
+            <Wrench className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
+            <span className="font-bold truncate text-[11px]">Improve</span>
+          </div>
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={(currentRoundConvs.improvement || 0) <= 0}
+              onClick={() => handleAdjustToken('improvement', -1)}
+              className="h-5 w-5 p-0 text-[10px] text-red-600"
+            >
+              <Minus className="h-2.5 w-2.5" />
+            </Button>
+            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.improvement || 0}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={(currentRoundConvs.improvement || 0) >= 2 || remainingTokens <= 0}
+              onClick={() => handleAdjustToken('improvement', 1)}
+              className="h-5 w-5 p-0 text-[10px] text-amber-600"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Research Conversion */}
+        <div className="p-2 rounded-lg border border-purple-200 bg-purple-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 truncate">
+            <Microscope className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+            <span className="font-bold truncate text-[11px]">Research</span>
+          </div>
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={(currentRoundConvs.research || 0) <= 0}
+              onClick={() => handleAdjustToken('research', -1)}
+              className="h-5 w-5 p-0 text-[10px] text-red-600"
+            >
+              <Minus className="h-2.5 w-2.5" />
+            </Button>
+            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.research || 0}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={(currentRoundConvs.research || 0) >= 2 || remainingTokens <= 0}
+              onClick={() => handleAdjustToken('research', 1)}
+              className="h-5 w-5 p-0 text-[10px] text-purple-600"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Logistics Conversion */}
+        <div className="p-2 rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 truncate">
+            <Truck className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" />
+            <span className="font-bold truncate text-[11px]">Logistics</span>
+          </div>
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={(currentRoundConvs.logistics || 0) <= 0}
+              onClick={() => handleAdjustToken('logistics', -1)}
+              className="h-5 w-5 p-0 text-[10px] text-red-600"
+            >
+              <Minus className="h-2.5 w-2.5" />
+            </Button>
+            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.logistics || 0}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={(currentRoundConvs.logistics || 0) >= 2 || remainingTokens <= 0}
+              onClick={() => handleAdjustToken('logistics', 1)}
+              className="h-5 w-5 p-0 text-[10px] text-rose-600"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Steve Contribution */}
+        <div className="p-2 rounded-lg border border-red-200 bg-red-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between col-span-2 sm:col-span-1">
+          <div className="flex items-center gap-1.5 truncate">
+            <SteveIcon size={16} />
+            <span className="font-bold truncate text-[11px]">Unblock</span>
+          </div>
+          {steveTotalContributed >= 5 && steveData.activeRegion ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                moveSteve(null);
+                toast.success(`Steve cleared! ${steveData.activeRegion} is now unblocked.`);
+              }}
+              className="h-6 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-2 shadow-xs"
+            >
+              Clear Steve (5/5 Paid)
+            </Button>
+          ) : (
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={teamSteveContrib <= 0}
+                onClick={() => handleAdjustSteve(-1)}
+                className="h-5 w-5 p-0 text-[10px] text-red-600"
+              >
+                <Minus className="h-2.5 w-2.5" />
+              </Button>
+              <span className="font-mono font-bold text-[11px] px-1">{teamSteveContrib}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={remainingTokens <= 0 || !steveData.activeRegion || steveTotalContributed >= 5}
+                onClick={() => handleAdjustSteve(1)}
+                className="h-5 w-5 p-0 text-[10px] text-emerald-600"
+              >
+                <Plus className="h-2.5 w-2.5" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+};

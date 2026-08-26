@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { GameState, SimulationClass } from '@/types/game';
+import { GameState, SimulationClass, calculateTeamTotalScore, getInitialScore } from '@/types/game';
 import { toValidDate } from '@/lib/utils';
 
 export function useGameBoardState(classCode: string) {
@@ -115,21 +115,18 @@ export function calculatePlayOrderForState(gameState: GameState, roundNumber: nu
   if (!gameState) return [];
 
   const roundData = gameState.rounds.find(r => r.roundNumber === roundNumber);
-  const previousRoundData = gameState.rounds.find(r => r.roundNumber === roundNumber - 1);
-  const round0Data = gameState.rounds.find(r => r.roundNumber === 0);
-
   if (!roundData) return gameState.teams;
 
   const teamsWithData = gameState.teams.map(team => {
     const currentData = roundData.teamData[team.id];
-    const previousData = previousRoundData?.teamData[team.id];
-    const round0Value = round0Data?.teamData[team.id];
+    const previousScore = roundNumber > 1
+      ? calculateTeamTotalScore(team.id, roundNumber - 1, gameState).totalScore
+      : getInitialScore(team);
 
     return {
       team,
       currentPrice: currentData?.price ?? Infinity,
-      previousTotalMoney: previousData?.totalMoney ?? Infinity,
-      round0TotalMoney: round0Value?.totalMoney ?? Infinity,
+      previousScore,
     };
   });
 
@@ -137,10 +134,7 @@ export function calculatePlayOrderForState(gameState: GameState, roundNumber: nu
     if (a.currentPrice !== b.currentPrice) {
       return a.currentPrice - b.currentPrice;
     }
-    if (a.previousTotalMoney !== b.previousTotalMoney) {
-      return a.previousTotalMoney - b.previousTotalMoney;
-    }
-    return a.round0TotalMoney - b.round0TotalMoney;
+    return a.previousScore - b.previousScore;
   });
 
   return teamsWithData.map(item => item.team);

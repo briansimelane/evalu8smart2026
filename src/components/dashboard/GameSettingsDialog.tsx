@@ -18,6 +18,8 @@ import { useGame } from '@/contexts/GameContext';
 import { Combination, COMBINATIONS as DEFAULT_COMBINATIONS } from '@/data/combinations';
 import { toast } from 'sonner';
 
+import { RulesAdjustmentPanel } from './RulesAdjustmentPanel';
+
 export function GameSettingsDialog() {
   const { getCombinations, updateCombinations } = useGame();
   
@@ -199,10 +201,7 @@ export function GameSettingsDialog() {
           </TabsContent>
           
           <TabsContent value="rules" className="p-4 bg-secondary/10 rounded-lg mt-2 min-h-[400px]">
-            <h3 className="text-lg font-semibold mb-2">Rules Adjustment</h3>
-            <p className="text-sm text-muted-foreground">
-              (Settings interface for configuring initial start cash, regions max caps, and tech costs will be implemented here)
-            </p>
+            <RulesAdjustmentPanel />
           </TabsContent>
         </Tabs>
       </DialogContent>

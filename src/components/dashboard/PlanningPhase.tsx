@@ -1,11 +1,11 @@
-import { useState, forwardRef, useImperativeHandle, useEffect, useRef } from 'react';
+import { useState, forwardRef, useImperativeHandle, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useGame } from '@/contexts/GameContext';
-import { ICON_EFFECTS } from '@/data/improvements';
+import { ICON_EFFECTS, AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { toast } from 'sonner';
 import { Save, TrendingUp, TrendingDown, Package, FlaskConical, Truck, Box, Wrench, Microscope, CirclePlus, CircleMinus, CheckCircle2, Trophy, Plus, Minus } from 'lucide-react';
 import { GameIcon } from './GameIcon';
@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 
 import { useSession } from '@/contexts/SessionContext';
 import { CombinationsGuideModal } from './CombinationsGuideModal';
+import { calculatePlanStats } from '@/lib/rules';
 
 export interface PlanningPhaseRef {
   loadTeamPlan: (roundNumber: number, teamId: string) => void;
@@ -147,6 +148,23 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   
   const availableCards = usableCards;
 
+  const roundPoolCards = useMemo(() => {
+    if (!gameState) return [];
+    const targetRoundNum = editingRound || currentRound;
+    let poolIds = gameState.improvementPoolByRound?.[targetRoundNum] || [];
+
+    if (poolIds.length === 0) {
+      const usedCardIds = (gameState.improvementCards || []).filter(c => c.used).map(c => c.id);
+      const available = AVAILABLE_IMPROVEMENT_CARDS.filter(c => !usedCardIds.includes(c.id));
+      const numTeams = gameState.teams?.length || 4;
+      poolIds = available.slice(0, numTeams).map(c => c.id);
+    }
+
+    return poolIds
+      .map(id => AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === id))
+      .filter(Boolean) as ImprovementCardData[];
+  }, [gameState?.improvementPoolByRound, gameState?.currentRound, gameState?.improvementCards, gameState?.teams, editingRound, currentRound]);
+
   // Calculate total effects from all cards based on their individual usage
   let improvementPriceEffect = 0;
   let improvementProductEffect = 0;
@@ -174,11 +192,25 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
     ? (currentRole === 'STUDENT' ? gameState.teams.filter(t => t.id === currentTeamId) : (editingRound ? gameState.teams : gameState.teams.filter(t => !teamsWithData.has(t.id))))
     : [];
 
-  const calculatedPrice = selectedComboData ? Math.max(2, Math.min(8, 5 + selectedComboData.price + improvementPriceEffect)) : 0;
-  const productsAvailable = (selectedComboData?.products || 0) + improvementProductEffect;
-  const improvementPoints = selectedComboData?.improve || 0;
-  const researchPoints = (selectedComboData?.research || 0) + improvementResearchEffect;
-  const logisticsPoints = (selectedComboData?.logistics || 0) + improvementLogisticsEffect;
+  const computedStats = useMemo(() => {
+    if (!gameState || !selectedTeam || !selectedCombination || !selectedPosition) {
+      return { calculatedPrice: 0, productsAvailable: 0, improvementPoints: 0, researchPoints: 0, logisticsPoints: 0 };
+    }
+    return calculatePlanStats(
+      gameState,
+      selectedTeam,
+      parseInt(selectedCombination),
+      parseInt(selectedPosition),
+      cardUsages,
+      currentCombinations
+    );
+  }, [gameState, selectedTeam, selectedCombination, selectedPosition, cardUsages, currentCombinations]);
+
+  const calculatedPrice = computedStats.calculatedPrice;
+  const productsAvailable = computedStats.productsAvailable;
+  const improvementPoints = computedStats.improvementPoints;
+  const researchPoints = computedStats.researchPoints;
+  const logisticsPoints = computedStats.logisticsPoints;
   const canSubmit = selectedTeam && selectedCombination && selectedPosition;
 
   // Trigger animation when values change with staggered delays
@@ -648,6 +680,8 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
             </Card>
           </>
         )}
+
+
 
         {(availableCards.length > 0 || futureCards.length > 0) && (
           <div className="space-y-3">

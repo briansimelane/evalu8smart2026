@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, Wifi, Gamepad2, Battery, Radio, Signal, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { GameIcon } from './GameIcon';
+import { SteveIcon } from './SteveIcon';
 import { useToast } from '@/hooks/use-toast';
 import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
@@ -406,7 +407,8 @@ export const LogisticsPhase = () => {
             <h3 className="text-sm font-semibold">Regions</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {availableRegions.map(region => {
-                const status = getRegionStatus(region.name);
+                const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === region.name;
+                const status = isSteveBlocking ? 'unavailable' : getRegionStatus(region.name);
                 const currentInvestment = teamProgress?.regionInvestments[region.name] || 0;
                 const progressPercent = (currentInvestment / region.logisticsCost) * 100;
                 const isFull = isRegionFull(region.name);
@@ -418,6 +420,7 @@ export const LogisticsPhase = () => {
                   <Card
                     key={region.name}
                     className={`${
+                      isSteveBlocking ? 'border-red-500 bg-red-950/10 ring-2 ring-red-500/40' :
                       status === 'present' ? 'border-success bg-success/5' :
                       status === 'available' ? 'border-primary bg-primary/5' :
                       status === 'in-progress' ? 'border-warning bg-warning/5' :
@@ -430,6 +433,12 @@ export const LogisticsPhase = () => {
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
                                 <h4 className="font-semibold">{region.name}</h4>
+                                {isSteveBlocking && (
+                                  <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-xs font-bold gap-1 [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
+                                    <SteveIcon size={14} />
+                                    BLOCKED
+                                  </Badge>
+                                )}
                                 {status === 'present' && (
                                   <Badge variant="default" className="gap-1">
                                     <CheckCircle className="h-3 w-3" />
@@ -528,7 +537,12 @@ export const LogisticsPhase = () => {
                       </div>
 
                       {/* Allocation Input */}
-                      {status !== 'unavailable' && status !== 'present' && !isFull && (
+                      {isSteveBlocking ? (
+                        <div className="p-2.5 rounded-lg bg-red-950/20 border border-red-500/40 flex items-center gap-2 text-xs text-red-700 dark:text-red-300 font-bold pt-2 mt-2">
+                          <SteveIcon size={16} />
+                          <span>Steve is blocking expansion into {region.name}! (5 Wildcard Tokens required to clear Steve)</span>
+                        </div>
+                      ) : status !== 'unavailable' && status !== 'present' && !isFull && (
                         <div className="flex items-center gap-2 pt-2">
                           <label className="text-sm font-medium">Allocate:</label>
                           <Input
@@ -645,12 +659,14 @@ export const LogisticsPhase = () => {
             {Object.values(gameState.regionLogistics)
               .sort((a, b) => REGION_CUSTOMERS.findIndex(r => r.region === a.name) - REGION_CUSTOMERS.findIndex(r => r.region === b.name))
               .map(region => {
+              const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === region.name;
               const isFull = isRegionFull(region.name);
 
               return (
                 <Card
                   key={region.name}
                   className={`${
+                    isSteveBlocking ? 'border-red-500 bg-red-950/10 ring-2 ring-red-500/40' :
                     isFull ? 'border-muted bg-muted/20' : 'border-primary/30 bg-primary/5'
                   }`}
                 >
@@ -659,6 +675,11 @@ export const LogisticsPhase = () => {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <h4 className="font-semibold">{region.name}</h4>
+                          {isSteveBlocking && (
+                            <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-[10px] flex items-center gap-1 font-bold [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
+                              <SteveIcon size={12} /> BLOCKED
+                            </Badge>
+                          )}
                           {isFull && (
                             <Badge variant="secondary">Full</Badge>
                           )}

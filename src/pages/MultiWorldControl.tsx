@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { RulesAdjustmentPanel } from '@/components/dashboard/RulesAdjustmentPanel';
 import {
   Globe,
   FastForward,
@@ -24,7 +26,8 @@ import {
   ShieldAlert,
   ArrowLeft,
   Eye,
-  Trophy
+  Trophy,
+  Sliders
 } from 'lucide-react';
 import { calculateTeamTotalScore } from '@/types/game';
 import { cn, removeUndefined, safeIsoString } from '@/lib/utils';
@@ -369,6 +372,25 @@ function ensureWorldRoundDataAndBotSales(gameState: GameState): GameState {
         </div>
 
         <div className="flex items-center gap-3">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 gap-1.5 font-bold"
+              >
+                <Sliders className="h-4 w-4" />
+                Rules Adjustments
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Facilitator Rules Engine</DialogTitle>
+              </DialogHeader>
+              <RulesAdjustmentPanel />
+            </DialogContent>
+          </Dialog>
+
           <Button
             variant="outline"
             size="sm"

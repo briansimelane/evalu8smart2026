@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useMemo } from 'react';
 
 import { useSession } from '@/contexts/SessionContext';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import { PhaseLockCard } from './PhaseLockCard';
 
 export const ImprovementPhase = () => {
@@ -22,6 +23,8 @@ export const ImprovementPhase = () => {
   const [allocations, setAllocations] = useState<Record<number, string>>({});
   const [nextRoundCards, setNextRoundCards] = useState<ImprovementCardData[]>([]);
   const [isAllocated, setIsAllocated] = useState(false);
+
+  const isImprovementActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'improvement_card_usage_options', currentTeamId);
 
   // Compute availableCards in real time from Firestore gameState (with fallback matching Viewer logic)
   const availableCards = useMemo(() => {
@@ -564,51 +567,49 @@ export const ImprovementPhase = () => {
       )}
 
       {/* Available Cards Display */}
-      {activePhase === 'improvement' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Available Improvement Cards</CardTitle>
-            <CardDescription>
-              {availableCards.length} cards available for this round
-              {teamsWithImprovement.length === 0 && " (all teams will receive product cards)"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {availableCards.map((card, cardIndex) => {
-                const allocatedTeam = allocations[card.id];
-                const team = gameState.teams.find(t => t.id === allocatedTeam);
-                
-                return (
-                  <div
-                    key={card.id}
-                    className={`p-4 border rounded-lg transition-all ${
-                      allocatedTeam ? 'opacity-50 border-primary' : ''
-                    }`}
-                  >
-                    <div className="text-center space-y-3">
-                      <div className="font-semibold text-sm">Card {cardIndex + 1}</div>
-                      <div className="flex justify-center gap-2">
-                        <div className="flex items-center justify-center p-3 rounded-lg bg-white border-2 border-gray-300">
-                          {getIconElement(card.icon1)}
-                        </div>
-                        <div className="flex items-center justify-center p-3 rounded-lg bg-white border-2 border-gray-300">
-                          {getIconElement(card.icon2)}
-                        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Available Improvement Cards — Round {gameState.currentRound}</CardTitle>
+          <CardDescription>
+            {availableCards.length} improvement cards available for selection in Round {gameState.currentRound}
+            {teamsWithImprovement.length === 0 && " (all teams will receive product cards)"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {availableCards.map((card, cardIndex) => {
+              const allocatedTeam = allocations[card.id];
+              const team = gameState.teams.find(t => t.id === allocatedTeam);
+              
+              return (
+                <div
+                  key={card.id}
+                  className={`p-4 border rounded-lg transition-all ${
+                    allocatedTeam ? 'opacity-50 border-primary' : ''
+                  }`}
+                >
+                  <div className="text-center space-y-3">
+                    <div className="font-semibold text-sm">Card {cardIndex + 1} ({card.icon1} & {card.icon2})</div>
+                    <div className="flex justify-center gap-2">
+                      <div className="flex items-center justify-center p-3 rounded-lg bg-white border-2 border-gray-300">
+                        {getIconElement(card.icon1)}
                       </div>
-                      {team && (
-                        <Badge variant="default" className="text-xs">
-                          {team.name}
-                        </Badge>
-                      )}
+                      <div className="flex items-center justify-center p-3 rounded-lg bg-white border-2 border-gray-300">
+                        {getIconElement(card.icon2)}
+                      </div>
                     </div>
+                    {team && (
+                      <Badge variant="default" className="text-xs">
+                        {team.name}
+                      </Badge>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Allocated Cards Summary (Round Decisions & Claims) */}
       {(() => {

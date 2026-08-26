@@ -664,7 +664,10 @@ export const FacilitatorHub: React.FC = () => {
                             <div className="flex gap-2 justify-end">
                               <Button
                                 size="sm"
-                                onClick={() => navigate(`/class/${cls.id}`)}
+                                onClick={() => {
+                                  selectClass(cls.id);
+                                  navigate(`/class/${cls.id}`);
+                                }}
                                 className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 h-8 text-xs font-semibold"
                               >
                                 <ExternalLink className="h-3.5 w-3.5" />

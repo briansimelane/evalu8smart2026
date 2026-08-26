@@ -3,10 +3,12 @@ import { GameState, Team, TeamLogisticsProgress } from '@/types/game';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { GameIcon } from '@/components/dashboard/GameIcon';
+import { SteveIcon } from '@/components/dashboard/SteveIcon';
 import { MapPin, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
 import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn } from '@/lib/utils';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -189,17 +191,36 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
     presentTeamObjs.some(t => m.tierFor(`office:${regionName}:${t.id}`) > 0) ||
     inProgressTeamObjs.some(({ team }) => m.tierFor(`logistics:${regionName}:${team.id}`) > 0);
 
+  const isSteveRuleActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'steve_event_blocker');
+  const isSteveBlocking = isSteveRuleActive && gameState.advancedState?.steve?.activeRegion === regionName;
+
   return (
     <div 
       style={{ width: `${cardWidth}px` }}
       className={cn(
         "absolute h-[165px] bg-white rounded-xl p-3 flex flex-col justify-between backdrop-blur-sm group hover:border-slate-500 hover:shadow-xl transition-all duration-300 text-slate-900 z-10 mo-dimmable",
-        cardChanged 
-          ? "border-2 border-amber-500 ring-4 ring-amber-400/90 ring-offset-2 shadow-2xl scale-105 z-30 font-bold" 
-          : "border border-slate-300 shadow-md"
+        isSteveBlocking
+          ? "border-2 border-red-600 shadow-2xl z-30 font-bold"
+          : cardChanged 
+            ? "border-2 border-amber-500 ring-4 ring-amber-400/90 ring-offset-2 shadow-2xl scale-105 z-30 font-bold" 
+            : "border border-slate-300 shadow-md"
       )}
       data-changed={cardChanged ? '1' : undefined}
     >
+      {/* Horizontal Steve Blocker Banner (Sits across card without covering logistics cost, offices, or customers; flashes 3 times then stops) */}
+      {isSteveBlocking && (
+        <div className="absolute inset-x-2 top-[42px] h-8 bg-red-600/95 text-white rounded-lg shadow-lg px-2.5 flex items-center justify-between z-30 border border-white backdrop-blur-xs [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
+          <div className="flex items-center gap-1.5 truncate">
+            <SteveIcon size={18} />
+            <span className="font-extrabold text-xs uppercase tracking-wider truncate">
+              BLOCKED
+            </span>
+          </div>
+          <span className="text-[10px] text-red-100 font-mono font-bold bg-red-800/90 px-2 py-0.5 rounded whitespace-nowrap">
+            5 Wildcards Needed
+          </span>
+        </div>
+      )}
       {/* Corner Control Points Badges */}
       {controlLeaders && (controlLeaders.first || controlLeaders.second) && (
         <div className="absolute -top-3.5 -right-3.5 flex items-center gap-1 z-30">

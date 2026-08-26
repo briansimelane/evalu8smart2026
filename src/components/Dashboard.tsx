@@ -16,9 +16,13 @@ import { LogisticsPhase } from './dashboard/LogisticsPhase';
 import { FinancialsPhase } from './dashboard/FinancialsPhase';
 import { SummaryMap } from './dashboard/SummaryMap';
 import { GameSettingsDialog } from './dashboard/GameSettingsDialog';
+import { RulesAdjustmentPanel } from './dashboard/RulesAdjustmentPanel';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { TeamSubmissionStatus } from './dashboard/TeamSubmissionStatus';
 import { CombinationsGuideModal } from './dashboard/CombinationsGuideModal';
-import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation } from 'lucide-react';
+import { DirectivesClaimModal } from './dashboard/DirectivesClaimModal';
+import { TeamPerksBanner } from './dashboard/TeamPerksBanner';
+import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation, Sliders } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -523,6 +527,21 @@ export const Dashboard = () => {
                     </AlertDialog>
                     
                     <CombinationsGuideModal triggerLabel="Combinations Guide" triggerVariant="outline" triggerClassName="text-xs h-8 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 font-bold" />
+                    <DirectivesClaimModal triggerClassName="text-xs h-8 border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 font-bold gap-1" />
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="text-xs h-8 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 font-bold gap-1" title="Rules Adjustments">
+                          <Sliders className="h-3.5 w-3.5" />
+                          Rules
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle>Facilitator Rules Engine</DialogTitle>
+                        </DialogHeader>
+                        <RulesAdjustmentPanel />
+                      </DialogContent>
+                    </Dialog>
                     <GameSettingsDialog />
                     <Button
                       variant="default"
@@ -552,8 +571,9 @@ export const Dashboard = () => {
         </div>
       </header>
 
-      <main className="container mx-auto py-4 sm:py-5">
+      <main className="container mx-auto py-4 sm:py-5 space-y-4">
         {!isDemo && <CeoClaimBar />}
+        <TeamPerksBanner />
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <div className="max-w-5xl mx-auto space-y-2">
             {/* Top Row - Game Phases */}

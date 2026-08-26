@@ -1,6 +1,7 @@
 import { GameState } from '@/types/game';
 import { REGION_CUSTOMERS, Customer } from '@/data/customers';
 import { ICON_EFFECTS } from '@/data/improvements';
+import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 
 export function calculatePlanStats(
   gameState: GameState,
@@ -49,11 +50,53 @@ export function calculatePlanStats(
     }
   });
 
-  const calculatedPrice = Math.max(2, Math.min(8, 5 + selectedComboData.price + improvementPriceEffect));
-  const productsAvailable = (selectedComboData.products || 0) + improvementProductEffect;
-  const improvementPoints = selectedComboData.improve || 0;
-  const researchPoints = (selectedComboData.research || 0) + improvementResearchEffect;
-  const logisticsPoints = (selectedComboData.logistics || 0) + improvementLogisticsEffect;
+  const isMinPriceActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'min_product_price', teamId);
+  const isMaxPriceActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'max_product_price', teamId);
+
+  const minPrice = isMinPriceActive ? Number(getRuleValueForTeam(gameState?.ruleAdjustments, 'min_product_price', teamId, 2)) : 0;
+  const maxPrice = isMaxPriceActive ? Number(getRuleValueForTeam(gameState?.ruleAdjustments, 'max_product_price', teamId, 8)) : 99;
+
+  const rawCalculatedPrice = 5 + selectedComboData.price + improvementPriceEffect;
+  const calculatedPrice = Math.max(minPrice, Math.min(maxPrice, rawCalculatedPrice));
+  let productsAvailable = (selectedComboData.products || 0) + improvementProductEffect;
+  let improvementPoints = selectedComboData.improve || 0;
+  let researchPoints = (selectedComboData.research || 0) + improvementResearchEffect;
+  let logisticsPoints = (selectedComboData.logistics || 0) + improvementLogisticsEffect;
+
+  // WILDCARD TOKENS SYSTEM (Advanced Rule 2)
+  const isWildcardsRuleActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'wildcard_tokens_system', teamId);
+  if (isWildcardsRuleActive) {
+    const teamWildcards = gameState?.advancedState?.wildcards?.[teamId];
+    const roundConvs = teamWildcards?.conversionsByRound?.[activeRound] || {};
+    productsAvailable += Number(roundConvs.product || 0);
+    researchPoints += Number(roundConvs.research || 0);
+    logisticsPoints += Number(roundConvs.logistics || 0);
+    improvementPoints += Number(roundConvs.improvement || 0);
+  }
+
+  // PERMANENT TECH PERKS: Battery (+1 logistics on price increase) & GPS (+5 products bonus)
+  const isTechPerksActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_permanent_benefits', teamId);
+  const completedTechs = gameState?.teamResearchProgress?.[teamId]?.completedTechnologies || [];
+
+  if (isTechPerksActive) {
+    // Battery perk: +1 logistics if price effect is positive (or price > 5)
+    const hasBattery = completedTechs.some(t => String(t).toUpperCase().includes('BATTERY'));
+    if (hasBattery) {
+      if (improvementPriceEffect > 0 || selectedComboData.price > 0 || calculatedPrice > 5) {
+        logisticsPoints += 1;
+      }
+    }
+
+    // GPS perk: +5 products bonus whenever GPS technology is completed
+    const hasGPS = completedTechs.some(t => String(t).toUpperCase().includes('GPS'));
+    if (hasGPS) {
+      productsAvailable += 5;
+    }
+
+    // Wifi perk: add carried over products from previous round
+    const carriedOver = gameState?.advancedState?.carriedOverProducts?.[teamId] || 0;
+    productsAvailable += carriedOver;
+  }
 
   return {
     calculatedPrice,
@@ -68,15 +111,27 @@ export function getTechnologyCostForTeam(gameState: GameState, teamId: string, t
   const tech = gameState.technologies[technologyName];
   let baseCost = tech ? tech.researchCost : 4;
   
+  const isWifiGpsActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'wifi_gps_cost', teamId);
+  const wifiGpsCostVal = isWifiGpsActive ? Number(getRuleValueForTeam(gameState?.ruleAdjustments, 'wifi_gps_cost', teamId, 3)) : 3;
+
   if (technologyName.toUpperCase().includes('WIFI')) {
-    baseCost = 3;
+    baseCost = wifiGpsCostVal;
   } else if (technologyName.toUpperCase().includes('GPS')) {
-    baseCost = 3;
+    baseCost = wifiGpsCostVal;
+  }
+
+  // PERMANENT TECH PERKS: Gaming (-1 research/patent cost)
+  const isTechPerksActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_permanent_benefits', teamId);
+  const completedTechs = gameState?.teamResearchProgress?.[teamId]?.completedTechnologies || [];
+  if (isTechPerksActive && (completedTechs.includes('Gaming') || completedTechs.includes('GAMING'))) {
+    baseCost = Math.max(1, baseCost - 1);
   }
 
   const patentHolder = gameState.patents[technologyName];
   if (patentHolder && patentHolder !== teamId) {
-    return Math.max(0, baseCost - 1);
+    const isDiscountActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_patent_discount', teamId);
+    const discount = isDiscountActive ? Number(getRuleValueForTeam(gameState?.ruleAdjustments, 'tech_patent_discount', teamId, 1)) : 0;
+    return Math.max(0, baseCost - discount);
   }
   return baseCost;
 }
@@ -85,7 +140,13 @@ export function canExpandToRegion(gameState: GameState, teamId: string, regionNa
   const region = gameState.regionLogistics[regionName];
   if (!region) return false;
 
-  // Check if region is full of teams
+  // STEVE RULE: If Steve is blocking this region, no team can expand into it!
+  const isSteveActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'steve_event_blocker', teamId);
+  if (isSteveActive && gameState?.advancedState?.steve?.activeRegion === regionName) {
+    return false;
+  }
+
+  // Check if region is full based on region slots (maxTeams)
   if (region.teamsPresent.length >= region.maxTeams && !region.teamsPresent.includes(teamId)) {
     return false;
   }
@@ -93,8 +154,11 @@ export function canExpandToRegion(gameState: GameState, teamId: string, regionNa
   const teamProgress = gameState.teamLogisticsProgress[teamId];
   if (!teamProgress) return false;
 
-  // Already has presence
-  if (teamProgress.regionsWithPresence.includes(regionName)) return true;
+  // MULTIPLE OFFICES RULE: If team already has presence, can build additional office if slots available
+  const isMultiOfficeActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'multiple_offices_per_region', teamId);
+  if (teamProgress.regionsWithPresence.includes(regionName)) {
+    return isMultiOfficeActive ? region.teamsPresent.length < region.maxTeams : true;
+  }
 
   // Check connectivity
   return region.connectedRegions.some(connected =>

@@ -8,6 +8,7 @@ import { REGION_CUSTOMERS } from '@/data/customers';
 import { TEAM_COLORS } from '@/data/combinations';
 import { Trophy, Medal, Truck, DollarSign, Package, Globe, Microscope, Users, Sparkles, CheckCircle } from 'lucide-react';
 import { GameIcon } from './GameIcon';
+import { SteveIcon } from './SteveIcon';
 import { getControlPointsForRegion } from '@/data/control';
 import { getControlPointsForTeamInRound, getTeamPatentPoints, getInitialScore } from '@/types/game';
 
@@ -272,17 +273,26 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {regionalBreakdown.map(({ region, customers, teamsPresent, salesDetails, firstPlace, secondPlace, customerStatus }) => {
+            const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === region;
+
             return (
-              <Card key={region} className="border-border/80 shadow-md hover:border-primary/50 transition-colors flex flex-col">
+              <Card key={region} className={`border-border/80 shadow-md hover:border-primary/50 transition-colors flex flex-col ${isSteveBlocking ? 'ring-2 ring-red-500/50 bg-red-950/10' : ''}`}>
                 <CardHeader className="pb-3 border-b border-border/40 bg-muted/30">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base font-bold flex items-center gap-2">
                       <GameIcon type="logistics" size="xs" />
                       {region}
                     </CardTitle>
-                    <Badge variant="outline" className="text-xs font-semibold">
-                      {teamsPresent.length} Teams Present
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      {isSteveBlocking && (
+                        <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-[10px] flex items-center gap-1 font-bold [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
+                          <SteveIcon size={12} /> BLOCKED
+                        </Badge>
+                      )}
+                      <Badge variant="outline" className="text-xs font-semibold">
+                        {teamsPresent.length} Teams Present
+                      </Badge>
+                    </div>
                   </div>
                 </CardHeader>
 
