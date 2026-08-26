@@ -9,7 +9,7 @@ import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn } from '@/lib/utils';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
-import { isSteveBlocking } from '@/lib/rules';
+import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -192,7 +192,7 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
     presentTeamObjs.some(t => m.tierFor(`office:${regionName}:${t.id}`) > 0) ||
     inProgressTeamObjs.some(({ team }) => m.tierFor(`logistics:${regionName}:${team.id}`) > 0);
 
-  const isSteveBlockingRegion = isSteveBlocking(gameState, regionName);
+  const isSteveBlockingRegion = isSteveBlockingRule(gameState, regionName);
 
   return (
     <div 
@@ -208,7 +208,7 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
       data-changed={cardChanged ? '1' : undefined}
     >
       {/* Horizontal Steve Blocker Banner (Sits across card without covering logistics cost, offices, or customers; flashes 3 times then stops) */}
-      {isSteveBlocking && (
+      {isSteveBlockingRegion && (
         <div className="absolute inset-x-2 top-[42px] h-8 bg-red-600/95 text-white rounded-lg shadow-lg px-2.5 flex items-center justify-between z-30 border border-white backdrop-blur-xs [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
           <div className="flex items-center gap-1.5 truncate">
             <SteveIcon size={18} />

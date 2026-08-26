@@ -126,6 +126,7 @@ export interface RegionLogistics {
   connectedRegions: string[];
   teamsPresent: string[]; // teamIds with full presence
   teamProgress: Record<string, number>; // teamId -> logistics points invested
+  officeCounts?: Record<string, number>; // teamId -> number of offices in this region
 }
 
 export interface TeamLogisticsProgress {

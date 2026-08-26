@@ -21,7 +21,7 @@ interface RegionControlResult {
 }
 
 import { PhaseLockCard } from './PhaseLockCard';
-import { isSteveBlocking } from '@/lib/rules';
+import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 
 interface ControlPhaseProps {
   onEndGame?: () => void;
@@ -107,10 +107,14 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
         return a.leftmostPosition - b.leftmostPosition;
       });
 
-      // Count teams present in this region (logistics presence)
+      // Count teams present / occupied office slots in this region
       const regionLogisticsData = gameState.regionLogistics?.[region];
-      const teamsPresentCount = regionLogisticsData?.teamsPresent?.length || 0;
-      const teamsCountForControl = teamsPresentCount > 0 ? teamsPresentCount : teamSales.length;
+      const isMultiOfficeActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'multiple_offices_per_region');
+      const totalOffices = Object.values(regionLogisticsData?.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
+      const occupiedSlots = isMultiOfficeActive
+        ? (totalOffices || regionLogisticsData?.teamsPresent?.length || teamSales.length)
+        : (regionLogisticsData?.teamsPresent?.length || teamSales.length);
+      const teamsCountForControl = Math.min(5, Math.max(1, occupiedSlots));
 
       const result: RegionControlResult = { region };
 
@@ -311,7 +315,7 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                   const isMyFirst = result.firstPlace?.teamId === currentTeamId && currentRole === 'STUDENT';
                   const isMySecond = result.secondPlace?.teamId === currentTeamId && currentRole === 'STUDENT';
 
-                  const isSteveBlockingRegion = isSteveBlocking(gameState, result.region);
+                  const isSteveBlockingRegion = isSteveBlockingRule(gameState, result.region);
 
                   return (
                     <Card key={result.region} className={`border-primary/20 ${(isMyFirst || isMySecond) ? 'ring-2 ring-warning/50 bg-warning/[0.02]' : ''} ${isSteveBlockingRegion ? 'border-red-500 bg-red-950/10' : ''}`}>
@@ -320,7 +324,7 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                           <span className="flex items-center gap-2">
                             <Trophy className="h-4 w-4 text-warning" />
                             {result.region}
-                            {isSteveBlocking && (
+                            {isSteveBlockingRegion && (
                               <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-[10px] flex items-center gap-1 font-bold [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
                                 <SteveIcon size={12} /> BLOCKED
                               </Badge>

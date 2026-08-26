@@ -276,4 +276,58 @@ describe('Facilitator Rules Engine Test Suite', () => {
     expect(score.directiveBonus).toBe(0); // Gated OFF -> 0 VPs
     expect(score.totalScore).toBe(3); // Only initial green score 3
   });
+
+  test('multiple_offices_per_region allows present team to build additional offices up to maxTeams limit', () => {
+    const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['multiple_offices_per_region'].enabled = true;
+
+    const mockGameState: Partial<GameState> = {
+      ruleAdjustments: rulesState,
+      regionLogistics: {
+        'USA': {
+          name: 'USA',
+          logisticsCost: 2,
+          maxTeams: 3,
+          connectedRegions: [],
+          teamsPresent: ['team_1', 'team_2'],
+          teamProgress: {},
+          officeCounts: { 'team_1': 2, 'team_2': 1 } // Total 3 offices occupied
+        }
+      },
+      teamLogisticsProgress: {
+        'team_1': { teamId: 'team_1', regionsWithPresence: ['USA'], regionInvestments: { 'USA': 3 } }
+      }
+    };
+
+    // Region USA has maxTeams 3 and 3 total offices occupied -> canExpandToRegion returns false because full
+    const canBuildMore = canExpandToRegion(mockGameState as GameState, 'team_1', 'USA');
+    expect(canBuildMore).toBe(false);
+
+    // If only 2 offices occupied, team_1 can build additional office
+    mockGameState.regionLogistics!['USA'].officeCounts = { 'team_1': 1, 'team_2': 1 };
+    const canBuildWhenSpace = canExpandToRegion(mockGameState as GameState, 'team_1', 'USA');
+    expect(canBuildWhenSpace).toBe(true);
+  });
+
+  test('isSteveBlocking returns true ONLY for the active Steve region when rule is enabled', () => {
+    const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['steve_event_blocker'].enabled = true;
+
+    const mockGameState: Partial<GameState> = {
+      ruleAdjustments: rulesState,
+      regionLogistics: {
+        'Canada': { name: 'Canada', logisticsCost: 2, maxTeams: 3, connectedRegions: ['USA'], teamsPresent: ['team_1'], teamProgress: {} },
+        'USA': { name: 'USA', logisticsCost: 2, maxTeams: 3, connectedRegions: [], teamsPresent: ['team_1'], teamProgress: {} }
+      },
+      teamLogisticsProgress: {
+        'team_1': { teamId: 'team_1', regionsWithPresence: ['USA', 'Canada'], regionInvestments: {} }
+      },
+      advancedState: {
+        steve: { activeRegion: 'Canada', roundIntroduced: 3 }
+      }
+    };
+
+    expect(canExpandToRegion(mockGameState as GameState, 'team_1', 'Canada')).toBe(false); // Canada is blocked!
+    expect(canExpandToRegion(mockGameState as GameState, 'team_1', 'USA')).toBe(true); // USA is unblocked and has presence!
+  });
 });

@@ -1,9 +1,10 @@
 import React from 'react';
 import { useGame } from '@/contexts/GameContext';
+import { useSession } from '@/contexts/SessionContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Sparkles, Package, Microscope, Truck, Wrench, Plus, Minus } from 'lucide-react';
+import { Sparkles, Package, Microscope, Truck, Wrench, Plus, Minus, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { SteveIcon } from './SteveIcon';
 
@@ -15,6 +16,7 @@ interface WildcardsWidgetProps {
 
 export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
   const { gameState, allocateWildcardToken, contributeWildcardsToSteve, moveSteve } = useGame();
+  const { isReadOnly } = useSession();
   const currentRound = gameState?.currentRound || 1;
 
   const isWildcardsActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'wildcard_tokens_system', teamId);
@@ -49,6 +51,10 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
     delta: number
   ) => {
     if (!gameState) return;
+    if (isReadOnly) {
+      toast.error("Only your team's CEO can allocate wildcard tokens.");
+      return;
+    }
     allocateWildcardToken(teamId, targetType, delta);
     if (delta > 0) {
       toast.success(`Converted 1 Wildcard Token to +1 ${targetType.toUpperCase()} icon!`, {
@@ -61,6 +67,10 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
 
   const handleAdjustSteve = (delta: number) => {
     if (!gameState) return;
+    if (isReadOnly) {
+      toast.error("Only your team's CEO can allocate wildcard tokens.");
+      return;
+    }
     if (!steveData.activeRegion && delta > 0) {
       toast.info('Steve is not currently blocking any region.');
       return;
@@ -79,7 +89,14 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-          <CardTitle className="text-sm font-bold">Wildcard Tokens</CardTitle>
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            Wildcard Tokens
+            {isReadOnly && (
+              <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-300 font-semibold gap-1">
+                <Lock className="h-2.5 w-2.5" /> Read Only (CEO Only)
+              </Badge>
+            )}
+          </CardTitle>
         </div>
         <div className="flex items-center gap-1.5 font-mono">
           <Badge variant="outline" className="text-xs border-indigo-300 dark:border-indigo-500/40 text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 font-bold">
@@ -88,8 +105,15 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
         </div>
       </div>
 
-      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-        Spend <span className="font-bold text-slate-700 dark:text-slate-200">up to 2 tokens/action</span> (Product, Research, Logistics), <span className="font-bold text-slate-700 dark:text-slate-200">up to 1 token</span> for Improvement. Steve unblocking is capped at <span className="font-bold text-slate-700 dark:text-slate-200">5 tokens total</span> jointly across teams.
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+        <div>
+          Spend <span className="font-bold text-slate-700 dark:text-slate-200">up to 2 tokens/action</span> (Product, Research, Logistics), <span className="font-bold text-slate-700 dark:text-slate-200">up to 1 token</span> for Improvement. Steve unblocking is capped at <span className="font-bold text-slate-700 dark:text-slate-200">5 tokens total</span> jointly across teams.
+        </div>
+        {isReadOnly && (
+          <span className="text-[10px] italic text-amber-600 dark:text-amber-400 font-medium shrink-0">
+            *Only your team's CEO can allocate tokens.
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
@@ -103,7 +127,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.product || 0) <= 0}
+              disabled={isReadOnly || (currentRoundConvs.product || 0) <= 0}
               onClick={() => handleAdjustToken('product', -1)}
               className="h-5 w-5 p-0 text-[10px] text-red-400 hover:text-red-300 hover:bg-slate-700"
             >
@@ -113,7 +137,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.product || 0) >= 2 || remainingTokens <= 0}
+              disabled={isReadOnly || (currentRoundConvs.product || 0) >= 2 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('product', 1)}
               className="h-5 w-5 p-0 text-[10px] text-emerald-400 hover:text-emerald-300 hover:bg-slate-700"
             >
@@ -132,7 +156,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.improvement || 0) <= 0}
+              disabled={isReadOnly || (currentRoundConvs.improvement || 0) <= 0}
               onClick={() => handleAdjustToken('improvement', -1)}
               className="h-5 w-5 p-0 text-[10px] text-red-600"
             >
@@ -142,7 +166,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.improvement || 0) >= 1 || remainingTokens <= 0}
+              disabled={isReadOnly || (currentRoundConvs.improvement || 0) >= 1 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('improvement', 1)}
               className="h-5 w-5 p-0 text-[10px] text-amber-600"
             >
@@ -161,7 +185,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.research || 0) <= 0}
+              disabled={isReadOnly || (currentRoundConvs.research || 0) <= 0}
               onClick={() => handleAdjustToken('research', -1)}
               className="h-5 w-5 p-0 text-[10px] text-red-600"
             >
@@ -171,7 +195,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.research || 0) >= 2 || remainingTokens <= 0}
+              disabled={isReadOnly || (currentRoundConvs.research || 0) >= 2 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('research', 1)}
               className="h-5 w-5 p-0 text-[10px] text-purple-600"
             >
@@ -190,7 +214,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.logistics || 0) <= 0}
+              disabled={isReadOnly || (currentRoundConvs.logistics || 0) <= 0}
               onClick={() => handleAdjustToken('logistics', -1)}
               className="h-5 w-5 p-0 text-[10px] text-red-600"
             >
@@ -200,7 +224,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.logistics || 0) >= 2 || remainingTokens <= 0}
+              disabled={isReadOnly || (currentRoundConvs.logistics || 0) >= 2 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('logistics', 1)}
               className="h-5 w-5 p-0 text-[10px] text-blue-600"
             >
@@ -218,7 +242,9 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
           {steveTotalContributed >= 5 && steveData.activeRegion ? (
             <Button
               size="sm"
+              disabled={isReadOnly}
               onClick={() => {
+                if (isReadOnly) return;
                 moveSteve(null);
                 toast.success(`Steve cleared! ${steveData.activeRegion} is now unblocked.`);
               }}
@@ -231,7 +257,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={teamSteveContrib <= 0}
+                disabled={isReadOnly || teamSteveContrib <= 0}
                 onClick={() => handleAdjustSteve(-1)}
                 className="h-5 w-5 p-0 text-[10px] text-red-600"
               >
@@ -241,7 +267,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={remainingTokens <= 0 || !steveData.activeRegion || steveTotalContributed >= 5}
+                disabled={isReadOnly || remainingTokens <= 0 || !steveData.activeRegion || steveTotalContributed >= 5}
                 onClick={() => handleAdjustSteve(1)}
                 className="h-5 w-5 p-0 text-[10px] text-emerald-600"
               >

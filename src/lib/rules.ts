@@ -164,27 +164,33 @@ export function getTechnologyCostForTeam(gameState: GameState, teamId: string, t
   return baseCost;
 }
 
-export function canExpandToRegion(gameState: GameState, teamId: string, regionName: string): boolean {
-  const region = gameState.regionLogistics[regionName];
-  if (!region) return false;
-
-  // STEVE RULE: If Steve is blocking this region for this team, no expansion!
+export function canExpandToRegion(
+  gameState: GameState,
+  teamId: string,
+  regionName: string
+): boolean {
   if (isSteveBlocking(gameState, regionName, teamId)) {
     return false;
   }
 
-  // Check if region is full based on region slots (maxTeams)
-  if (region.teamsPresent.length >= region.maxTeams && !region.teamsPresent.includes(teamId)) {
-    return false;
-  }
+  if (!gameState || !gameState.regionLogistics) return false;
+  const region = gameState.regionLogistics[regionName];
+  if (!region) return false;
 
-  const teamProgress = gameState.teamLogisticsProgress[teamId];
+  const teamProgress = gameState.teamLogisticsProgress?.[teamId];
   if (!teamProgress) return false;
 
   // MULTIPLE OFFICES RULE: If team already has presence, can build additional office if slots available
   const isMultiOfficeActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'multiple_offices_per_region', teamId);
+  const totalOffices = Object.values(region.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
+  const occupiedSlots = region.officeCounts ? totalOffices : region.teamsPresent.length;
+
   if (teamProgress.regionsWithPresence.includes(regionName)) {
-    return isMultiOfficeActive ? region.teamsPresent.length < region.maxTeams : true;
+    return isMultiOfficeActive ? occupiedSlots < region.maxTeams : true;
+  }
+
+  if (occupiedSlots >= region.maxTeams) {
+    return false;
   }
 
   // Check connectivity

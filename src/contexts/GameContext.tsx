@@ -689,7 +689,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const tData = currentRoundData?.teamData[team.id];
         if (tData) {
           const produced = tData.productsProduced || 0;
-          const sumSold = tData.customersSold ? tData.customersSold.length : 0;
+          const sumSold = tData.salesByRegion
+            ? Object.values(tData.salesByRegion).reduce((a, b) => a + Number(b), 0)
+            : (tData.customersSold ? tData.customersSold.length : 0);
           const unsold = Math.max(0, produced - sumSold);
           const wifiActive = isRuleActiveForTeam(prev.ruleAdjustments, 'tech_permanent_benefits', team.id)
                              && hasTech(prev, team.id, 'WIFI');
@@ -1240,17 +1242,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
 
       // Validate expansion constraints (must be connected and not full)
-      const isAlreadyPresent = teamProgress.regionsWithPresence.includes(regionName);
-      if (!isAlreadyPresent) {
-        if (region.teamsPresent.length >= region.maxTeams) {
-          console.error(`Region ${regionName} is full (${region.teamsPresent.length}/${region.maxTeams} teams)`);
-          return prev;
-        }
-
-        if (!canExpandToRegionRule(prev, teamId, regionName)) {
-          console.error(`Region ${regionName} is not connected to any region with team presence for team ${teamId}`);
-          return prev;
-        }
+      if (!canExpandToRegionRule(prev, teamId, regionName)) {
+        console.error(`Expansion into ${regionName} not allowed for team ${teamId}`);
+        return prev;
       }
 
       const currentInvestment = teamProgress.regionInvestments[regionName] || 0;
@@ -1261,18 +1255,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
         [teamId]: newInvestment
       };
 
+      const baseCost = region.logisticsCost || 2;
+      const isMultiOfficeActive = isRuleActiveForTeam(prev.ruleAdjustments, 'multiple_offices_per_region', teamId);
+      const officeCost = isMultiOfficeActive ? Math.max(1, baseCost - 1) : baseCost;
+      const alreadyHasPresence = region.teamsPresent.includes(teamId);
+      const currentOffices = region.officeCounts?.[teamId] || (alreadyHasPresence ? 1 : 0);
+
+      const officesEarned = Math.floor(newInvestment / officeCost);
+      const updatedOfficeCount = Math.max(currentOffices, officesEarned);
+      const hasPresence = officesEarned >= 1;
+
       const updatedRegion = {
         ...region,
-        teamProgress: updatedRegionProgress
+        teamProgress: updatedRegionProgress,
+        officeCounts: {
+          ...(region.officeCounts || {}),
+          [teamId]: updatedOfficeCount
+        },
+        teamsPresent: (hasPresence && !alreadyHasPresence)
+          ? [...region.teamsPresent, teamId]
+          : region.teamsPresent
       };
-
-      // Check if team has completed the region
-      const hasPresence = newInvestment >= region.logisticsCost;
-      const alreadyHasPresence = region.teamsPresent.includes(teamId);
-
-      if (hasPresence && !alreadyHasPresence) {
-        updatedRegion.teamsPresent = [...region.teamsPresent, teamId];
-      }
 
       const updatedTeamProgress: TeamLogisticsProgress = {
         ...teamProgress,
@@ -1699,18 +1702,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
           });
 
           const regionLogisticsData = prev.regionLogistics[region];
-          const teamsPresentCount = regionLogisticsData?.teamsPresent.length || 0;
+          const isMultiOfficeActive = isRuleActiveForTeam(prev.ruleAdjustments, 'multiple_offices_per_region');
+          const totalOffices = Object.values(regionLogisticsData?.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
+          const occupiedSlots = isMultiOfficeActive
+            ? (totalOffices || regionLogisticsData?.teamsPresent.length || 0)
+            : (regionLogisticsData?.teamsPresent.length || 0);
+          const scaleCount = Math.min(5, Math.max(1, occupiedSlots));
 
           if (teamSales.length > 0) {
             const firstTeamId = teamSales[0].teamId;
-            const firstPoints = getControlPointsForRegion(region, teamsPresentCount, 'first');
+            const firstPoints = getControlPointsForRegion(region, scaleCount, 'first');
             teamControlPoints[firstTeamId][region] = firstPoints;
             teamControlTotals[firstTeamId] += firstPoints;
           }
 
           if (teamSales.length > 1) {
             const secondTeamId = teamSales[1].teamId;
-            const secondPoints = getControlPointsForRegion(region, teamsPresentCount, 'second');
+            const secondPoints = getControlPointsForRegion(region, scaleCount, 'second');
             teamControlPoints[secondTeamId][region] = secondPoints;
             teamControlTotals[secondTeamId] += secondPoints;
           }
