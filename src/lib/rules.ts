@@ -163,6 +163,46 @@ export function getTechnologyCostForTeam(gameState: GameState, teamId: string, t
   return baseCost;
 }
 
+// completed offices a team holds in a region
+export function getCompletedOffices(region: any | undefined, teamId: string): number {
+  if (!region) return 0;
+  return region.officeCounts?.[teamId] ?? (region.teamsPresent?.includes(teamId) ? 1 : 0);
+}
+
+// logistics investment already consumed by a team's completed offices
+function investmentConsumedByCompleted(baseCost: number, completed: number): number {
+  if (completed <= 0) return 0;
+  const discounted = Math.max(1, baseCost - 1);
+  return baseCost + (completed - 1) * discounted; // 1st office = baseCost, each extra = baseCost-1
+}
+
+// true if the team has leftover investment toward an as-yet-incomplete office
+export function isTeamBuildingOffice(region: any | undefined, teamId: string, baseCost: number): boolean {
+  if (!region) return false;
+  const invested = region.teamProgress?.[teamId] || 0;
+  const completed = getCompletedOffices(region, teamId);
+  return invested > investmentConsumedByCompleted(baseCost, completed);
+}
+
+// occupancy = completed offices + reserved (in-progress) slots, across all teams
+export function getRegionOccupancy(gameState: GameState | null | undefined, regionName: string): number {
+  const region = gameState?.regionLogistics?.[regionName];
+  if (!region) return 0;
+  const baseCost = region.logisticsCost || 2;
+  const teamIds = new Set<string>([
+    ...Object.keys(region.officeCounts || {}),
+    ...Object.keys(region.teamProgress || {}),
+    ...(region.teamsPresent || []),
+  ]);
+  let occupancy = 0;
+  teamIds.forEach(teamId => {
+    const completed = getCompletedOffices(region, teamId);
+    const building = isTeamBuildingOffice(region, teamId, baseCost) ? 1 : 0;
+    occupancy += completed + building;
+  });
+  return occupancy;
+}
+
 export function canExpandToRegion(
   gameState: GameState,
   teamId: string,
@@ -179,22 +219,22 @@ export function canExpandToRegion(
   const teamProgress = gameState.teamLogisticsProgress?.[teamId];
   if (!teamProgress) return false;
 
-  // MULTIPLE OFFICES RULE: If team already has presence, can build additional office if slots available
   const isMultiOfficeActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'multiple_offices_per_region', teamId);
-  const totalOffices = Object.values(region.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
-  const occupiedSlots = isMultiOfficeActive
-    ? (region.officeCounts ? totalOffices : region.teamsPresent.length)
-    : region.teamsPresent.length;
+  const occupancy = getRegionOccupancy(gameState, regionName);
+  const baseCost = region.logisticsCost || 2;
+  const teamHoldsSlot = getCompletedOffices(region, teamId) > 0
+    || isTeamBuildingOffice(region, teamId, baseCost);
 
   if (teamProgress.regionsWithPresence.includes(regionName)) {
-    return isMultiOfficeActive ? occupiedSlots < region.maxTeams : true;
+    // present team: may build another office only if a slot is free
+    return isMultiOfficeActive ? occupancy < region.maxTeams : true;
   }
 
-  if (occupiedSlots >= region.maxTeams) {
-    return false;
-  }
+  // a team already mid-building here may always continue toward completing that office
+  if (teamHoldsSlot) return true;
 
-  // Check connectivity
+  // brand-new team: needs a free slot AND connectivity
+  if (occupancy >= region.maxTeams) return false;
   return region.connectedRegions.some(connected =>
     teamProgress.regionsWithPresence.includes(connected)
   );

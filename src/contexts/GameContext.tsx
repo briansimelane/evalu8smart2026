@@ -11,7 +11,7 @@ import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
 import { removeUndefined } from '@/lib/utils';
-import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech, getLogisticsCostForTeam } from '@/lib/rules';
+import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech, getLogisticsCostForTeam, getRegionOccupancy, getCompletedOffices, isTeamBuildingOffice } from '@/lib/rules';
 import { getDefaultRuleAdjustments, isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 
 export interface GameContextType {
@@ -1275,10 +1275,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       let updatedOfficeCount: number;
       if (isMultiOfficeActive) {
-        // Slots occupied by OTHER teams in this region
-        const otherOffices = Object.entries(region.officeCounts || {})
-          .reduce((sum, [tid, n]) => sum + (tid === teamId ? 0 : Number(n)), 0);
-        const maxForThisTeam = Math.max(0, region.maxTeams - otherOffices);
+        // Slots occupied by OTHER teams (completed + in-progress building) in this region
+        const baseCostForClamp = region.logisticsCost || 2;
+        let otherOccupancy = 0;
+        const otherTeamIds = new Set<string>([
+          ...Object.keys(region.officeCounts || {}),
+          ...Object.keys(region.teamProgress || {}),
+          ...(region.teamsPresent || []),
+        ]);
+        otherTeamIds.forEach(tid => {
+          if (tid === teamId) return;
+          const completedOther = getCompletedOffices(region, tid);
+          const buildingOther = isTeamBuildingOffice(region, tid, baseCostForClamp) ? 1 : 0;
+          otherOccupancy += completedOther + buildingOther;
+        });
+        const maxForThisTeam = Math.max(0, region.maxTeams - otherOccupancy);
         // Never exceed available slots; never drop below what the team already holds.
         updatedOfficeCount = Math.min(Math.max(currentOffices, officesEarnedRaw), maxForThisTeam);
       } else {
@@ -1353,25 +1364,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const canExpandToRegion = useCallback((teamId: string, regionName: string): boolean => {
     if (!effectiveGameState) return false;
-
-    const region = effectiveGameState.regionLogistics[regionName];
-    if (!region) return false;
-
-    // Check if region is full
-    if (region.teamsPresent.length >= region.maxTeams) return false;
-
-    const teamProgress = effectiveGameState.teamLogisticsProgress[teamId];
-    if (!teamProgress) return false;
-
-    // Check if team already has presence
-    if (teamProgress.regionsWithPresence.includes(regionName)) return true;
-
-    // Check if region is connected to any region where team has presence
-    const hasConnectedPresence = region.connectedRegions.some(connectedRegion =>
-      teamProgress.regionsWithPresence.includes(connectedRegion)
-    );
-
-    return hasConnectedPresence;
+    return canExpandToRegionRule(effectiveGameState, teamId, regionName);
   }, [effectiveGameState]);
 
   const getAvailableRegionsForTeam = useCallback((teamId: string): RegionLogistics[] => {
@@ -1388,7 +1381,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const region = effectiveGameState.regionLogistics[regionName];
     if (!region) return false;
 
-    return region.teamsPresent.length >= region.maxTeams;
+    return getRegionOccupancy(effectiveGameState, regionName) >= region.maxTeams;
   }, [effectiveGameState]);
 
   const getCombinations = useCallback((): Combination[] => {

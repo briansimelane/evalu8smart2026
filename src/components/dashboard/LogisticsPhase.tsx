@@ -15,7 +15,7 @@ import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
-import { isSteveBlocking as isSteveBlockingRule, getLogisticsCostForTeam } from '@/lib/rules';
+import { isSteveBlocking as isSteveBlockingRule, getLogisticsCostForTeam, getRegionOccupancy, getCompletedOffices } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -419,13 +419,12 @@ export const LogisticsPhase = () => {
                 const effectiveCost = getLogisticsCostForTeam(gameState, selectedTeam, region.name);
                 const isDiscountedCost = isMultiOfficeActive && status === 'present' && effectiveCost < baseCost;
 
-                const totalOfficesInRegion = Object.values(region.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
-                const occupiedSlots = isMultiOfficeActive
-                  ? (region.officeCounts ? totalOfficesInRegion : region.teamsPresent.length)
-                  : region.teamsPresent.length;
+                const occupancy = getRegionOccupancy(gameState, region.name);
+                const occupiedSlots = occupancy;
                 const hasSpaceForMoreOffices = occupiedSlots < region.maxTeams;
 
-                const myOfficeCount = region.officeCounts?.[selectedTeam] || (status === 'present' ? 1 : 0);
+                const completedCountInRegion = Object.values(region.officeCounts || {}).reduce((a, b) => a + Number(b), 0) || region.teamsPresent.length;
+                const myCompleted = getCompletedOffices(region, selectedTeam);
 
                 let neededForNextOffice: number;
                 let remainder: number;
@@ -476,7 +475,7 @@ export const LogisticsPhase = () => {
                                   <Badge variant="default" className="gap-1 bg-emerald-600 text-white font-bold">
                                     <CheckCircle className="h-3 w-3" />
                                     {isMultiOfficeActive
-                                      ? `Present (${myOfficeCount} ${myOfficeCount === 1 ? 'Office' : 'Offices'})`
+                                      ? `Present (${myCompleted} ${myCompleted === 1 ? 'Office' : 'Offices'})`
                                       : 'Present'}
                                   </Badge>
                                 )}
@@ -504,7 +503,7 @@ export const LogisticsPhase = () => {
                                   return (
                                     <span className="flex items-center gap-1 font-medium">
                                       <Users className="h-3.5 w-3.5 text-indigo-500" />
-                                      Offices: <strong className="text-foreground">{myOfficeCount} yours · {occupiedSlots}/{region.maxTeams} filled</strong>
+                                      Offices: <strong className="text-foreground">{myCompleted} yours · {occupancy}/{region.maxTeams} slots filled</strong>
                                     </span>
                                   );
                                 })() : (
@@ -518,11 +517,11 @@ export const LogisticsPhase = () => {
                                 <span className="text-xs font-semibold text-muted-foreground">Control Points:</span>
                                 <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-bold gap-1 px-2 py-0.5">
                                   <Trophy className="h-3 w-3 text-warning" />
-                                  1st Place: +{getControlPointsForRegion(region.name, Math.min(5, Math.max(1, occupiedSlots)), 'first')} pts
+                                  1st Place: +{getControlPointsForRegion(region.name, Math.min(5, Math.max(1, completedCountInRegion)), 'first')} pts
                                 </Badge>
-                                {getControlPointsForRegion(region.name, Math.min(5, Math.max(1, occupiedSlots)), 'second') > 0 && (
+                                {getControlPointsForRegion(region.name, Math.min(5, Math.max(1, completedCountInRegion)), 'second') > 0 && (
                                   <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30 text-xs font-bold gap-1 px-2 py-0.5">
-                                    2nd Place: +{getControlPointsForRegion(region.name, Math.min(5, Math.max(1, occupiedSlots)), 'second')} pts
+                                    2nd Place: +{getControlPointsForRegion(region.name, Math.min(5, Math.max(1, completedCountInRegion)), 'second')} pts
                                   </Badge>
                                 )}
                               </div>

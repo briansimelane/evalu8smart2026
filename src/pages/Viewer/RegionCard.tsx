@@ -9,7 +9,7 @@ import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn } from '@/lib/utils';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
-import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
+import { isSteveBlocking as isSteveBlockingRule, isTeamBuildingOffice, getCompletedOffices } from '@/lib/rules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -138,19 +138,23 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
     return list;
   }, [teamsPresent, gameState.teams, regionConfig?.officeCounts, isMultiOfficeActive]);
 
-  // In-progress teams (invested logistics points > 0, not yet present)
+  // In-progress teams & building offices (reserving slot)
   const inProgressTeamObjs = useMemo(() => {
-    return gameState.teams
-      .filter(team => {
-        if (teamsPresent.includes(team.id)) return false;
-        const invested = regionConfig?.teamProgress?.[team.id] || 0;
-        return invested > 0 && invested < logisticsCost;
-      })
-      .map(team => {
-        const invested = regionConfig?.teamProgress?.[team.id] || 0;
-        return { team, invested };
-      });
-  }, [gameState.teams, teamsPresent, regionConfig?.teamProgress, logisticsCost]);
+    const list: Array<{ team: Team; invested: number }> = [];
+    gameState.teams.forEach(team => {
+      const invested = regionConfig?.teamProgress?.[team.id] || 0;
+      if (invested <= 0) return;
+
+      if (isTeamBuildingOffice(regionConfig, team.id, logisticsCost)) {
+        const completed = getCompletedOffices(regionConfig, team.id);
+        const discounted = Math.max(1, logisticsCost - 1);
+        const consumed = completed <= 0 ? 0 : (logisticsCost + (completed - 1) * discounted);
+        const unconsumedInvested = Math.max(0, invested - consumed);
+        list.push({ team, invested: unconsumedInvested });
+      }
+    });
+    return list;
+  }, [gameState.teams, regionConfig, logisticsCost]);
 
   // Remaining empty office slots
   const occupiedSlotCount = presentOfficeObjs.length + inProgressTeamObjs.length;
