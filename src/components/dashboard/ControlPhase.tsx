@@ -22,6 +22,7 @@ interface RegionControlResult {
 
 import { PhaseLockCard } from './PhaseLockCard';
 import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 interface ControlPhaseProps {
   onEndGame?: () => void;
