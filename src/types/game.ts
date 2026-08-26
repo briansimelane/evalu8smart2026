@@ -163,6 +163,7 @@ export interface SteveState {
   activeRegion: string | null; // region name blocked by Steve
   roundIntroduced?: number; // defaults to round 3
   wildcardsContributed?: Record<string, number>; // teamId -> tokens contributed toward 5
+  wildcardsContributedByRound?: Record<number, Record<string, number>>; // roundNumber -> teamId -> tokens contributed
 }
 
 export interface TeamWildcardTokens {
