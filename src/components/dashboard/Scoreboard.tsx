@@ -83,8 +83,9 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                 const totalRegionalSales = teamRoundData.customersSold ? teamRoundData.customersSold.length : 0;
                 const lostProducts = Math.max(0, teamRoundData.productsProduced - totalRegionalSales);
                 const roundControl = getControlPointsForTeamInRound(currentRoundData, team.id, gameState);
-                const patentBonus = getTeamPatentPoints(team.id, gameState.patents, gameState.currentRound, gameState.gameEnded, gameState.currentRound);
-                const overallValue = calculateTeamTotalScore(team.id, gameState.currentRound, gameState).totalScore;
+                const scoreBreakdown = calculateTeamTotalScore(team.id, gameState.currentRound, gameState);
+                const overallValue = scoreBreakdown.totalScore;
+                const totalPatentsAndBonuses = scoreBreakdown.patentBonus + scoreBreakdown.wildcardBonus + scoreBreakdown.directiveBonus;
 
                 return (
                   <div
@@ -158,8 +159,8 @@ export const Scoreboard = ({ onEditTeamData }: ScoreboardProps) => {
                         <Badge variant="secondary" className="text-sm px-2.5 py-1 text-warning dark:text-warning font-semibold">
                           Control: +{roundControl} pts
                         </Badge>
-                        <Badge variant="secondary" className="text-sm px-2.5 py-1 text-muted-foreground dark:text-purple-400 font-semibold">
-                          Patent: +{patentBonus} pts
+                        <Badge variant="secondary" className="text-sm px-2.5 py-1 text-muted-foreground dark:text-purple-400 font-semibold" title={`Patents: ${scoreBreakdown.patentBonus} pts, Wildcards: ${scoreBreakdown.wildcardBonus} pts, Directives: ${scoreBreakdown.directiveBonus} pts`}>
+                          Patents & Bonuses: +{totalPatentsAndBonuses} pts
                         </Badge>
                         <Badge variant="default" className="text-sm px-2.5 py-1 font-bold bg-primary text-white">
                           Total Score: {overallValue.toLocaleString()} pts

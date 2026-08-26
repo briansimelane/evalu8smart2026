@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, Wifi, Gamepad2, Battery, Radio, Signal, AlertTriangle } from 'lucide-react';
+import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, Wifi, Gamepad2, Battery, Radio, Signal, AlertTriangle, UserCheck } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { GameIcon } from './GameIcon';
 import { SteveIcon } from './SteveIcon';
@@ -28,7 +28,7 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
 };
 
 export const LogisticsPhase = () => {
-  const { gameState, allocateLogistics, getTeamLogisticsProgress, canExpandToRegion, isRegionFull, calculatePlayOrder } = useGame();
+  const { gameState, allocateLogistics, finishLogisticsTurn, getTeamLogisticsProgress, canExpandToRegion, isRegionFull, calculatePlayOrder } = useGame();
   const { currentRole, currentTeamId, isReadOnly, selectTeam } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'expansion');
@@ -168,6 +168,51 @@ export const LogisticsPhase = () => {
     setAllocations({});
   };
 
+  const handleEndTurn = () => {
+    const targetTeamId = selectedTeam || playOrder.find(t => {
+      const icons = currentRoundData?.teamData[t.id]?.logisticsIcons || 0;
+      const spent = (gameState?.logisticsAllocatedByRound || {})[currentRound]?.[t.id] || 0;
+      return icons > 0 && spent < icons;
+    })?.id;
+
+    if (!targetTeamId) return;
+
+    if (totalAllocated > 0 && availableThisTeam >= totalAllocated) {
+      Object.entries(allocations).forEach(([regionName, points]) => {
+        if (points > 0) {
+          allocateLogistics(targetTeamId, regionName, points);
+        }
+      });
+    }
+
+    const targetTeamObj = gameState?.teams.find(t => t.id === targetTeamId);
+    const targetTeamName = targetTeamObj?.name || 'Team';
+    finishLogisticsTurn(targetTeamId);
+    setAllocations({});
+
+    const nextTeam = playOrder.find(t => {
+      if (t.id === targetTeamId) return false;
+      const icons = currentRoundData?.teamData[t.id]?.logisticsIcons || 0;
+      const spent = (gameState?.logisticsAllocatedByRound || {})[currentRound]?.[t.id] || 0;
+      return icons > 0 && spent < icons;
+    });
+
+    if (nextTeam) {
+      setSelectedTeam(nextTeam.id);
+      selectTeam(nextTeam.id);
+      toast({
+        title: "Turn Ended",
+        description: `Ended turn for ${targetTeamName}. Advanced to ${nextTeam.name}.`
+      });
+    } else {
+      setSelectedTeam('');
+      toast({
+        title: "Turn Ended",
+        description: `Ended turn for ${targetTeamName}. All teams finished logistics turns.`
+      });
+    }
+  };
+
   const getRegionStatus = (regionName: string) => {
     if (!selectedTeam) return 'unavailable';
     
@@ -270,17 +315,31 @@ export const LogisticsPhase = () => {
                 <Trophy className="h-4 w-4 text-warning" />
                 <span>Play Order & Team Logistics Icons</span>
               </h3>
-              {activeTurnTeam ? (
-                <Badge className="bg-primary/15 text-cyan-700 dark:text-cyan-300 border border-primary/30 text-xs font-bold gap-1.5 animate-pulse">
-                  <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
-                  Current Turn: {activeTurnTeam.name}
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
-                  <CheckCircle className="h-3 w-3" />
-                  Logistics Complete
-                </Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {activeTurnTeam ? (
+                  <Badge className="bg-primary/15 text-cyan-700 dark:text-cyan-300 border border-primary/30 text-xs font-bold gap-1.5 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
+                    Current Turn: {activeTurnTeam.name}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    Logistics Complete
+                  </Badge>
+                )}
+                {currentRole !== 'STUDENT' && activeTurnTeam && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleEndTurn}
+                    className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5 h-7 text-xs"
+                  >
+                    <UserCheck className="h-3.5 w-3.5" />
+                    End Team Turn
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
@@ -534,7 +593,7 @@ export const LogisticsPhase = () => {
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs">
                             <span className="text-muted-foreground font-medium">
-                              {status === 'present' ? `Office #${myOfficeCount + 1} Progress` : 'Office Progress'}
+                              {status === 'present' ? `Office #${myCompleted + 1} Progress` : 'Office Progress'}
                             </span>
                             <span className="font-mono font-bold">{remainder} / {currentTargetCost}</span>
                           </div>
@@ -609,7 +668,7 @@ export const LogisticsPhase = () => {
                             disabled={isReadOnlyMode}
                           />
                           <span className="text-xs text-muted-foreground font-medium">
-                            icons (need <strong className="text-foreground">{neededForNextOffice}</strong> more {status === 'present' ? `for Office #${myOfficeCount + 1}` : 'to complete'})
+                            icons (need <strong className="text-foreground">{neededForNextOffice}</strong> more {status === 'present' ? `for Office #${myCompleted + 1}` : 'to complete'})
                           </span>
                         </div>
                       ) : status === 'present' && isMultiOfficeActive && !hasSpaceForMoreOffices ? (
@@ -664,7 +723,7 @@ export const LogisticsPhase = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2 pt-4">
+          <div className="flex flex-wrap gap-2 pt-4">
             <Button
               onClick={handleConfirmAllocations}
               disabled={totalAllocated === 0 || totalAllocated > availableThisTeam || isReadOnlyMode}
@@ -672,6 +731,17 @@ export const LogisticsPhase = () => {
             >
               Confirm Allocation ({totalAllocated} icons)
             </Button>
+            {currentRole !== 'STUDENT' && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleEndTurn}
+                className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
+              >
+                <UserCheck className="h-4 w-4" />
+                End Team Turn
+              </Button>
+            )}
             <Button
               onClick={handleClear}
               variant="outline"

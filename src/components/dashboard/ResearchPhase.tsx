@@ -9,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Microscope, Trophy, CheckCircle, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, AlertCircle } from 'lucide-react';
+import { Microscope, Trophy, CheckCircle, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, AlertCircle, UserCheck } from 'lucide-react';
 import { GameIcon } from './GameIcon';
 import { toast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -26,6 +26,7 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
 import { PATENT_POINTS, getPatentPointsForTech } from '@/types/game';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 export const ResearchPhase = () => {
   const { gameState, allocateResearch, getTeamResearchProgress, getTechnologyCostForTeam, calculatePlayOrder } = useGame();
@@ -163,15 +164,18 @@ export const ResearchPhase = () => {
     if (newCompletions.length > 0) {
       newCompletions.forEach(([tech]) => {
         const patentOwner = gameState.patents[tech];
+        const isGpsBonus = tech.toUpperCase().includes('GPS') && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam);
+        const bonusMsg = isGpsBonus ? ' +5 products added to your production immediately for sale this round!' : '';
+
         if (patentOwner === selectedTeam) {
           toast({
             title: "Patent Awarded! 🏆",
-            description: `${tech} research completed! You own the patent.`,
+            description: `${tech} research completed! You own the patent.${bonusMsg}`,
           });
         } else {
           toast({
             title: "Research Completed! ✅",
-            description: `${tech} research completed!`,
+            description: `${tech} research completed!${bonusMsg}`,
           });
         }
       });
@@ -212,6 +216,46 @@ export const ResearchPhase = () => {
   };
 
   const handleClearAll = () => {
+    setAllocations({});
+  };
+
+  const handleEndTurn = () => {
+    if (!selectedTeam) return;
+
+    if (totalAllocated > 0 && remainingIcons >= 0) {
+      Object.entries(allocations).forEach(([tech, points]) => {
+        if (points > 0) {
+          allocateResearch(selectedTeam, tech, points);
+        }
+      });
+    }
+
+    const teamIcons = currentRoundData?.teamData[selectedTeam]?.researchIcons || 0;
+    const updatedAllocations = { ...allocatedThisRound, [selectedTeam]: teamIcons };
+    setAllocatedThisRound(updatedAllocations);
+
+    const nextTeam = playOrder.find(t => {
+      const icons = currentRoundData?.teamData[t.id]?.researchIcons || 0;
+      const spent = updatedAllocations[t.id] || 0;
+      return spent < icons;
+    });
+
+    const nextId = nextTeam ? nextTeam.id : '';
+    if (nextId) {
+      setSelectedTeam(nextId);
+      selectTeam(nextId);
+      toast({
+        title: "Turn Order",
+        description: `Ended turn for ${selectedTeamObj?.name || 'team'}. Advanced to ${nextTeam?.name}.`
+      });
+    } else {
+      setSelectedTeam('');
+      toast({
+        title: "Turn Order",
+        description: `Ended turn for ${selectedTeamObj?.name || 'team'}. All teams completed research turns.`
+      });
+    }
+
     setAllocations({});
   };
 
@@ -437,23 +481,36 @@ export const ResearchPhase = () => {
                 </div>
 
                 {selectedTeamObj && (
-                  <div className="bg-secondary/20 rounded-lg p-4 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: selectedTeamObj.color }}
-                      />
-                      <h3 className="font-semibold">{selectedTeamObj.name}</h3>
-                      <Badge variant="outline">{getOrdinalSuffix(getPlayOrderRank(selectedTeam))} in order</Badge>
+                  <div className="bg-secondary/20 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-4 h-4 rounded-full"
+                          style={{ backgroundColor: selectedTeamObj.color }}
+                        />
+                        <h3 className="font-semibold">{selectedTeamObj.name}</h3>
+                        <Badge variant="outline">{getOrdinalSuffix(getPlayOrderRank(selectedTeam))} in order</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Available Research Icons: <span className="font-bold text-foreground">{availableResearchIcons}</span>
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Remaining: <span className={`font-bold ${remainingIcons < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                          {remainingIcons}
+                        </span>
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Available Research Icons: <span className="font-bold text-foreground">{availableResearchIcons}</span>
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Remaining: <span className={`font-bold ${remainingIcons < 0 ? 'text-destructive' : 'text-foreground'}`}>
-                        {remainingIcons}
-                      </span>
-                    </p>
+                    {currentRole !== 'STUDENT' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleEndTurn}
+                        className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5 shrink-0"
+                      >
+                        <UserCheck className="h-4 w-4" />
+                        End Team Turn
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -487,7 +544,7 @@ export const ResearchPhase = () => {
 
                 const patentHolderTeam = patentHolder ? gameState.teams.find(t => t.id === patentHolder) : undefined;
                 const isPatentOwner = patentHolder === selectedTeam;
-                const hasReducedCost = !!patentHolder && (!selectedTeam || !isPatentOwner);
+                const hasReducedCost = effectiveCost < baseCost;
 
                 return (
                   <Card
@@ -628,7 +685,7 @@ export const ResearchPhase = () => {
                     <span>Total Allocated</span>
                     <span className={remainingIcons < 0 ? 'text-destructive' : ''}>{totalAllocated} / {availableResearchIcons}</span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       onClick={handleConfirmAllocations}
                       disabled={totalAllocated === 0 || remainingIcons < 0 || isReadOnlyMode || (currentRole === 'STUDENT' && !isMyTurn)}
@@ -636,6 +693,17 @@ export const ResearchPhase = () => {
                     >
                       Confirm Allocations
                     </Button>
+                    {currentRole !== 'STUDENT' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleEndTurn}
+                        className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
+                      >
+                        <UserCheck className="h-4 w-4" />
+                        End Team Turn
+                      </Button>
+                    )}
                     <Button onClick={handleClearAll} variant="outline" disabled={isReadOnlyMode}>
                       Clear All
                     </Button>

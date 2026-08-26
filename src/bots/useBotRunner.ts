@@ -5,7 +5,7 @@ import { useDemoState } from '@/demo/DemoStateProvider';
 import { decidePlanning, decideResearch, decideLogistics, decideSales, decideImprovement } from './botEngine';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { toast } from 'sonner';
-import { calculatePlanStats } from '@/lib/rules';
+import { calculatePlanStats, hasTech } from '@/lib/rules';
 
 export function useBotRunner() {
   const { 
@@ -274,8 +274,15 @@ export function useBotRunner() {
           const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
           const chosenCustomerIds = decideSales(currentState, teamId, profile, difficulty, soldCustomers);
 
+          const hasNfc = hasTech(currentState, teamId, 'NFC');
+          const productsProduced = currentTeamData.productsProduced || 0;
+          const regionalCount = chosenCustomerIds.length;
+          const remainingForNfc = Math.max(0, productsProduced - regionalCount);
+          const nfcSalesUnits = hasNfc ? Math.min(3, remainingForNfc) : 0;
+          const totalUnitsSold = regionalCount + nfcSalesUnits;
+
           const teamPrice = currentTeamData.price;
-          const revenue = teamPrice * chosenCustomerIds.length;
+          const revenue = teamPrice * totalUnitsSold;
           const salesByRegion: Record<string, number> = {};
           
           chosenCustomerIds.forEach(cid => {
@@ -288,6 +295,7 @@ export function useBotRunner() {
           const finalSalesData = {
             ...currentTeamData,
             customersSold: chosenCustomerIds,
+            nfcSalesUnits,
             salesByRegion,
             revenue,
             totalMoney: (currentTeamData.totalMoney || 0) + revenue

@@ -114,14 +114,14 @@ export function calculatePlanStats(
 
     // GPS perk: +5 products bonus awarded ONCE per game (DR-1)
     const hasGPS = hasTech(gameState, teamId, 'GPS');
-    const gpsBonusClaimed = Boolean(gameState?.advancedState?.gpsBonusClaimed?.[teamId]);
-    if (hasGPS && !gpsBonusClaimed) {
+    const gpsClaimed = isGpsBonusClaimed(gameState, teamId);
+    if (hasGPS && !gpsClaimed) {
       productsAvailable += 5;
     }
 
     // Wifi perk: add carried over products from previous round
     if (hasTech(gameState, teamId, 'WIFI')) {
-      const carriedOver = gameState?.advancedState?.carriedOverProducts?.[teamId] || 0;
+      const carriedOver = getCarriedOverProductsForTeam(gameState, teamId);
       productsAvailable += carriedOver;
     }
   }
@@ -133,6 +133,59 @@ export function calculatePlanStats(
     researchPoints,
     logisticsPoints
   };
+}
+
+export function getCarriedOverProductsForTeam(gameState: GameState | null | undefined, teamId: string): number {
+  if (!gameState || !teamId) return 0;
+  const wifiActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', teamId) && hasTech(gameState, teamId, 'WIFI');
+  if (!wifiActive) return 0;
+
+  const currentRound = gameState.currentRound || 1;
+  const prevRoundData = gameState.rounds?.find(r => r.roundNumber === currentRound - 1);
+  const tData = prevRoundData?.teamData?.[teamId];
+  if (tData) {
+    const produced = tData.productsProduced || 0;
+    const totalSold = (tData.customersSold?.length || 0) + (tData.nfcSalesUnits || 0);
+    return Math.max(0, produced - totalSold);
+  }
+
+  return gameState.advancedState?.carriedOverProducts?.[teamId] || 0;
+}
+
+export function isGpsBonusClaimed(gameState: GameState | null | undefined, teamId: string): boolean {
+  if (!gameState || !teamId) return false;
+  const isTechPerksActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', teamId);
+  if (!isTechPerksActive) return false;
+
+  const completedTechs = gameState.teamResearchProgress?.[teamId]?.completedTechnologies || [];
+  const hasGPS = completedTechs.some(t => String(t).toUpperCase().includes('GPS'));
+  if (!hasGPS) return false;
+
+  const isFlagged = Boolean(gameState.advancedState?.gpsBonusClaimed?.[teamId]);
+  if (!isFlagged) return false;
+
+  const rounds = gameState.rounds || [];
+  if (rounds.length === 0) return true;
+
+  const currentRound = gameState.currentRound || 1;
+  const currentPhase = (gameState.currentPhase || 'planning').toLowerCase();
+
+  if (currentPhase === 'planning') {
+    const currentRoundPlanSubmitted = !!rounds.find(r => r.roundNumber === currentRound)?.teamData?.[teamId]?.productsProduced;
+    if (!currentRoundPlanSubmitted) {
+      const previousPlansAfterGps = rounds.filter(r => {
+        if (r.roundNumber >= currentRound) return false;
+        const tData = r.teamData?.[teamId];
+        return tData && tData.productsProduced !== undefined && r.roundNumber > 1;
+      });
+
+      if (previousPlansAfterGps.length === 0) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 export function getTechnologyCostForTeam(gameState: GameState, teamId: string, technologyName: string): number {

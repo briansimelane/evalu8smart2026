@@ -10,7 +10,7 @@ import { Trophy, Medal, Truck, DollarSign, Package, Globe, Microscope, Users, Sp
 import { GameIcon } from './GameIcon';
 import { SteveIcon } from './SteveIcon';
 import { getControlPointsForRegion } from '@/data/control';
-import { getControlPointsForTeamInRound, getTeamPatentPoints, getInitialScore } from '@/types/game';
+import { getControlPointsForTeamInRound, getTeamPatentPoints, getInitialScore, calculateTeamTotalScore } from '@/types/game';
 import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 
 interface SummaryMapProps {
@@ -61,8 +61,10 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
       }
 
       const roundScore = roundRevenue + roundControl;
-      const patentBonus = getTeamPatentPoints(team.id, gameState.patents, activeRoundNumber, gameState.gameEnded, gameState.currentRound);
-      const totalScore = startValue + roundRevenue + roundControl + cumulativeRevenue + cumulativeControl + patentBonus;
+      const scoreBreakdown = calculateTeamTotalScore(team.id, activeRoundNumber, gameState);
+      const patentBonus = scoreBreakdown.patentBonus;
+      const totalPatentsAndBonuses = scoreBreakdown.patentBonus + scoreBreakdown.wildcardBonus + scoreBreakdown.directiveBonus;
+      const totalScore = scoreBreakdown.totalScore;
       const techProgress = gameState.teamResearchProgress[team.id]?.completedTechnologies || [];
       const logisticsProgress = gameState.teamLogisticsProgress[team.id]?.regionsWithPresence || [];
 
@@ -75,6 +77,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
         roundSales,
         roundPrice,
         patentBonus,
+        totalPatentsAndBonuses,
         cumulativeRevenue, // Prior Rounds Revenue (Rounds 1..activeRound-1)
         cumulativeControl, // Prior Rounds Control (Rounds 1..activeRound-1)
         totalScore,
@@ -485,7 +488,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                   <TableHead className="text-right">Starting Value</TableHead>
                   <TableHead className="text-right" title="Revenue from rounds prior to current round">Prior Revenue</TableHead>
                   <TableHead className="text-right" title="Control points from rounds prior to current round">Prior Control</TableHead>
-                  <TableHead className="text-right font-semibold text-muted-foreground dark:text-purple-400">Patent Bonus</TableHead>
+                  <TableHead className="text-right font-semibold text-muted-foreground dark:text-purple-400">Patents & Bonuses</TableHead>
                   <TableHead className="text-right font-black">Total Score</TableHead>
                 </TableRow>
               </TableHeader>
@@ -516,7 +519,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                     <TableCell className="text-right">${item.cumulativeRevenue.toLocaleString()}</TableCell>
                     <TableCell className="text-right">+{item.cumulativeControl} pts</TableCell>
                     <TableCell className="text-right font-semibold text-muted-foreground dark:text-purple-400">
-                      +{item.patentBonus} pts
+                      +{item.totalPatentsAndBonuses} pts
                     </TableCell>
                     <TableCell className="text-right font-black text-lg text-primary">
                       {item.totalScore.toLocaleString()}

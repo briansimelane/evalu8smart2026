@@ -8,7 +8,8 @@ import { Trophy, Award, Sparkles, Zap } from 'lucide-react';
 import { SteveIcon } from './SteveIcon';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
-import { hasTech, isSteveBlocking } from '@/lib/rules';
+import { hasTech, isSteveBlocking, isGpsBonusClaimed, getCarriedOverProductsForTeam } from '@/lib/rules';
+import { getPatentPointsForTech } from '@/types/game';
 
 interface TeamPerksBannerProps {
   teamId?: string;
@@ -60,11 +61,12 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
 
   // 5. Tech perks
   const isGpsDone = hasTech(gameState, actingTeamId, 'GPS');
-  const isGpsClaimed = Boolean(gameState.advancedState?.gpsBonusClaimed?.[actingTeamId]);
+  const isGpsClaimed = isGpsBonusClaimed(gameState, actingTeamId);
   const isBatteryDone = hasTech(gameState, actingTeamId, 'BATTERY');
   const isGamingDone = hasTech(gameState, actingTeamId, 'GAMING');
   const isWifiDone = hasTech(gameState, actingTeamId, 'WIFI');
-  const carriedOver = gameState.advancedState?.carriedOverProducts?.[actingTeamId] || 0;
+  const isNfcDone = hasTech(gameState, actingTeamId, 'NFC');
+  const carriedOver = getCarriedOverProductsForTeam(gameState, actingTeamId);
 
   return (
     <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-3.5 shadow-sm rounded-xl space-y-2.5">
@@ -126,7 +128,7 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
               {teamPatents.map(p => (
                 <Badge key={p} className="bg-amber-500 text-white font-semibold text-[11px] shadow-sm">
-                  🏆 {p} (+3 VPs End Game)
+                  🏆 {p} (+{getPatentPointsForTech(p)} VPs End Game)
                 </Badge>
               ))}
             </div>
@@ -206,12 +208,17 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
                     ⚡ Wifi (+{carriedOver} Carried Over Products)
                   </Badge>
                 )}
+                {isNfcDone && (
+                  <Badge variant="outline" className="border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-[10px] font-semibold">
+                    ⚡ NFC (Sell up to 3 direct products without region placement)
+                  </Badge>
+                )}
               </>
             ) : (
               <span className="text-slate-400 dark:text-slate-500 text-[11px]">Tech Perks rule disabled.</span>
             )}
 
-            {!steveBlocked && (!isTechPerksActive || (!isGpsDone && !isBatteryDone && !isGamingDone && (!isWifiDone || carriedOver === 0))) && (
+            {!steveBlocked && (!isTechPerksActive || (!isGpsDone && !isBatteryDone && !isGamingDone && !isNfcDone && (!isWifiDone || carriedOver === 0))) && (
               <span className="text-slate-500 dark:text-slate-400 text-[11px]">No active events or tech perks.</span>
             )}
           </div>

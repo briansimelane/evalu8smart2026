@@ -3,6 +3,7 @@ import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'fire
 import { db } from '@/lib/firebase';
 import { GameState, SimulationClass, calculateTeamTotalScore, getInitialScore } from '@/types/game';
 import { toValidDate } from '@/lib/utils';
+import { getTechnologyCostForTeam as getTechnologyCostForTeamRule } from '@/lib/rules';
 
 export function useGameBoardState(classCode: string) {
   const [classData, setClassData] = useState<SimulationClass | null>(null);
@@ -142,22 +143,5 @@ export function calculatePlayOrderForState(gameState: GameState, roundNumber: nu
 
 export function getTechnologyCostForTeamForState(gameState: GameState, teamId: string, technology: string): number {
   if (!gameState) return 4;
-  
-  const tech = gameState.technologies[technology];
-  let baseCost = tech ? tech.researchCost : 4;
-  
-  if (technology.toUpperCase().includes('WIFI')) {
-    baseCost = 3;
-  } else if (technology.toUpperCase().includes('GPS')) {
-    baseCost = 3;
-  }
-
-  const patentHolder = gameState.patents[technology];
-  
-  // If patent exists and it's not this team, reduce cost by 1
-  if (patentHolder && patentHolder !== teamId) {
-    return Math.max(0, baseCost - 1);
-  }
-  
-  return baseCost;
+  return getTechnologyCostForTeamRule(gameState, teamId, technology);
 }

@@ -191,12 +191,12 @@ export const SimulationReport = () => {
 
                   return teamRounds.map(round => {
                     const data = round.teamData[team.id];
-                    const totalCustomersSold = data.customersSold?.length || 0;
-                    const lostProducts = data.productsProduced - totalCustomersSold;
+                    const totalCustomersSold = (data.customersSold?.length || 0) + (data.nfcSalesUnits || 0);
+                    const lostProducts = Math.max(0, data.productsProduced - totalCustomersSold);
                     const roundControl = getControlPointsForTeamInRound(round, team.id, gameState);
-                    const patentBonus = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber, gameState.gameEnded, gameState.currentRound);
                     const scoreBreakdown = calculateTeamTotalScore(team.id, round.roundNumber, gameState);
                     const overallValue = scoreBreakdown.totalScore;
+                    const totalPatentsAndBonusesMobile = scoreBreakdown.patentBonus + scoreBreakdown.wildcardBonus + scoreBreakdown.directiveBonus;
                     const isExpanded = expandedRounds[`${team.id}-${round.roundNumber}`];
 
                     return (
@@ -239,7 +239,7 @@ export const SimulationReport = () => {
                           <div className="text-xs text-muted-foreground flex gap-2">
                             <span>Sold: <strong>{totalCustomersSold}</strong></span>
                             <span>Lost: <strong className="text-destructive">{lostProducts}</strong></span>
-                            <span className="text-purple-400">Patent: <strong>+{patentBonus} pts</strong></span>
+                            <span className="text-purple-400">Patents & Bonuses: <strong>+{totalPatentsAndBonusesMobile} pts</strong></span>
                           </div>
                           <Button
                             variant="ghost"
@@ -370,7 +370,7 @@ export const SimulationReport = () => {
                       <TableHead className="text-right">
                         <div className="flex flex-col items-end gap-1">
                           <Award className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs">Patent Bonus</span>
+                          <span className="text-xs">Patents & Bonuses</span>
                         </div>
                       </TableHead>
                       <TableHead className="text-right font-bold">
@@ -399,12 +399,12 @@ export const SimulationReport = () => {
 
                       return teamRounds.map(round => {
                         const data = round.teamData[team.id];
-                        const totalCustomersSold = data.customersSold?.length || 0;
-                        const lostProducts = data.productsProduced - totalCustomersSold;
+                        const totalCustomersSold = (data.customersSold?.length || 0) + (data.nfcSalesUnits || 0);
+                        const lostProducts = Math.max(0, data.productsProduced - totalCustomersSold);
                         const roundControl = getControlPointsForTeamInRound(round, team.id, gameState);
-                        const patentBonus = getTeamPatentPoints(team.id, gameState.patents, round.roundNumber, gameState.gameEnded, gameState.currentRound);
                         const scoreBreakdown = calculateTeamTotalScore(team.id, round.roundNumber, gameState);
                         const overallValue = scoreBreakdown.totalScore;
+                        const totalPatentsAndBonuses = scoreBreakdown.patentBonus + scoreBreakdown.wildcardBonus + scoreBreakdown.directiveBonus;
                         const isExpanded = expandedRounds[`${team.id}-${round.roundNumber}`];
 
                         // Get improvement cards available to this team in this round
@@ -438,8 +438,8 @@ export const SimulationReport = () => {
                               <TableCell className="text-right">${(data.revenue || 0).toLocaleString()}</TableCell>
                               <TableCell className="text-right">+{roundControl} pts</TableCell>
                               <TableCell className="text-right font-medium">{((data.revenue || 0) + roundControl).toLocaleString()} pts</TableCell>
-                              <TableCell className="text-right font-medium text-muted-foreground dark:text-purple-400">
-                                +{patentBonus} pts
+                              <TableCell className="text-right font-medium text-muted-foreground dark:text-purple-400" title={`Patents: ${scoreBreakdown.patentBonus} pts, Wildcards: ${scoreBreakdown.wildcardBonus} pts, Directives: ${scoreBreakdown.directiveBonus} pts`}>
+                                +{totalPatentsAndBonuses} pts
                               </TableCell>
                               <TableCell className="text-right font-bold">
                                 <div className="flex items-center justify-end gap-1">

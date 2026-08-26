@@ -11,7 +11,7 @@ import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
 import { removeUndefined } from '@/lib/utils';
-import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech, getLogisticsCostForTeam, getRegionOccupancy, getCompletedOffices, isTeamBuildingOffice } from '@/lib/rules';
+import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech, getLogisticsCostForTeam, getRegionOccupancy, getCompletedOffices, isTeamBuildingOffice, getTechnologyCostForTeam as getTechnologyCostForTeamRule } from '@/lib/rules';
 import { getDefaultRuleAdjustments, isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 
 export interface GameContextType {
@@ -37,6 +37,7 @@ export interface GameContextType {
   getTechnologyCostForTeam: (teamId: string, technology: string) => number;
   calculatePlayOrder: (roundNumber: number) => import('@/types/game').Team[];
   allocateLogistics: (teamId: string, regionName: string, points: number) => void;
+  finishLogisticsTurn: (teamId: string) => void;
   getTeamLogisticsProgress: (teamId: string) => TeamLogisticsProgress | undefined;
   canExpandToRegion: (teamId: string, regionName: string) => boolean;
   getAvailableRegionsForTeam: (teamId: string) => RegionLogistics[];
@@ -381,11 +382,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      // Stamp GPS bonus claimed once per game (DR-1)
+      // Stamp GPS bonus claimed once per game when submitting a production plan (DR-1)
+      const currentPhaseNorm = (prev.currentPhase || 'planning').toLowerCase();
+      const isPlanningSubmission = currentPhaseNorm === 'planning' || (data.productsProduced !== undefined && data.customersSold === undefined);
       const hasGPS = hasTech(prev, teamId, 'GPS');
       const alreadyClaimedGPS = Boolean(prev.advancedState?.gpsBonusClaimed?.[teamId]);
       let updatedAdvanced = prev.advancedState || {};
-      if (hasGPS && !alreadyClaimedGPS) {
+      if (isPlanningSubmission && hasGPS && !alreadyClaimedGPS) {
         updatedAdvanced = {
           ...updatedAdvanced,
           gpsBonusClaimed: {
@@ -1032,7 +1035,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       // Determine patents after potential completion by acting team
       const currentPatentHolder = prev.patents[technology];
-      const costForActingTeam = currentPatentHolder && currentPatentHolder !== teamId ? Math.max(0, baseCost - 1) : baseCost;
+      const costForActingTeam = getTechnologyCostForTeamRule(prev, teamId, technology);
 
       const newPatents = { ...prev.patents };
       const completedByActingTeam = newInvestment >= costForActingTeam;
@@ -1048,10 +1051,40 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (!currentPatentHolder) {
           newPatents[technology] = teamId;
         }
+
+        // GPS Perk: Add +5 products immediately to current round's production plan and stamp claimed (DR-1)
+        const isTechPerksActive = isRuleActiveForTeam(prev.ruleAdjustments, 'tech_permanent_benefits', teamId);
+        const isGpsTech = technology.toUpperCase().includes('GPS');
+        const alreadyClaimedGps = Boolean(prev.advancedState?.gpsBonusClaimed?.[teamId]);
+
+        if (isTechPerksActive && isGpsTech && !alreadyClaimedGps) {
+          const rounds = [...prev.rounds];
+          const rIndex = rounds.findIndex(r => r.roundNumber === currentRound);
+          if (rIndex !== -1 && rounds[rIndex].teamData[teamId]) {
+            const rData = { ...rounds[rIndex] };
+            const existingTeamData = rData.teamData[teamId];
+            const tData: TeamRoundData = {
+              ...existingTeamData,
+              productsProduced: (existingTeamData.productsProduced || 0) + 5,
+            };
+            rData.teamData = { ...rData.teamData, [teamId]: tData };
+            rounds[rIndex] = rData;
+            prev.rounds = rounds;
+          }
+
+          prev.advancedState = {
+            ...(prev.advancedState || {}),
+            gpsBonusClaimed: {
+              ...(prev.advancedState?.gpsBonusClaimed || {}),
+              [teamId]: true,
+            }
+          };
+        }
       }
 
       // After confirming patents (possibly newly awarded), re-evaluate completion for all teams
       const finalPatents = newPatents;
+      const stateWithPatents = { ...prev, patents: finalPatents, teamResearchProgress: currentTPAll };
 
       prev.teams.forEach(t => {
         const tp = currentTPAll[t.id] || {
@@ -1060,7 +1093,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           completedTechnologies: [],
         };
         const invested = tp.technologyInvestments[technology] || 0;
-        const cost = finalPatents[technology] && finalPatents[technology] !== t.id ? Math.max(0, baseCost - 1) : baseCost;
+        const cost = getTechnologyCostForTeamRule(stateWithPatents, t.id, technology);
         if (invested >= cost && !tp.completedTechnologies.includes(technology)) {
           tp.completedTechnologies = [...tp.completedTechnologies, technology];
         }
@@ -1161,24 +1194,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const getTechnologyCostForTeam = useCallback((teamId: string, technology: string) => {
     if (!effectiveGameState) return 0;
-    
-    const tech = effectiveGameState.technologies[technology];
-    let baseCost = tech ? tech.researchCost : 4;
-    
-    if (technology.toUpperCase().includes('WIFI')) {
-      baseCost = 3;
-    } else if (technology.toUpperCase().includes('GPS')) {
-      baseCost = 3;
-    }
-
-    const patentHolder = effectiveGameState.patents[technology];
-    
-    // If patent exists and it's not this team, reduce cost by 1
-    if (patentHolder && patentHolder !== teamId) {
-      return Math.max(0, baseCost - 1);
-    }
-    
-    return baseCost;
+    return getTechnologyCostForTeamRule(effectiveGameState, teamId, technology);
   }, [effectiveGameState]);
 
   const calculatePlayOrder = (roundNumber: number): Team[] => {
@@ -1342,6 +1358,30 @@ export function GameProvider({ children }: { children: ReactNode }) {
           [teamId]: updatedTeamProgress
         },
         logisticsAllocatedByRound: newRoundAllocations,
+      };
+    });
+  }, [effectiveGameState]);
+
+  const finishLogisticsTurn = useCallback((teamId: string) => {
+    if (!effectiveGameState) return;
+
+    mutateGameState(prev => {
+      if (!prev) return prev;
+
+      const currentRound = prev.currentRound;
+      const roundData = prev.rounds.find(r => r.roundNumber === currentRound);
+      const teamRoundData = roundData?.teamData[teamId];
+      const allowedIcons = teamRoundData?.logisticsIcons || 0;
+
+      const roundAllocations = { ...(prev.logisticsAllocatedByRound[currentRound] || {}) };
+      roundAllocations[teamId] = allowedIcons;
+
+      return {
+        ...prev,
+        logisticsAllocatedByRound: {
+          ...prev.logisticsAllocatedByRound,
+          [currentRound]: roundAllocations,
+        },
         updatedAt: new Date()
       };
     });
@@ -1800,6 +1840,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         getTechnologyCostForTeam,
         calculatePlayOrder,
         allocateLogistics,
+        finishLogisticsTurn,
         getTeamLogisticsProgress,
         canExpandToRegion,
         getAvailableRegionsForTeam,

@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 
 import { useSession } from '@/contexts/SessionContext';
 import { CombinationsGuideModal } from './CombinationsGuideModal';
-import { calculatePlanStats, hasTech } from '@/lib/rules';
+import { calculatePlanStats, hasTech, isGpsBonusClaimed, getCarriedOverProductsForTeam } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import { WildcardsWidget } from './WildcardsWidget';
 
@@ -515,10 +515,10 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
               <p className="text-xs text-muted-foreground italic">No improvement cards were used in this plan.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {usedCardsList.map(card => {
+                {usedCardsList.map((card, idx) => {
                   const usage = submittedPlan.cardUsages?.[card.id] || (submittedPlan.improvementCardId === card.id ? (submittedPlan.improvementCardUsage || 'use') : 'none');
                   return (
-                    <div key={card.id} className="flex items-center gap-3 bg-card p-3 rounded-lg border border-border">
+                    <div key={`${card.id}-${idx}`} className="flex items-center gap-3 bg-card p-3 rounded-lg border border-border">
                       <div className="flex gap-1.5 p-1.5 bg-muted rounded">
                         {getIconElement(card.icon1)}
                         {!(card.id < 0) && getIconElement(card.icon2)}
@@ -693,8 +693,8 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                       <div>
                         <span className="font-semibold text-slate-900 dark:text-slate-200">Products:</span> {selectedComboData.products} combo {improvementProductEffect > 0 && `+ ${improvementProductEffect} card `}
                         {Boolean(gameState?.advancedState?.wildcards?.[selectedTeam]?.conversionsByRound?.[currentRound]?.product) && `+ ${gameState.advancedState.wildcards[selectedTeam].conversionsByRound[currentRound].product} wildcard `}
-                        {hasTech(gameState, selectedTeam, 'GPS') && !gameState?.advancedState?.gpsBonusClaimed?.[selectedTeam] && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ 5 GPS `}
-                        {hasTech(gameState, selectedTeam, 'WIFI') && Boolean(gameState?.advancedState?.carriedOverProducts?.[selectedTeam]) && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ ${gameState.advancedState.carriedOverProducts[selectedTeam]} carried over `}
+                        {hasTech(gameState, selectedTeam, 'GPS') && !isGpsBonusClaimed(gameState, selectedTeam) && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ 5 GPS `}
+                        {hasTech(gameState, selectedTeam, 'WIFI') && getCarriedOverProductsForTeam(gameState, selectedTeam) > 0 && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ ${getCarriedOverProductsForTeam(gameState, selectedTeam)} carried over `}
                         = <strong className="text-slate-900 dark:text-white">{productsAvailable}</strong>
                       </div>
                       <div>
@@ -726,9 +726,10 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
                   {usableCards.map((card, index) => {
                     const currentUsage = cardUsages[card.id] || 'none';
+                    const cardUniqueId = `${card.id}-${index}`;
                     return (
                       <Card 
-                        key={`${card.id}-${index}`}
+                        key={cardUniqueId}
                         className="transition-all"
                       >
                         <CardHeader className="py-2 px-3">
@@ -754,20 +755,20 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                              disabled={isReadOnlyMode}
                            >
                              <div className="flex items-center space-x-1 p-1 border rounded hover:bg-accent/50 cursor-pointer">
-                               <RadioGroupItem value="use" id={`use-${card.id}`} className="h-3 w-3" />
-                               <Label htmlFor={`use-${card.id}`} className="cursor-pointer text-[10px] leading-tight">
+                               <RadioGroupItem value="use" id={`use-${cardUniqueId}`} className="h-3 w-3" />
+                               <Label htmlFor={`use-${cardUniqueId}`} className="cursor-pointer text-[10px] leading-tight">
                                  Use Effects
                                </Label>
                              </div>
                              <div className="flex items-center space-x-1 p-1 border rounded hover:bg-accent/50 cursor-pointer">
-                               <RadioGroupItem value="product" id={`product-${card.id}`} className="h-3 w-3" />
-                               <Label htmlFor={`product-${card.id}`} className="cursor-pointer text-[10px] leading-tight">
+                               <RadioGroupItem value="product" id={`product-${cardUniqueId}`} className="h-3 w-3" />
+                               <Label htmlFor={`product-${cardUniqueId}`} className="cursor-pointer text-[10px] leading-tight">
                                  As Product
                                </Label>
                              </div>
                              <div className="flex items-center space-x-1 p-1 border rounded hover:bg-accent/50 cursor-pointer">
-                               <RadioGroupItem value="none" id={`none-${card.id}`} className="h-3 w-3" />
-                               <Label htmlFor={`none-${card.id}`} className="cursor-pointer text-[10px] leading-tight">
+                               <RadioGroupItem value="none" id={`none-${cardUniqueId}`} className="h-3 w-3" />
+                               <Label htmlFor={`none-${cardUniqueId}`} className="cursor-pointer text-[10px] leading-tight">
                                  Don't use
                                </Label>
                              </div>

@@ -9,6 +9,7 @@ import {
   isTeamBuildingOffice,
   getRegionOccupancy,
   isSteveBlocking,
+  hasTech,
 } from '../lib/rules';
 import { GameState, Team, calculateTeamTotalScore } from '../types/game';
 import { getControlPointsForRegion } from '../data/control';
@@ -34,6 +35,8 @@ function makeGameState(overrides?: Partial<GameState>): GameState {
       'Wifi': { name: 'Wifi', researchPoints: 0, maxPoints: 3, researchCost: 3, teamProgress: {} },
       'Battery': { name: 'Battery', researchPoints: 0, maxPoints: 4, researchCost: 4, teamProgress: {} },
       'Gaming': { name: 'Gaming', researchPoints: 0, maxPoints: 4, researchCost: 4, teamProgress: {} },
+      'NFC': { name: 'NFC', researchPoints: 0, maxPoints: 5, researchCost: 5, teamProgress: {} },
+      '4G': { name: '4G', researchPoints: 0, maxPoints: 6, researchCost: 6, teamProgress: {} },
     },
     teamResearchProgress: {
       'team_1': { teamId: 'team_1', technologyInvestments: {}, completedTechnologies: [] },
@@ -74,9 +77,13 @@ function makeGameState(overrides?: Partial<GameState>): GameState {
       'team_2': { teamId: 'team_2', regionsWithPresence: ['USA'], regionInvestments: {} },
       'team_3': { teamId: 'team_3', regionsWithPresence: ['USA'], regionInvestments: {} },
     },
+    regions: [],
     improvementCards: [],
+    improvementPoolByRound: {},
     logisticsAllocatedByRound: {},
     researchAllocatedByRound: {},
+    createdAt: new Date(),
+    updatedAt: new Date(),
     advancedState: {
       wildcards: {},
       directives: [],
@@ -180,19 +187,35 @@ describe('Facilitator Rules Engine Test Suite', () => {
       expect(statsOff.logisticsPoints).toBe(2);
     });
 
-    test('Gaming research cost discount', () => {
+    test('Gaming research cost discount applies to all available technologies', () => {
       const state = makeGameState();
       enableRule(state, 'tech_permanent_benefits');
       completeTech(state, 'team_1', 'Gaming');
 
-      // Rule ON + Gaming complete -> research cost discounted by 1 (Wifi base 3 - 1 = 2)
-      const costOn = getTechnologyCostForTeam(state, 'team_1', 'Wifi');
-      expect(costOn).toBe(2);
+      // Rule ON + Gaming complete -> research cost discounted by 1 across all technologies
+      expect(getTechnologyCostForTeam(state, 'team_1', 'Wifi')).toBe(2); // base 3 - 1 = 2
+      expect(getTechnologyCostForTeam(state, 'team_1', 'GPS')).toBe(2);  // base 3 - 1 = 2
+      expect(getTechnologyCostForTeam(state, 'team_1', '4G')).toBe(5);   // base 6 - 1 = 5
+      expect(getTechnologyCostForTeam(state, 'team_1', 'NFC')).toBe(4);  // base 5 - 1 = 4
 
-      // Rule OFF -> returns base cost 3
+      // Rule OFF -> returns base costs
       disableRule(state, 'tech_permanent_benefits');
-      const costOff = getTechnologyCostForTeam(state, 'team_1', 'Wifi');
-      expect(costOff).toBe(3);
+      expect(getTechnologyCostForTeam(state, 'team_1', 'Wifi')).toBe(3);
+      expect(getTechnologyCostForTeam(state, 'team_1', '4G')).toBe(6);
+    });
+
+    test('NFC technology direct sales allowance (up to 3 unsold products)', () => {
+      const state = makeGameState();
+      completeTech(state, 'team_1', 'NFC');
+      expect(hasTech(state, 'team_1', 'NFC')).toBe(true);
+
+      const productsProduced = 6;
+      const regionalCustomerSales = 5;
+      const remainingUnsold = Math.max(0, productsProduced - regionalCustomerSales);
+      const nfcSalesUnits = Math.min(3, remainingUnsold);
+
+      expect(nfcSalesUnits).toBe(1);
+      expect(regionalCustomerSales + nfcSalesUnits).toBe(6);
     });
 
     test('Toggle flip removes all 4 tech perks simultaneously', () => {
@@ -422,15 +445,15 @@ describe('Facilitator Rules Engine Test Suite', () => {
           {
             roundNumber: 1,
             teamData: {
-              'team_1': { price: 5, revenue: 20, customersSold: ['c1', 'c2'] },
-              'team_2': { price: 6, revenue: 18, customersSold: ['c3'] },
+              'team_1': { price: 5, revenue: 20, customersSold: ['c1', 'c2'] } as any,
+              'team_2': { price: 6, revenue: 18, customersSold: ['c3'] } as any,
             }
           },
           {
             roundNumber: 2,
             teamData: {
-              'team_1': { price: 4, revenue: 25, customersSold: ['c4', 'c5'] },
-              'team_2': { price: 5, revenue: 22, customersSold: ['c6'] },
+              'team_1': { price: 4, revenue: 25, customersSold: ['c4', 'c5'] } as any,
+              'team_2': { price: 5, revenue: 22, customersSold: ['c6'] } as any,
             }
           }
         ]

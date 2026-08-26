@@ -113,6 +113,7 @@ export interface TeamRoundData {
   improvementCardId?: number;
   cardUsages?: Record<number, 'use' | 'product' | 'none'>;
   customersSold?: string[]; // IDs of customers sold to
+  nfcSalesUnits?: number; // number of products sold directly via NFC technology (max 3)
   eligiblePriceCustomers?: number;
   eligibleValueCustomers?: number;
   eligibleSalesUnits?: number;
@@ -452,20 +453,29 @@ export const calculateTeamTotalScore = (
 
   const patentBonus = getTeamPatentPoints(teamId, gameState.patents, targetRound, gameState.gameEnded, gameState.currentRound);
 
-  // Wildcard bonus: 1 VP per remaining token at game end (targetRound >= 5 or gameEnded), ONLY if rule is active
-  let wildcardBonus = 0;
-  const isEndGame = gameState.gameEnded || targetRound >= 5;
-  const isWildcardRuleActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'wildcard_tokens_system', teamId);
-  if (isEndGame && isWildcardRuleActive && gameState.advancedState?.wildcards?.[teamId]) {
-    const wc = gameState.advancedState.wildcards[teamId];
-    const totalUsed = Object.values(wc.usedInRound || {}).reduce((a, b) => a + b, 0);
-    wildcardBonus = Math.max(0, (wc.totalTokens || 10) - totalUsed);
+  // End-of-game bonuses (Patents, Wildcards, Directives) are ONLY awarded when targetRound is the end round!
+  let isEndRoundForTarget = false;
+  if (gameState.gameEnded) {
+    const endRound = gameState.currentRound || 5;
+    isEndRoundForTarget = targetRound >= endRound;
+  } else {
+    isEndRoundForTarget = targetRound >= 5;
   }
 
-  // Directive bonus: VPs per claimed directive, calculated at END of game, ONLY if rule is active
+  // Wildcard bonus: 1 VP per remaining token at game end, ONLY if rule is active and for end round
+  let wildcardBonus = 0;
+  const isWildcardRuleActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'wildcard_tokens_system', teamId);
+  if (isEndRoundForTarget && isWildcardRuleActive) {
+    const wc = gameState.advancedState?.wildcards?.[teamId];
+    const totalTokens = wc?.totalTokens !== undefined ? wc.totalTokens : 10;
+    const totalUsed = wc?.usedInRound ? Object.values(wc.usedInRound).reduce((a, b) => a + b, 0) : 0;
+    wildcardBonus = Math.max(0, totalTokens - totalUsed);
+  }
+
+  // Directive bonus: VPs per claimed directive, calculated at END of game, ONLY if rule is active and for end round
   let directiveBonus = 0;
   const isDirectivesRuleActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'directives_bonus_points', teamId);
-  if (isEndGame && isDirectivesRuleActive && gameState.advancedState?.directives) {
+  if (isEndRoundForTarget && isDirectivesRuleActive && gameState.advancedState?.directives) {
     const defaultVal = Number(getRuleValueForTeam(gameState?.ruleAdjustments, 'directives_bonus_points', teamId, 12));
     const claimed = gameState.advancedState.directives.filter(d => d.teamId === teamId);
     directiveBonus = claimed.reduce((sum, d) => sum + (d.points || defaultVal), 0);

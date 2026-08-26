@@ -6,7 +6,7 @@ import { useGame } from '@/contexts/GameContext';
 import { REGION_CUSTOMERS, Customer } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { toast } from 'sonner';
-import { Save, AlertTriangle, CheckCircle2, Package, Microscope, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Trophy, Users, Target, TrendingUp } from 'lucide-react';
+import { Save, AlertTriangle, CheckCircle2, Package, Microscope, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Trophy, Users, Target, TrendingUp, UserCheck } from 'lucide-react';
 import { GameIcon } from './GameIcon';
 import { SteveIcon } from './SteveIcon';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -23,13 +23,14 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
 
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
-import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
+import { isSteveBlocking as isSteveBlockingRule, hasTech } from '@/lib/rules';
 
 export const SalesPhase = () => {
   const { gameState, addRoundData, getCurrentRound, getTeamLogisticsProgress, calculatePlayOrder } = useGame();
   const { currentRole, currentTeamId, isReadOnly, selectTeam } = useSession();
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedCustomers, setSelectedCustomers] = useState<Record<string, string[]>>({});
+  const [nfcSalesUnits, setNfcSalesUnits] = useState<number>(0);
 
   useEffect(() => {
     if (currentRole === 'STUDENT' && currentTeamId) {
@@ -84,8 +85,10 @@ export const SalesPhase = () => {
         }
       });
       setSelectedCustomers(grouped);
+      setNfcSalesUnits(currentRoundData.teamData[selectedTeam].nfcSalesUnits || 0);
     } else {
       setSelectedCustomers({});
+      setNfcSalesUnits(0);
     }
   }, [selectedTeam, currentRoundData]);
 
@@ -109,10 +112,17 @@ export const SalesPhase = () => {
   const teamResearch = selectedTeam ? gameState.teamResearchProgress[selectedTeam] : null;
   const completedTechs = new Set(teamResearch?.completedTechnologies || []);
   
-  // Calculate total products to be sold and revenue
-  const totalProductsToSell = Object.values(selectedCustomers).flat().length;
-  const calculatedRevenue = selectedTeamData ? selectedTeamData.price * totalProductsToSell : 0;
+  // NFC Direct Sales calculation
+  const hasNfcTech = Array.from(completedTechs).some(t => (t || '').toUpperCase() === 'NFC') || (selectedTeam ? hasTech(gameState, selectedTeam, 'NFC') : false);
+  const regionalSalesCount = Object.values(selectedCustomers).flat().length;
   const productsAvailable = selectedTeamData?.productsProduced || 0;
+  const remainingForNfc = Math.max(0, productsAvailable - regionalSalesCount);
+  const maxNfcAllowed = hasNfcTech ? Math.min(3, remainingForNfc) : 0;
+  const effectiveNfcSalesUnits = hasNfcTech ? Math.min(nfcSalesUnits, maxNfcAllowed) : 0;
+
+  // Calculate total products to be sold and revenue
+  const totalProductsToSell = regionalSalesCount + effectiveNfcSalesUnits;
+  const calculatedRevenue = selectedTeamData ? selectedTeamData.price * totalProductsToSell : 0;
   const salesExceedProduction = totalProductsToSell > productsAvailable;
 
   // Calculate eligible price and value customers for the selected team across present regions
@@ -241,6 +251,7 @@ export const SalesPhase = () => {
     const updatedData = {
       ...selectedTeamData,
       customersSold: allSelectedCustomers,
+      nfcSalesUnits: effectiveNfcSalesUnits,
       revenue: calculatedRevenue,
       totalMoney: (selectedTeamData.totalMoney || 0) - (selectedTeamData.revenue || 0) + calculatedRevenue,
       eligiblePriceCustomers: eligibleCustomerCounts.priceCount,
@@ -263,6 +274,7 @@ export const SalesPhase = () => {
         selectTeam(nextTeam.id);
         setSelectedTeam(nextTeam.id);
         setSelectedCustomers({});
+        setNfcSalesUnits(0);
         toast.info(`Turn Order: Advanced to ${nextTeam.name}`);
         return;
       }
@@ -271,6 +283,7 @@ export const SalesPhase = () => {
     // Reset form
     setSelectedTeam('');
     setSelectedCustomers({});
+    setNfcSalesUnits(0);
   };
 
   const allTeamsSubmitted = gameState.teams.every(t => {
@@ -557,6 +570,63 @@ export const SalesPhase = () => {
                       </Alert>
                     )}
 
+                    {hasNfcTech && (
+                      <Card className="border border-indigo-500/30 bg-indigo-500/5 shadow-xs">
+                        <CardHeader className="py-3 px-4">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
+                              <Radio className="h-4 w-4 text-indigo-500 animate-pulse" />
+                              <span>NFC Direct Sales (No Region Required)</span>
+                            </CardTitle>
+                            <Badge className="bg-indigo-600 text-white font-bold text-xs">
+                              Up to 3 Leftover Products
+                            </Badge>
+                          </div>
+                          <CardDescription className="text-xs">
+                            NFC technology allows your team to sell up to 3 products per round without placing them in a region. Each unit is sold at your set price (${selectedTeamData.price}).
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="py-2 px-4 space-y-2">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-xs font-semibold text-muted-foreground">Select NFC Sales Units:</span>
+                            <div className="flex items-center gap-1.5">
+                              {[0, 1, 2, 3].map(n => {
+                                const isAllowed = n <= maxNfcAllowed;
+                                const isSelected = effectiveNfcSalesUnits === n;
+                                return (
+                                  <Button
+                                    key={n}
+                                    type="button"
+                                    variant={isSelected ? 'default' : 'outline'}
+                                    size="sm"
+                                    disabled={!isAllowed || isReadOnlyMode}
+                                    onClick={() => setNfcSalesUnits(n)}
+                                    className={`h-8 px-3 text-xs font-bold ${
+                                      isSelected ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : ''
+                                    }`}
+                                  >
+                                    {n} {n === 1 ? 'Unit' : 'Units'}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div className="text-xs text-muted-foreground pt-1 flex items-center gap-2 flex-wrap">
+                            <span>Regional Sales: <strong>{regionalSalesCount}</strong></span>
+                            <span>+</span>
+                            <span className="text-indigo-600 dark:text-indigo-400 font-bold">NFC Direct Sales: {effectiveNfcSalesUnits}</span>
+                            <span>=</span>
+                            <span>Total Sold: <strong className="text-foreground">{totalProductsToSell}</strong> / {productsAvailable}</span>
+                            {effectiveNfcSalesUnits > 0 && (
+                              <Badge variant="outline" className="text-[10px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 font-bold ml-auto">
+                                +${(effectiveNfcSalesUnits * selectedTeamData.price).toLocaleString()} NFC Revenue
+                              </Badge>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold">Select Customers (Only Eligible Regions)</h3>
                       
@@ -670,7 +740,7 @@ export const SalesPhase = () => {
                       })}
                     </div>
 
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
                       <Button 
                         onClick={handleSubmit} 
                         size="lg"
@@ -680,6 +750,20 @@ export const SalesPhase = () => {
                         <Save className="mr-2 h-4 w-4" />
                         Submit Sales
                       </Button>
+                      {currentRole !== 'STUDENT' && (
+                        <Button
+                          type="button"
+                          size="lg"
+                          variant="outline"
+                          onClick={() => {
+                            handleSaveSales();
+                          }}
+                          className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
+                        >
+                          <UserCheck className="h-4 w-4" />
+                          End Team Turn
+                        </Button>
+                      )}
                       <Button
                         onClick={() => {
                           const updatedData = {
