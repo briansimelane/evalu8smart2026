@@ -3,6 +3,34 @@ import { REGION_CUSTOMERS, Customer } from '@/data/customers';
 import { ICON_EFFECTS } from '@/data/improvements';
 import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 
+export function hasTech(gameState: GameState | null | undefined, teamId: string, techKey: string): boolean {
+  if (!gameState || !teamId || !techKey) return false;
+  const completedTechs = gameState.teamResearchProgress?.[teamId]?.completedTechnologies || [];
+  const targetUpper = techKey.toUpperCase();
+  return completedTechs.some(t => String(t).toUpperCase().includes(targetUpper));
+}
+
+export function isSteveBlocking(gameState: GameState | null | undefined, regionName: string, teamId?: string): boolean {
+  if (!gameState || !regionName) return false;
+  const activeRegion = gameState.advancedState?.steve?.activeRegion;
+  if (!activeRegion || activeRegion !== regionName) return false;
+  return isRuleActiveForTeam(gameState.ruleAdjustments, 'steve_event_blocker', teamId);
+}
+
+export function getLogisticsCostForTeam(gameState: GameState | null | undefined, teamId: string, regionName: string): number {
+  if (!gameState) return 2;
+  const region = gameState.regionLogistics?.[regionName];
+  if (!region) return 2;
+  const baseCost = region.logisticsCost || 2;
+  const isMultiOfficeActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'multiple_offices_per_region', teamId);
+  const teamProgress = gameState.teamLogisticsProgress?.[teamId];
+  const hasPresence = teamProgress?.regionsWithPresence?.includes(regionName);
+  if (isMultiOfficeActive && hasPresence) {
+    return Math.max(1, baseCost - 1);
+  }
+  return baseCost;
+}
+
 export function calculatePlanStats(
   gameState: GameState,
   teamId: string,
@@ -74,28 +102,29 @@ export function calculatePlanStats(
     improvementPoints += Number(roundConvs.improvement || 0);
   }
 
-  // PERMANENT TECH PERKS: Battery (+1 logistics on price increase) & GPS (+5 products bonus)
+  // PERMANENT TECH PERKS: Battery (+1 logistics when price > 5), GPS (+5 one-time), Wifi (carry-over)
   const isTechPerksActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_permanent_benefits', teamId);
-  const completedTechs = gameState?.teamResearchProgress?.[teamId]?.completedTechnologies || [];
 
   if (isTechPerksActive) {
-    // Battery perk: +1 logistics if price effect is positive (or price > 5)
-    const hasBattery = completedTechs.some(t => String(t).toUpperCase().includes('BATTERY'));
-    if (hasBattery) {
-      if (improvementPriceEffect > 0 || selectedComboData.price > 0 || calculatedPrice > 5) {
+    // Battery perk: +1 logistics if price > $5
+    if (hasTech(gameState, teamId, 'BATTERY')) {
+      if (calculatedPrice > 5) {
         logisticsPoints += 1;
       }
     }
 
-    // GPS perk: +5 products bonus whenever GPS technology is completed
-    const hasGPS = completedTechs.some(t => String(t).toUpperCase().includes('GPS'));
-    if (hasGPS) {
+    // GPS perk: +5 products bonus awarded ONCE per game (DR-1)
+    const hasGPS = hasTech(gameState, teamId, 'GPS');
+    const gpsBonusClaimed = Boolean(gameState?.advancedState?.gpsBonusClaimed?.[teamId]);
+    if (hasGPS && !gpsBonusClaimed) {
       productsAvailable += 5;
     }
 
     // Wifi perk: add carried over products from previous round
-    const carriedOver = gameState?.advancedState?.carriedOverProducts?.[teamId] || 0;
-    productsAvailable += carriedOver;
+    if (hasTech(gameState, teamId, 'WIFI')) {
+      const carriedOver = gameState?.advancedState?.carriedOverProducts?.[teamId] || 0;
+      productsAvailable += carriedOver;
+    }
   }
 
   return {
@@ -122,8 +151,7 @@ export function getTechnologyCostForTeam(gameState: GameState, teamId: string, t
 
   // PERMANENT TECH PERKS: Gaming (-1 research/patent cost)
   const isTechPerksActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_permanent_benefits', teamId);
-  const completedTechs = gameState?.teamResearchProgress?.[teamId]?.completedTechnologies || [];
-  if (isTechPerksActive && (completedTechs.includes('Gaming') || completedTechs.includes('GAMING'))) {
+  if (isTechPerksActive && hasTech(gameState, teamId, 'GAMING')) {
     baseCost = Math.max(1, baseCost - 1);
   }
 
@@ -140,9 +168,8 @@ export function canExpandToRegion(gameState: GameState, teamId: string, regionNa
   const region = gameState.regionLogistics[regionName];
   if (!region) return false;
 
-  // STEVE RULE: If Steve is blocking this region, no team can expand into it!
-  const isSteveActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'steve_event_blocker', teamId);
-  if (isSteveActive && gameState?.advancedState?.steve?.activeRegion === regionName) {
+  // STEVE RULE: If Steve is blocking this region for this team, no expansion!
+  if (isSteveBlocking(gameState, regionName, teamId)) {
     return false;
   }
 
@@ -192,3 +219,4 @@ export function isCustomerEligible(
     return completedTechs.some(t => (t || '').toUpperCase() === reqNorm);
   }
 }
+

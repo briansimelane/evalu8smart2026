@@ -2,6 +2,7 @@ import { ImprovementCardData } from '@/data/improvements';
 import { Combination } from '@/data/combinations';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
+import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 
 export type BotProfile = 'BALANCED' | 'RESEARCHER' | 'EXPANDER' | 'PRICE_FIGHTER';
 export type BotDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
@@ -449,20 +450,23 @@ export const calculateTeamTotalScore = (
 
   const patentBonus = getTeamPatentPoints(teamId, gameState.patents, targetRound, gameState.gameEnded, gameState.currentRound);
 
-  // Wildcard bonus: 1 VP per remaining token at game end (targetRound >= 5 or gameEnded)
+  // Wildcard bonus: 1 VP per remaining token at game end (targetRound >= 5 or gameEnded), ONLY if rule is active
   let wildcardBonus = 0;
   const isEndGame = gameState.gameEnded || targetRound >= 5;
-  if (isEndGame && gameState.advancedState?.wildcards?.[teamId]) {
+  const isWildcardRuleActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'wildcard_tokens_system', teamId);
+  if (isEndGame && isWildcardRuleActive && gameState.advancedState?.wildcards?.[teamId]) {
     const wc = gameState.advancedState.wildcards[teamId];
     const totalUsed = Object.values(wc.usedInRound || {}).reduce((a, b) => a + b, 0);
     wildcardBonus = Math.max(0, (wc.totalTokens || 10) - totalUsed);
   }
 
-  // Directive bonus: 12 VPs per claimed directive, calculated at the END of the game (targetRound >= 5 or gameEnded)
+  // Directive bonus: VPs per claimed directive, calculated at END of game, ONLY if rule is active
   let directiveBonus = 0;
-  if (isEndGame && gameState.advancedState?.directives) {
+  const isDirectivesRuleActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'directives_bonus_points', teamId);
+  if (isEndGame && isDirectivesRuleActive && gameState.advancedState?.directives) {
+    const defaultVal = Number(getRuleValueForTeam(gameState?.ruleAdjustments, 'directives_bonus_points', teamId, 12));
     const claimed = gameState.advancedState.directives.filter(d => d.teamId === teamId);
-    directiveBonus = claimed.reduce((sum, d) => sum + (d.points || 12), 0);
+    directiveBonus = claimed.reduce((sum, d) => sum + (d.points || defaultVal), 0);
   }
 
   const totalScore = startValue + cumulativeRevenue + cumulativeControl + patentBonus + wildcardBonus + directiveBonus;

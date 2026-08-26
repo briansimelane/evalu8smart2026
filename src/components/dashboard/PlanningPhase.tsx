@@ -13,7 +13,9 @@ import { Badge } from '@/components/ui/badge';
 
 import { useSession } from '@/contexts/SessionContext';
 import { CombinationsGuideModal } from './CombinationsGuideModal';
-import { calculatePlanStats } from '@/lib/rules';
+import { calculatePlanStats, hasTech } from '@/lib/rules';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
+import { WildcardsWidget } from './WildcardsWidget';
 
 export interface PlanningPhaseRef {
   loadTeamPlan: (roundNumber: number, teamId: string) => void;
@@ -676,6 +678,39 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                     </div>
                   </div>
                 </div>
+
+                {/* Plan Calculation Breakdown */}
+                {selectedComboData && selectedTeam && (
+                  <div className="mt-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs space-y-1.5">
+                    <div className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                      <span>Plan Math Breakdown</span>
+                      <span className="text-[10px] text-slate-400 font-mono">Combo {selectedCombination} • Pos {selectedPosition}</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-[11px] text-slate-600 dark:text-slate-400">
+                      <div>
+                        <span className="font-semibold text-slate-900 dark:text-slate-200">Price:</span> $5 base + ${selectedComboData.price} combo {improvementPriceEffect !== 0 && `(${improvementPriceEffect > 0 ? '+' : ''}${improvementPriceEffect} card)`} = <strong className="text-slate-900 dark:text-white">${calculatedPrice}</strong>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-900 dark:text-slate-200">Products:</span> {selectedComboData.products} combo {improvementProductEffect > 0 && `+ ${improvementProductEffect} card `}
+                        {Boolean(gameState?.advancedState?.wildcards?.[selectedTeam]?.conversionsByRound?.[currentRound]?.product) && `+ ${gameState.advancedState.wildcards[selectedTeam].conversionsByRound[currentRound].product} wildcard `}
+                        {hasTech(gameState, selectedTeam, 'GPS') && !gameState?.advancedState?.gpsBonusClaimed?.[selectedTeam] && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ 5 GPS `}
+                        {hasTech(gameState, selectedTeam, 'WIFI') && Boolean(gameState?.advancedState?.carriedOverProducts?.[selectedTeam]) && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ ${gameState.advancedState.carriedOverProducts[selectedTeam]} carried over `}
+                        = <strong className="text-slate-900 dark:text-white">{productsAvailable}</strong>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-900 dark:text-slate-200">Research:</span> {selectedComboData.research} combo {improvementResearchEffect > 0 && `+ ${improvementResearchEffect} card `}
+                        {Boolean(gameState?.advancedState?.wildcards?.[selectedTeam]?.conversionsByRound?.[currentRound]?.research) && `+ ${gameState.advancedState.wildcards[selectedTeam].conversionsByRound[currentRound].research} wildcard `}
+                        = <strong className="text-slate-900 dark:text-white">{researchPoints}</strong>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-900 dark:text-slate-200">Logistics:</span> {selectedComboData.logistics} combo {improvementLogisticsEffect > 0 && `+ ${improvementLogisticsEffect} card `}
+                        {hasTech(gameState, selectedTeam, 'BATTERY') && calculatedPrice > 5 && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ 1 Battery `}
+                        {Boolean(gameState?.advancedState?.wildcards?.[selectedTeam]?.conversionsByRound?.[currentRound]?.logistics) && `+ ${gameState.advancedState.wildcards[selectedTeam].conversionsByRound[currentRound].logistics} wildcard `}
+                        = <strong className="text-slate-900 dark:text-white">{logisticsPoints}</strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </>
@@ -779,6 +814,13 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* Wildcards Token Conversion Widget */}
+        {selectedTeam && isRuleActiveForTeam(gameState?.ruleAdjustments, 'wildcard_tokens_system', selectedTeam) && (
+          <div className="pt-2">
+            <WildcardsWidget teamId={selectedTeam} />
           </div>
         )}
 

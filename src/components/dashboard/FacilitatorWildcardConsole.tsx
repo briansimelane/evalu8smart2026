@@ -56,6 +56,9 @@ export const FacilitatorWildcardConsole: React.FC = () => {
   };
   const steveTotalContributed: number = Number(Object.values(steveData.wildcardsContributed || {}).reduce((acc: number, val: any) => acc + Number(val || 0), 0));
 
+  const usedThisRound = Number(wildcardData.usedInRound?.[currentRound] || 0);
+  const isRoundCapReached = usedThisRound >= 2;
+
   const handleAdjustPhaseToken = (
     targetType: 'product' | 'research' | 'logistics' | 'improvement',
     delta: number
@@ -96,7 +99,7 @@ export const FacilitatorWildcardConsole: React.FC = () => {
               </Badge>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Rule: Teams can use <span className="font-bold text-slate-800 dark:text-slate-200">0, 1, or 2 tokens per phase</span> (Production, Improvement, Research, Logistics), and <span className="font-bold text-slate-800 dark:text-slate-200">up to 5 tokens</span> during Planning for Steve removal.
+              Rule: Teams can use <span className="font-bold text-slate-800 dark:text-slate-200">up to 2 tokens total per round</span> across conversions & Steve removal.
             </p>
           </div>
         </div>
@@ -133,12 +136,15 @@ export const FacilitatorWildcardConsole: React.FC = () => {
           <Badge variant="outline" className="border-indigo-300 dark:border-indigo-500/40 text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 text-xs font-extrabold">
             {remainingTokens} / 10 Remaining
           </Badge>
+          <Badge variant="outline" className={`text-xs font-bold ${isRoundCapReached ? 'border-amber-400 text-amber-600 bg-amber-50 dark:bg-amber-950/40' : 'border-slate-300 text-slate-600'}`}>
+            R{currentRound}: {usedThisRound}/2 Used
+          </Badge>
         </div>
       </div>
 
       {/* Phase Controls Grid (+ and - for 0, 1, 2) */}
       <div className="space-y-2">
-        <div className="text-xs font-bold text-slate-700 dark:text-slate-300">Phase Wildcard Controls for {activeTeam?.name} (0-2 tokens/phase):</div>
+        <div className="text-xs font-bold text-slate-700 dark:text-slate-300">Phase Wildcard Controls for {activeTeam?.name} (max 2/round combined):</div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
           {/* Production Phase Card */}
@@ -164,7 +170,7 @@ export const FacilitatorWildcardConsole: React.FC = () => {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={(currentRoundConvs.product || 0) >= 2 || remainingTokens <= 0}
+                disabled={(currentRoundConvs.product || 0) >= 2 || isRoundCapReached || remainingTokens <= 0}
                 onClick={() => handleAdjustPhaseToken('product', 1)}
                 className="h-6 w-6 p-0 text-xs text-emerald-600"
               >
@@ -196,7 +202,7 @@ export const FacilitatorWildcardConsole: React.FC = () => {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={(currentRoundConvs.improvement || 0) >= 2 || remainingTokens <= 0}
+                disabled={(currentRoundConvs.improvement || 0) >= 2 || isRoundCapReached || remainingTokens <= 0}
                 onClick={() => handleAdjustPhaseToken('improvement', 1)}
                 className="h-6 w-6 p-0 text-xs text-amber-600"
               >
@@ -228,7 +234,7 @@ export const FacilitatorWildcardConsole: React.FC = () => {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={(currentRoundConvs.research || 0) >= 2 || remainingTokens <= 0}
+                disabled={(currentRoundConvs.research || 0) >= 2 || isRoundCapReached || remainingTokens <= 0}
                 onClick={() => handleAdjustPhaseToken('research', 1)}
                 className="h-6 w-6 p-0 text-xs text-purple-600"
               >
@@ -260,7 +266,7 @@ export const FacilitatorWildcardConsole: React.FC = () => {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={(currentRoundConvs.logistics || 0) >= 2 || remainingTokens <= 0}
+                disabled={(currentRoundConvs.logistics || 0) >= 2 || isRoundCapReached || remainingTokens <= 0}
                 onClick={() => handleAdjustPhaseToken('logistics', 1)}
                 className="h-6 w-6 p-0 text-xs text-rose-600"
               >
@@ -301,6 +307,7 @@ export const FacilitatorWildcardConsole: React.FC = () => {
             const tWildcardData = gameState.advancedState?.wildcards?.[t.id] || { totalTokens: 10, usedInRound: {} };
             const tUsedTotal: number = Number(Object.values(tWildcardData.usedInRound || {}).reduce((acc: number, val: any) => acc + Number(val || 0), 0));
             const tRemaining: number = Math.max(0, Number(tWildcardData.totalTokens || 10) - tUsedTotal);
+            const tUsedInCurrentRound = Number(tWildcardData.usedInRound?.[currentRound] || 0);
 
             return (
               <div key={t.id} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
@@ -323,7 +330,7 @@ export const FacilitatorWildcardConsole: React.FC = () => {
                   <Button
                     size="sm"
                     variant="ghost"
-                    disabled={tRemaining <= 0 || !steveData.activeRegion || steveTotalContributed >= 5}
+                    disabled={tRemaining <= 0 || !steveData.activeRegion || steveTotalContributed >= 5 || tUsedInCurrentRound >= 2}
                     onClick={() => handleAdjustSteveToken(t.id, 1)}
                     className="h-5 w-5 p-0 text-[10px] text-emerald-600"
                   >

@@ -11,8 +11,8 @@ import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
 import { removeUndefined } from '@/lib/utils';
-import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule } from '@/lib/rules';
-import { getDefaultRuleAdjustments } from '@/lib/defaultRules';
+import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech } from '@/lib/rules';
+import { getDefaultRuleAdjustments, isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 
 export interface GameContextType {
   gameState: GameState | null;
@@ -381,10 +381,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      // Stamp GPS bonus claimed once per game (DR-1)
+      const hasGPS = hasTech(prev, teamId, 'GPS');
+      const alreadyClaimedGPS = Boolean(prev.advancedState?.gpsBonusClaimed?.[teamId]);
+      let updatedAdvanced = prev.advancedState || {};
+      if (hasGPS && !alreadyClaimedGPS) {
+        updatedAdvanced = {
+          ...updatedAdvanced,
+          gpsBonusClaimed: {
+            ...(updatedAdvanced.gpsBonusClaimed || {}),
+            [teamId]: true,
+          }
+        };
+      }
+
       return {
         ...prev,
         rounds,
         currentRound: Math.max(prev.currentRound, roundNumber),
+        advancedState: updatedAdvanced,
         updatedAt: new Date()
       };
     });
@@ -666,10 +681,32 @@ export function GameProvider({ children }: { children: ReactNode }) {
     mutateGameState(prev => {
       if (!prev) return prev;
 
+      const currentRound = prev.currentRound;
+      const currentRoundData = prev.rounds.find(r => r.roundNumber === currentRound);
+      const carriedOverMap: Record<string, number> = { ...(prev.advancedState?.carriedOverProducts || {}) };
+
+      prev.teams.forEach(team => {
+        const tData = currentRoundData?.teamData[team.id];
+        if (tData) {
+          const produced = tData.productsProduced || 0;
+          const sumSold = tData.customersSold ? tData.customersSold.length : 0;
+          const unsold = Math.max(0, produced - sumSold);
+          const wifiActive = isRuleActiveForTeam(prev.ruleAdjustments, 'tech_permanent_benefits', team.id)
+                             && hasTech(prev, team.id, 'WIFI');
+          carriedOverMap[team.id] = wifiActive ? unsold : 0;
+        } else {
+          carriedOverMap[team.id] = 0;
+        }
+      });
+
       return {
         ...prev,
         currentRound: prev.currentRound + 1,
         currentPhase: 'planning',
+        advancedState: {
+          ...(prev.advancedState || {}),
+          carriedOverProducts: carriedOverMap,
+        },
         updatedAt: new Date()
       };
     });
@@ -1363,6 +1400,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
           ...rulesState,
           lastUpdated: new Date().toISOString(),
         };
+        const isSteveActive = isRuleActiveForTeam(newState.ruleAdjustments, 'steve_event_blocker');
+        if (!isSteveActive && newState.advancedState?.steve?.activeRegion) {
+          newState.advancedState = {
+            ...newState.advancedState,
+            steve: {
+              ...newState.advancedState.steve,
+              activeRegion: null,
+            }
+          };
+        }
       } else {
         delete newState.ruleAdjustments;
       }
@@ -1374,6 +1421,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!effectiveGameState) return;
     mutateGameState(prev => {
       if (!prev) return prev;
+      if (!isRuleActiveForTeam(prev.ruleAdjustments, 'directives_bonus_points', teamId)) {
+        return prev;
+      }
+      const pointsVal = Number(getRuleValueForTeam(prev.ruleAdjustments, 'directives_bonus_points', teamId, 12));
       const currentAdvanced = prev.advancedState || {};
       const claimedList = currentAdvanced.directives || [];
 
@@ -1384,7 +1435,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         id: directiveId,
         teamId,
         roundNumber: prev.currentRound,
-        points: 12,
+        points: pointsVal,
         claimedAt: new Date().toISOString(),
       };
 
@@ -1420,6 +1471,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!effectiveGameState) return;
     mutateGameState(prev => {
       if (!prev) return prev;
+      if (regionName !== null && prev.currentRound < 3) {
+        console.warn('Steve can only be introduced in Round 3+');
+        return prev;
+      }
       const currentAdvanced = prev.advancedState || {};
       return {
         ...prev,
@@ -1427,8 +1482,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
           ...currentAdvanced,
           steve: {
             activeRegion: regionName,
-            roundIntroduced: prev.currentRound,
+            roundIntroduced: prev.currentRound >= 3 ? prev.currentRound : 3,
             wildcardsContributed: {},
+            wildcardsContributedByRound: {},
           },
         },
         updatedAt: new Date(),
@@ -1440,8 +1496,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!effectiveGameState) return;
     mutateGameState(prev => {
       if (!prev) return prev;
+      if (!isRuleActiveForTeam(prev.ruleAdjustments, 'wildcard_tokens_system', teamId)) return prev;
       const currentAdvanced = prev.advancedState || {};
-      const steve = currentAdvanced.steve || { activeRegion: null, wildcardsContributed: {} };
+      const steve = currentAdvanced.steve || { activeRegion: null, wildcardsContributed: {}, wildcardsContributedByRound: {} };
       const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
       const tWildcard = wildcardsMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
 
@@ -1457,11 +1514,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (newTeamSteve < 0 || newTeamSteve > 5) return prev;
       if (delta > 0 && remaining < delta) return prev;
 
-      steveContribs[teamId] = newTeamSteve;
-      const newTotal = Object.values(steveContribs).reduce((a, b) => Number(a) + Number(b), 0);
+      // Combined per-round usage check (conversions + steve in current round)
+      const convsByR = { ...(tWildcard.conversionsByRound || {}) };
+      const rConvs = { ...(convsByR[currentRound] || {}) };
+      const roundConvsTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
 
-      // Track round token usage
-      usedInR[currentRound] = Math.max(0, (usedInR[currentRound] || 0) + delta);
+      const steveByRoundMap = { ...(steve.wildcardsContributedByRound || {}) };
+      const roundSteveMap = { ...(steveByRoundMap[currentRound] || {}) };
+      const currentSteveInRound = roundSteveMap[teamId] || 0;
+      const newSteveInRound = currentSteveInRound + delta;
+      if (newSteveInRound < 0) return prev;
+
+      const roundUsedTotal = roundConvsTotal + newSteveInRound;
+      if (delta > 0 && roundUsedTotal > 2) return prev; // MAX 2 combined per round
+
+      steveContribs[teamId] = newTeamSteve;
+      roundSteveMap[teamId] = newSteveInRound;
+      steveByRoundMap[currentRound] = roundSteveMap;
+
+      usedInR[currentRound] = roundUsedTotal;
       wildcardsMap[teamId] = { ...tWildcard, usedInRound: usedInR };
 
       return {
@@ -1473,6 +1544,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
             ...steve,
             activeRegion: steve.activeRegion,
             wildcardsContributed: steveContribs,
+            wildcardsContributedByRound: steveByRoundMap,
           },
         },
         updatedAt: new Date(),
@@ -1488,6 +1560,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!effectiveGameState) return;
     mutateGameState(prev => {
       if (!prev) return prev;
+      if (!isRuleActiveForTeam(prev.ruleAdjustments, 'wildcard_tokens_system', teamId)) return prev;
       const currentAdvanced = prev.advancedState || {};
       const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
       const tWildcard = wildcardsMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
@@ -1501,14 +1574,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const currentPhaseVal = rConvs[conversionType] || 0;
 
       const newPhaseVal = currentPhaseVal + delta;
-      if (newPhaseVal < 0 || newPhaseVal > 2) return prev; // 0, 1, or 2 per phase
+      if (newPhaseVal < 0 || newPhaseVal > 2) return prev; // 0, 1, or 2 per conversion type
 
       if (delta > 0 && totalUsed + delta > (tWildcard.totalTokens || 10)) return prev;
 
       rConvs[conversionType] = newPhaseVal;
       convsByR[currentRound] = rConvs;
 
-      const roundUsedTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
+      const roundConvsTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
+      const steveInRound = (prev.advancedState?.steve?.wildcardsContributedByRound?.[currentRound]?.[teamId]) || 0;
+      const roundUsedTotal = roundConvsTotal + steveInRound;
+
+      if (delta > 0 && roundUsedTotal > 2) return prev; // MAX 2 combined per round
+
       usedInR[currentRound] = roundUsedTotal;
 
       wildcardsMap[teamId] = {

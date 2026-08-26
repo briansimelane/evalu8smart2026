@@ -31,6 +31,10 @@ export const SteveControlModal: React.FC = () => {
       toast.error('Steve Event & Region Blocker rule is currently switched OFF by the facilitator.');
       return;
     }
+    if (currentRound < 3) {
+      toast.error('Steve can only be introduced in Round 3 or later.');
+      return;
+    }
     moveSteve(targetRegion);
     toast.warning(`Steve has moved to block region: ${targetRegion}!`, {
       description: 'No team can expand into or sell products in this region until Steve is cleared.',
@@ -40,6 +44,10 @@ export const SteveControlModal: React.FC = () => {
   const handleRandomMove = () => {
     if (!isSteveEnabled) {
       toast.error('Steve Event & Region Blocker rule is currently switched OFF by the facilitator.');
+      return;
+    }
+    if (currentRound < 3) {
+      toast.error('Steve can only be introduced in Round 3 or later.');
       return;
     }
     const availableRegions = REGIONS;
@@ -54,6 +62,8 @@ export const SteveControlModal: React.FC = () => {
     toast.success('Steve has been cleared from the board!');
   };
 
+  const isPlacementAllowed = isSteveEnabled && currentRound >= 3;
+
   return (
     <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm overflow-hidden rounded-xl">
       <CardHeader className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
@@ -64,7 +74,7 @@ export const SteveControlModal: React.FC = () => {
               <CardTitle className="text-base font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
                 Steve — Region Blocker Event
                 <Badge variant="outline" className="text-[10px] bg-amber-50 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-500/40 font-semibold">
-                  {isSteveEnabled ? (currentRound >= 3 ? 'Active (Round 3+)' : 'Standby (Round 3+)') : 'Disabled'}
+                  {isSteveEnabled ? (currentRound >= 3 ? 'Active (Round 3+)' : 'Standby (Unlocks Round 3)') : 'Disabled'}
                 </Badge>
               </CardTitle>
               <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
@@ -106,12 +116,16 @@ export const SteveControlModal: React.FC = () => {
           )}
         </div>
 
-        {/* Disabled Rule Banner */}
-        {!isSteveEnabled && (
+        {/* Disabled Rule / Standby Banner */}
+        {!isSteveEnabled ? (
           <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-500/40 rounded-lg text-xs text-amber-800 dark:text-amber-300 font-bold">
             Steve Event & Region Blocker (Advanced Rule 5) is currently switched OFF by the facilitator.
           </div>
-        )}
+        ) : currentRound < 3 ? (
+          <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-300 dark:border-indigo-500/40 rounded-lg text-xs text-indigo-800 dark:text-indigo-300 font-bold">
+            Steve is on standby in Round {currentRound}. Region blocking unlocks in Round 3+.
+          </div>
+        ) : null}
 
         {/* Facilitator Action Controls */}
         <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -122,7 +136,7 @@ export const SteveControlModal: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex items-center gap-2">
-              <Select value={selectedRegion} onValueChange={setSelectedRegion} disabled={!isSteveEnabled}>
+              <Select value={selectedRegion} onValueChange={setSelectedRegion} disabled={!isPlacementAllowed}>
                 <SelectTrigger className="h-9 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-xs text-slate-900 dark:text-slate-100">
                   <SelectValue placeholder="Select region" />
                 </SelectTrigger>
@@ -135,7 +149,7 @@ export const SteveControlModal: React.FC = () => {
               <Button
                 variant="default"
                 size="sm"
-                disabled={!isSteveEnabled}
+                disabled={!isPlacementAllowed}
                 onClick={() => handleMoveSteve(selectedRegion)}
                 className="h-9 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-bold whitespace-nowrap px-3 shadow-sm"
               >
@@ -147,7 +161,7 @@ export const SteveControlModal: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!isSteveEnabled}
+                disabled={!isPlacementAllowed}
                 onClick={handleRandomMove}
                 className="h-9 text-xs border-purple-300 dark:border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-500/20 font-bold gap-1.5 flex-1"
               >

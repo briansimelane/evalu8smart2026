@@ -21,6 +21,7 @@ interface RegionControlResult {
 }
 
 import { PhaseLockCard } from './PhaseLockCard';
+import { isSteveBlocking } from '@/lib/rules';
 
 interface ControlPhaseProps {
   onEndGame?: () => void;
@@ -310,10 +311,10 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                   const isMyFirst = result.firstPlace?.teamId === currentTeamId && currentRole === 'STUDENT';
                   const isMySecond = result.secondPlace?.teamId === currentTeamId && currentRole === 'STUDENT';
 
-                  const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === result.region;
+                  const isSteveBlockingRegion = isSteveBlocking(gameState, result.region);
 
                   return (
-                    <Card key={result.region} className={`border-primary/20 ${(isMyFirst || isMySecond) ? 'ring-2 ring-warning/50 bg-warning/[0.02]' : ''} ${isSteveBlocking ? 'border-red-500 bg-red-950/10' : ''}`}>
+                    <Card key={result.region} className={`border-primary/20 ${(isMyFirst || isMySecond) ? 'ring-2 ring-warning/50 bg-warning/[0.02]' : ''} ${isSteveBlockingRegion ? 'border-red-500 bg-red-950/10' : ''}`}>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center justify-between">
                           <span className="flex items-center gap-2">

@@ -13,7 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Award, CheckCircle2, AlertCircle, Lock, ShieldCheck } from 'lucide-react';
-import { isRuleActiveForTeam } from '@/lib/defaultRules';
+import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 import { toast } from 'sonner';
 
 export interface DirectiveDefinition {
@@ -79,6 +79,37 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
   const targetTeamId = teamId || selectedTeamId;
   const claimedList: ClaimedDirective[] = gameState?.advancedState?.directives || [];
   const isDirectivesRuleActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'directives_bonus_points', targetTeamId);
+  const directivePointsVal = Number(getRuleValueForTeam(gameState?.ruleAdjustments, 'directives_bonus_points', targetTeamId, 12));
+
+  // Compute live round metrics for eligibility hint
+  const currentRoundObj = gameState?.rounds.find(r => r.roundNumber === currentRound);
+  const selectedTeamRoundData = currentRoundObj?.teamData[targetTeamId];
+
+  const teamProduced = selectedTeamRoundData?.productsProduced || 0;
+  const teamSold = selectedTeamRoundData?.customersSold?.length || 0;
+  const teamUnsold = Math.max(0, teamProduced - teamSold);
+  const teamRegionsSold = selectedTeamRoundData?.salesByRegion
+    ? Object.entries(selectedTeamRoundData.salesByRegion).filter(([_, count]) => count > 0).length
+    : 0;
+
+  const getMetricForDirective = (dirId: string) => {
+    switch (dirId) {
+      case 'directive_2':
+        return { text: `R${currentRound} Produced: ${teamProduced}/13`, met: teamProduced >= 13 };
+      case 'directive_5':
+        return { text: `R${currentRound} Sold: ${teamSold}/10`, met: teamSold >= 10 };
+      case 'directive_6':
+        return { text: `R${currentRound} Sold: ${teamSold}`, met: teamSold === 0 && teamProduced > 0 };
+      case 'directive_7':
+        return { text: `R${currentRound} Regions Sold: ${teamRegionsSold}/5`, met: teamRegionsSold >= 5 };
+      case 'directive_21':
+        return { text: `R${currentRound} Unsold: ${teamUnsold}/4`, met: teamUnsold >= 4 };
+      case 'directive_22':
+        return { text: `R${currentRound} Regions Sold: ${teamRegionsSold}`, met: false };
+      default:
+        return null;
+    }
+  };
 
   const handleAllocateDirective = (directive: DirectiveDefinition) => {
     if (!gameState || !targetTeamId) return;
@@ -118,8 +149,8 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
     allocateDirective(targetTeamId, directive.id);
 
     const teamObj = teams.find(t => t.id === targetTeamId);
-    toast.success(`Directive #${directive.number} Allocated to ${teamObj?.name}! (+12 VPs at Game End)`, {
-      description: `Awarded 12 bonus points for "${directive.title}". Points will be added to final score at game end.`,
+    toast.success(`Directive #${directive.number} Allocated to ${teamObj?.name}! (+${directivePointsVal} VPs at Game End)`, {
+      description: `Awarded ${directivePointsVal} bonus points for "${directive.title}". Points will be added to final score at game end.`,
     });
   };
 
@@ -138,17 +169,17 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
           className={triggerClassName || "border-amber-500/40 text-amber-600 dark:text-amber-300 hover:bg-amber-500/10 font-bold gap-1.5 text-xs"}
         >
           <Award className="h-4 w-4 text-amber-500" />
-          Directives (12 VPs)
+          Directives (+{directivePointsVal} VPs)
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto bg-card text-foreground">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg font-bold">
             <Award className="h-5 w-5 text-amber-500" />
-            Special Directives (+12 VPs Each at Game End)
+            Special Directives (+{directivePointsVal} VPs Each at Game End)
           </DialogTitle>
           <CardDescription className="text-xs text-muted-foreground">
-            Each directive can only be claimed by ONE team globally. Once claimed, it is gone. Facilitator allocates directives on behalf of teams. 12 VPs awarded at final scoring.
+            Each directive can only be claimed by ONE team globally. Once claimed, it is gone. Facilitator allocates directives on behalf of teams. {directivePointsVal} VPs awarded at final scoring.
           </CardDescription>
         </DialogHeader>
 
@@ -194,6 +225,7 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
             const globalClaim = claimedList.find(d => d.id === dir.id);
             const isClaimedGlobally = !!globalClaim;
             const claimingTeam = globalClaim ? teams.find(t => t.id === globalClaim.teamId) : null;
+            const metric = getMetricForDirective(dir.id);
 
             return (
               <Card
@@ -207,12 +239,12 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
                 <CardHeader className="p-3.5 pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge className="bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40 text-[10px] font-mono">
                           Directive #{dir.number}
                         </Badge>
                         <Badge variant="outline" className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
-                          +12 VPs (End Game)
+                          +{dir.id ? directivePointsVal : 12} VPs
                         </Badge>
                       </div>
                       <CardTitle className="text-sm font-bold mt-1">{dir.title}</CardTitle>
@@ -256,6 +288,16 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
 
                 <CardContent className="p-3.5 pt-0 text-xs text-muted-foreground space-y-1.5">
                   <p>{dir.description}</p>
+                  
+                  {/* Metric Hint */}
+                  {!isClaimedGlobally && metric && (
+                    <div className="pt-1">
+                      <Badge variant="outline" className={`text-[10px] font-mono ${metric.met ? 'border-emerald-500 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-slate-300 text-slate-500'}`}>
+                        {metric.text} {metric.met ? '✓ Condition Met' : ''}
+                      </Badge>
+                    </div>
+                  )}
+
                   {isClaimedGlobally && (
                     <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 pt-1 border-t border-emerald-500/20">
                       Claimed exclusively by {claimingTeam?.name} in Round {globalClaim.roundNumber}.
@@ -270,3 +312,4 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
     </Dialog>
   );
 };
+

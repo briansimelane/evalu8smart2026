@@ -9,6 +9,7 @@ import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn } from '@/lib/utils';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
+import { isSteveBlocking } from '@/lib/rules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -191,15 +192,14 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
     presentTeamObjs.some(t => m.tierFor(`office:${regionName}:${t.id}`) > 0) ||
     inProgressTeamObjs.some(({ team }) => m.tierFor(`logistics:${regionName}:${team.id}`) > 0);
 
-  const isSteveRuleActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'steve_event_blocker');
-  const isSteveBlocking = isSteveRuleActive && gameState.advancedState?.steve?.activeRegion === regionName;
+  const isSteveBlockingRegion = isSteveBlocking(gameState, regionName);
 
   return (
     <div 
       style={{ width: `${cardWidth}px` }}
       className={cn(
         "absolute h-[165px] bg-white rounded-xl p-3 flex flex-col justify-between backdrop-blur-sm group hover:border-slate-500 hover:shadow-xl transition-all duration-300 text-slate-900 z-10 mo-dimmable",
-        isSteveBlocking
+        isSteveBlockingRegion
           ? "border-2 border-red-600 shadow-2xl z-30 font-bold"
           : cardChanged 
             ? "border-2 border-amber-500 ring-4 ring-amber-400/90 ring-offset-2 shadow-2xl scale-105 z-30 font-bold" 

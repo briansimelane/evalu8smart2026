@@ -15,6 +15,7 @@ import { getControlPointsForRegion } from '@/data/control';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
+import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -407,7 +408,7 @@ export const LogisticsPhase = () => {
             <h3 className="text-sm font-semibold">Regions</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {availableRegions.map(region => {
-                const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === region.name;
+                const isSteveBlocking = isSteveBlockingRule(gameState, region.name, selectedTeam);
                 const status = isSteveBlocking ? 'unavailable' : getRegionStatus(region.name);
                 const currentInvestment = teamProgress?.regionInvestments[region.name] || 0;
                 const progressPercent = (currentInvestment / region.logisticsCost) * 100;
@@ -659,7 +660,7 @@ export const LogisticsPhase = () => {
             {Object.values(gameState.regionLogistics)
               .sort((a, b) => REGION_CUSTOMERS.findIndex(r => r.region === a.name) - REGION_CUSTOMERS.findIndex(r => r.region === b.name))
               .map(region => {
-              const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === region.name;
+              const isSteveBlocking = isSteveBlockingRule(gameState, region.name);
               const isFull = isRegionFull(region.name);
 
               return (

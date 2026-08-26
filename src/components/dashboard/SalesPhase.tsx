@@ -23,6 +23,7 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
 
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
+import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 
 export const SalesPhase = () => {
   const { gameState, addRoundData, getCurrentRound, getTeamLogisticsProgress, calculatePlayOrder } = useGame();
@@ -571,7 +572,7 @@ export const SalesPhase = () => {
                         const regionData = REGION_CUSTOMERS.find(r => r.region === regionName);
                         if (!regionData) return null;
 
-                        const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === regionName;
+                        const isSteveBlocking = isSteveBlockingRule(gameState, regionName, selectedTeam);
                         const regionLogisticsData = gameState.regionLogistics?.[regionName];
                         const teamsPresentCount = regionLogisticsData?.teamsPresent?.length || 0;
                         const effectiveTeamsCount = Math.max(1, teamsPresentCount);
@@ -716,7 +717,7 @@ export const SalesPhase = () => {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {REGION_CUSTOMERS.map(({ region }) => {
-              const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === region;
+              const isSteveBlocking = isSteveBlockingRule(gameState, region);
               const regionStatus = regionSalesStatus[region];
               const hasSales = regionStatus.some(s => s.soldTo);
               const regionLogisticsData = gameState.regionLogistics?.[region];

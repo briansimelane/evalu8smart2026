@@ -11,6 +11,7 @@ import { GameIcon } from './GameIcon';
 import { SteveIcon } from './SteveIcon';
 import { getControlPointsForRegion } from '@/data/control';
 import { getControlPointsForTeamInRound, getTeamPatentPoints, getInitialScore } from '@/types/game';
+import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 
 interface SummaryMapProps {
   initialRound?: number;
@@ -273,7 +274,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {regionalBreakdown.map(({ region, customers, teamsPresent, salesDetails, firstPlace, secondPlace, customerStatus }) => {
-            const isSteveBlocking = gameState.advancedState?.steve?.activeRegion === region;
+            const isSteveBlocking = isSteveBlockingRule(gameState, region);
 
             return (
               <Card key={region} className={`border-border/80 shadow-md hover:border-primary/50 transition-colors flex flex-col ${isSteveBlocking ? 'ring-2 ring-red-500/50 bg-red-950/10' : ''}`}>

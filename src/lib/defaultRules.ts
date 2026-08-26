@@ -151,7 +151,7 @@ export const DEFAULT_RULES: Record<string, RuleAdjustment> = {
   tech_permanent_benefits: {
     id: 'tech_permanent_benefits',
     name: 'Advanced Rule 1: Permanent Technological Benefits',
-    description: 'Grants permanent perks on full research: GPS (+5 products bonus), Wifi (unsold product carry-over), Gaming (-$1 research/patent cost), Battery (+1 logistics on price increase), NFC (3 direct non-region sales), 4G (1 non-office region sale).',
+    description: 'Grants permanent perks on full research: GPS (+5 products bonus once per game), Wifi (unsold product carry-over), Gaming (-$1 research/patent cost), Battery (+1 logistics when product price is > $5).',
     category: 'Research & Tech',
     enabled: true,
     globalValue: true,

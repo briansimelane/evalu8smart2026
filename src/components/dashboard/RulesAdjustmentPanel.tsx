@@ -327,6 +327,21 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
                       <CardDescription className="text-xs text-muted-foreground">
                         {rule.description}
                       </CardDescription>
+                      {!rule.enabled && rule.id === 'steve_event_blocker' && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold pt-1">
+                          ⚠️ Rule OFF: Active Steve region is cleared and region blocking is un-gated for all teams.
+                        </p>
+                      )}
+                      {!rule.enabled && rule.id === 'directives_bonus_points' && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold pt-1">
+                          ⚠️ Rule OFF: Directive claims are disabled and claimed directives will award 0 VPs in final scoring.
+                        </p>
+                      )}
+                      {!rule.enabled && rule.id === 'wildcard_tokens_system' && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold pt-1">
+                          ⚠️ Rule OFF: Wildcard token conversions are disabled and leftover tokens will award 0 VPs in final scoring.
+                        </p>
+                      )}
                     </div>
 
                     {/* Master Switch / Team Toggle */}
