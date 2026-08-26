@@ -16,6 +16,7 @@ import { REGION_CUSTOMERS } from '@/data/customers';
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
 import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
