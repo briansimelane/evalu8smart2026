@@ -20,12 +20,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
   const isWildcardsActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'wildcard_tokens_system', teamId);
 
   if (!isWildcardsActive) {
-    return (
-      <Card className="p-3 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-xs flex items-center gap-2 rounded-xl">
-        <Sparkles className="h-4 w-4 text-slate-400 flex-shrink-0" />
-        <span>Wildcard Tokens System (Advanced Rule 2) is currently switched OFF by the facilitator (0 tokens issued).</span>
-      </Card>
-    );
+    return null;
   }
 
   const wildcardData = gameState?.advancedState?.wildcards?.[teamId] || {
@@ -48,7 +43,6 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
   const steveTotalContributed = Object.values(steveData.wildcardsContributed || {}).reduce((a, b) => Number(a) + Number(b), 0);
 
   const usedThisRound = Number(wildcardData.usedInRound?.[currentRound] || 0);
-  const isRoundCapReached = usedThisRound >= 2;
 
   const handleAdjustToken = (
     targetType: 'product' | 'research' | 'logistics' | 'improvement',
@@ -99,39 +93,39 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-        {/* Product Conversion */}
-        <div className="p-2 rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+        {/* Product Conversion (Black Box) */}
+        <div className="p-2 rounded-lg border border-slate-900 bg-slate-900 text-white dark:bg-slate-950 dark:border-slate-800 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-1.5 truncate">
-            <Package className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-            <span className="font-bold truncate text-[11px]">Product</span>
+            <Package className="h-3.5 w-3.5 text-slate-100 flex-shrink-0" />
+            <span className="font-bold truncate text-[11px] text-white">Product</span>
           </div>
-          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
+          <div className="flex items-center gap-1 bg-slate-800 dark:bg-slate-900 p-0.5 rounded border border-slate-700 dark:border-slate-800 flex-shrink-0">
             <Button
               size="sm"
               variant="ghost"
               disabled={(currentRoundConvs.product || 0) <= 0}
               onClick={() => handleAdjustToken('product', -1)}
-              className="h-5 w-5 p-0 text-[10px] text-red-600"
+              className="h-5 w-5 p-0 text-[10px] text-red-400 hover:text-red-300 hover:bg-slate-700"
             >
               <Minus className="h-2.5 w-2.5" />
             </Button>
-            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.product || 0} / 2</span>
+            <span className="font-mono font-bold text-[11px] px-1 text-white">{currentRoundConvs.product || 0} / 2</span>
             <Button
               size="sm"
               variant="ghost"
               disabled={(currentRoundConvs.product || 0) >= 2 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('product', 1)}
-              className="h-5 w-5 p-0 text-[10px] text-emerald-600"
+              className="h-5 w-5 p-0 text-[10px] text-emerald-400 hover:text-emerald-300 hover:bg-slate-700"
             >
               <Plus className="h-2.5 w-2.5" />
             </Button>
           </div>
         </div>
 
-        {/* Improvement Conversion (Max 1) */}
-        <div className="p-2 rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+        {/* Improvement Conversion (Max 1 - Amber Box) */}
+        <div className="p-2 rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/40 dark:border-amber-900 flex items-center justify-between">
           <div className="flex items-center gap-1.5 truncate">
-            <Wrench className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
+            <Wrench className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
             <span className="font-bold truncate text-[11px]">Improve</span>
           </div>
           <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
@@ -157,10 +151,10 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
           </div>
         </div>
 
-        {/* Research Conversion */}
-        <div className="p-2 rounded-lg border border-purple-200 bg-purple-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+        {/* Research Conversion (Purple Box) */}
+        <div className="p-2 rounded-lg border border-purple-200 bg-purple-50/50 dark:bg-purple-950/40 dark:border-purple-900 flex items-center justify-between">
           <div className="flex items-center gap-1.5 truncate">
-            <Microscope className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+            <Microscope className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 flex-shrink-0" />
             <span className="font-bold truncate text-[11px]">Research</span>
           </div>
           <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
@@ -186,10 +180,10 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
           </div>
         </div>
 
-        {/* Logistics Conversion */}
-        <div className="p-2 rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+        {/* Logistics Conversion (Blue Box) */}
+        <div className="p-2 rounded-lg border border-blue-200 bg-blue-50/50 dark:bg-blue-950/40 dark:border-blue-900 flex items-center justify-between">
           <div className="flex items-center gap-1.5 truncate">
-            <Truck className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" />
+            <Truck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
             <span className="font-bold truncate text-[11px]">Logistics</span>
           </div>
           <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
@@ -208,7 +202,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
               variant="ghost"
               disabled={(currentRoundConvs.logistics || 0) >= 2 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('logistics', 1)}
-              className="h-5 w-5 p-0 text-[10px] text-rose-600"
+              className="h-5 w-5 p-0 text-[10px] text-blue-600"
             >
               <Plus className="h-2.5 w-2.5" />
             </Button>

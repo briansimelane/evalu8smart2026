@@ -144,45 +144,45 @@ export const FacilitatorWildcardConsole: React.FC = () => {
         <div className="text-xs font-bold text-slate-700 dark:text-slate-300">Phase Wildcard Controls for {activeTeam?.name}:</div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
-          {/* Production Phase Card */}
-          <div className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+          {/* Production Phase Card (Black Box) */}
+          <div className="p-2.5 rounded-lg border border-slate-900 bg-slate-900 text-white dark:bg-slate-950 dark:border-slate-800 flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-emerald-600" />
+              <Package className="h-4 w-4 text-slate-100" />
               <div>
-                <div className="font-bold text-slate-900 dark:text-slate-100">Production</div>
-                <div className="text-[10px] text-slate-500">+1 Product Icon</div>
+                <div className="font-bold text-white">Production</div>
+                <div className="text-[10px] text-slate-400">+1 Product Icon</div>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 p-1 rounded-md border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-1.5 bg-slate-800 dark:bg-slate-900 p-1 rounded-md border border-slate-700 dark:border-slate-800">
               <Button
                 size="sm"
                 variant="ghost"
                 disabled={(currentRoundConvs.product || 0) <= 0}
                 onClick={() => handleAdjustPhaseToken('product', -1)}
-                className="h-6 w-6 p-0 text-xs text-red-600"
+                className="h-6 w-6 p-0 text-xs text-red-400 hover:text-red-300 hover:bg-slate-700"
               >
                 <Minus className="h-3 w-3" />
               </Button>
-              <span className="font-bold px-1 text-slate-900 dark:text-slate-100">{currentRoundConvs.product || 0} / 2</span>
+              <span className="font-bold px-1 text-white">{currentRoundConvs.product || 0} / 2</span>
               <Button
                 size="sm"
                 variant="ghost"
                 disabled={(currentRoundConvs.product || 0) >= 2 || remainingTokens <= 0}
                 onClick={() => handleAdjustPhaseToken('product', 1)}
-                className="h-6 w-6 p-0 text-xs text-emerald-600"
+                className="h-6 w-6 p-0 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-slate-700"
               >
                 <Plus className="h-3 w-3" />
               </Button>
             </div>
           </div>
 
-          {/* Improvement Phase Card (Max 1) */}
-          <div className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+          {/* Improvement Phase Card (Max 1 - Amber Box) */}
+          <div className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/40 dark:border-amber-900 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Wrench className="h-4 w-4 text-amber-600" />
+              <Wrench className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               <div>
                 <div className="font-bold text-slate-900 dark:text-slate-100">Improvement</div>
-                <div className="text-[10px] text-slate-500">+1 Improve Card</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400">+1 Improve Card</div>
               </div>
             </div>
             <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 p-1 rounded-md border border-slate-200 dark:border-slate-800">
@@ -208,13 +208,13 @@ export const FacilitatorWildcardConsole: React.FC = () => {
             </div>
           </div>
 
-          {/* Research Phase Card */}
-          <div className="p-2.5 rounded-lg border border-purple-200 bg-purple-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+          {/* Research Phase Card (Purple Box) */}
+          <div className="p-2.5 rounded-lg border border-purple-200 bg-purple-50/50 dark:bg-purple-950/40 dark:border-purple-900 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Microscope className="h-4 w-4 text-purple-600" />
+              <Microscope className="h-4 w-4 text-purple-600 dark:text-purple-400" />
               <div>
                 <div className="font-bold text-slate-900 dark:text-slate-100">Research</div>
-                <div className="text-[10px] text-slate-500">+1 Research Icon</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400">+1 Research Icon</div>
               </div>
             </div>
             <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 p-1 rounded-md border border-slate-200 dark:border-slate-800">
@@ -240,13 +240,13 @@ export const FacilitatorWildcardConsole: React.FC = () => {
             </div>
           </div>
 
-          {/* Logistics Phase Card */}
-          <div className="p-2.5 rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
+          {/* Logistics Phase Card (Blue Box) */}
+          <div className="p-2.5 rounded-lg border border-blue-200 bg-blue-50/50 dark:bg-blue-950/40 dark:border-blue-900 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Truck className="h-4 w-4 text-rose-600" />
+              <Truck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               <div>
                 <div className="font-bold text-slate-900 dark:text-slate-100">Logistics</div>
-                <div className="text-[10px] text-slate-500">+1 Logistics Icon</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400">+1 Logistics Icon</div>
               </div>
             </div>
             <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 p-1 rounded-md border border-slate-200 dark:border-slate-800">
@@ -265,7 +265,7 @@ export const FacilitatorWildcardConsole: React.FC = () => {
                 variant="ghost"
                 disabled={(currentRoundConvs.logistics || 0) >= 2 || remainingTokens <= 0}
                 onClick={() => handleAdjustPhaseToken('logistics', 1)}
-                className="h-6 w-6 p-0 text-xs text-rose-600"
+                className="h-6 w-6 p-0 text-xs text-blue-600"
               >
                 <Plus className="h-3 w-3" />
               </Button>

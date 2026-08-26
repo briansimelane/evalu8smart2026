@@ -50,30 +50,45 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
   }, [gameState?.ruleAdjustments]);
 
   const handleGlobalToggle = (ruleId: string, enabled: boolean) => {
-    setRulesState(prev => ({
-      ...prev,
-      rules: {
-        ...prev.rules,
-        [ruleId]: {
-          ...prev.rules[ruleId],
-          enabled,
+    setRulesState(prev => {
+      const updated: RuleAdjustmentsState = {
+        ...prev,
+        rules: {
+          ...prev.rules,
+          [ruleId]: {
+            ...prev.rules[ruleId],
+            enabled,
+          },
         },
-      },
-    }));
+      };
+      updateRuleAdjustments(updated);
+      const ruleName = updated.rules[ruleId]?.name || ruleId;
+      toast.success(`Rule "${ruleName}" is now ${enabled ? 'ACTIVE' : 'OFF'}!`, {
+        description: enabled
+          ? 'Interface and gameplay rules have been updated instantly across all team screens.'
+          : 'Rule switched OFF. Corresponding sections and features have been deactivated.',
+      });
+      return updated;
+    });
   };
 
   const handleGlobalValueChange = (ruleId: string, val: string) => {
     const parsedVal = isNaN(Number(val)) || val === '' ? val : Number(val);
-    setRulesState(prev => ({
-      ...prev,
-      rules: {
-        ...prev.rules,
-        [ruleId]: {
-          ...prev.rules[ruleId],
-          globalValue: parsedVal,
+    setRulesState(prev => {
+      const updated: RuleAdjustmentsState = {
+        ...prev,
+        rules: {
+          ...prev.rules,
+          [ruleId]: {
+            ...prev.rules[ruleId],
+            globalValue: parsedVal,
+          },
         },
-      },
-    }));
+      };
+      updateRuleAdjustments(updated);
+      toast.success(`Rule value updated for "${updated.rules[ruleId]?.name || ruleId}" to ${parsedVal}.`);
+      return updated;
+    });
   };
 
   const handleTeamOverrideToggle = (ruleId: string, teamId: string, enableOverride: boolean) => {
@@ -90,7 +105,7 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
         delete overrides[teamId];
       }
 
-      return {
+      const updated: RuleAdjustmentsState = {
         ...prev,
         rules: {
           ...prev.rules,
@@ -100,6 +115,9 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
           },
         },
       };
+      updateRuleAdjustments(updated);
+      toast.success(`Team override ${enableOverride ? 'enabled' : 'removed'} for ${currentRule.name}.`);
+      return updated;
     });
   };
 
@@ -114,7 +132,7 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
         enabled,
       };
 
-      return {
+      const updated: RuleAdjustmentsState = {
         ...prev,
         rules: {
           ...prev.rules,
@@ -124,6 +142,9 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
           },
         },
       };
+      updateRuleAdjustments(updated);
+      toast.success(`Rule "${currentRule.name}" is now ${enabled ? 'ACTIVE' : 'OFF'} for team.`);
+      return updated;
     });
   };
 
@@ -139,7 +160,7 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
         value: parsedVal,
       };
 
-      return {
+      const updated: RuleAdjustmentsState = {
         ...prev,
         rules: {
           ...prev.rules,
@@ -149,6 +170,9 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
           },
         },
       };
+      updateRuleAdjustments(updated);
+      toast.success(`Override value updated to ${parsedVal} for team.`);
+      return updated;
     });
   };
 

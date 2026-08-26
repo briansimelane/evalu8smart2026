@@ -11,8 +11,13 @@ describe('Facilitator Rules Engine Test Suite', () => {
     expect(rulesState.rules['min_product_price'].enabled).toBe(true);
     expect(rulesState.rules['min_product_price'].globalValue).toBe(2);
     expect(rulesState.rules['steve_event_blocker']).toBeDefined();
+    expect(rulesState.rules['steve_event_blocker'].enabled).toBe(false);
     expect(rulesState.rules['wildcard_tokens_system']).toBeDefined();
+    expect(rulesState.rules['wildcard_tokens_system'].enabled).toBe(false);
     expect(rulesState.rules['directives_bonus_points']).toBeDefined();
+    expect(rulesState.rules['directives_bonus_points'].enabled).toBe(false);
+    expect(rulesState.rules['tech_permanent_benefits'].enabled).toBe(false);
+    expect(rulesState.rules['multiple_offices_per_region'].enabled).toBe(false);
   });
 
   test('global rule toggle and value retrieval', () => {
@@ -53,6 +58,8 @@ describe('Facilitator Rules Engine Test Suite', () => {
 
   test('rule enforcement in calculation functions', () => {
     const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['tech_permanent_benefits'].enabled = true;
+    rulesState.rules['steve_event_blocker'].enabled = true;
 
     const mockGameState: Partial<GameState> = {
       ruleAdjustments: rulesState,
@@ -99,6 +106,9 @@ describe('Facilitator Rules Engine Test Suite', () => {
 
   test('score calculation with Wildcards and Directives', () => {
     const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['wildcard_tokens_system'].enabled = true;
+    rulesState.rules['directives_bonus_points'].enabled = true;
+
     const mockGameState: Partial<GameState> = {
       gameId: 'g1',
       teams: [{ id: 'team_1', name: 'Green Team', color: '#22c55e' }],
@@ -124,6 +134,7 @@ describe('Facilitator Rules Engine Test Suite', () => {
 
   test('calculatePlanStats includes wildcard token conversions for products, research, logistics, and improvement', () => {
     const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['wildcard_tokens_system'].enabled = true;
     const comboData = [{ combination: 1, position: 1, price: 0, products: 3, research: 2, logistics: 2, improve: 1 }];
 
     const mockGameState: Partial<GameState> = {
@@ -154,6 +165,9 @@ describe('Facilitator Rules Engine Test Suite', () => {
 
   test('wildcard action limits enforce max 2 for Product/Research/Logistics and max 1 for Improvement', () => {
     const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['wildcard_tokens_system'].enabled = true;
+    rulesState.rules['steve_event_blocker'].enabled = true;
+
     const mockGameState: Partial<GameState> = {
       gameId: 'g1',
       currentRound: 1,
@@ -179,6 +193,7 @@ describe('Facilitator Rules Engine Test Suite', () => {
 
   test('calculatePlanStats includes +5 products when GPS technology is completed', () => {
     const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['tech_permanent_benefits'].enabled = true;
     const comboData = [{ combination: 1, position: 1, price: 0, products: 3, research: 2, logistics: 2, improve: 1 }];
 
     const mockGameState: Partial<GameState> = {
@@ -209,6 +224,7 @@ describe('Facilitator Rules Engine Test Suite', () => {
 
   test('calculatePlanStats includes carried over products when Wifi technology is completed', () => {
     const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['tech_permanent_benefits'].enabled = true;
     const comboData = [{ combination: 1, position: 1, price: 0, products: 3, research: 2, logistics: 2, improve: 1 }];
 
     const mockGameState: Partial<GameState> = {
