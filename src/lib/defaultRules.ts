@@ -160,7 +160,7 @@ export const DEFAULT_RULES: Record<string, RuleAdjustment> = {
   wildcard_tokens_system: {
     id: 'wildcard_tokens_system',
     name: 'Advanced Rule 2: Wildcard Tokens System',
-    description: 'Teams start with 10 Wildcard Tokens (max 2 used/round) convertible to Product, Research, Logistics, or Improvement icons, Steve removal, or trades. Leftover tokens earn 1 VP each.',
+    description: 'Teams receive 10 Wildcard tokens. Convert up to 2 tokens/action for Product, Research, or Logistics, up to 1 token/action for Improvement, and up to 5 tokens contributed jointly across teams to clear Steve. Leftover tokens earn 1 VP each.',
     category: 'General',
     enabled: true,
     globalValue: 10,

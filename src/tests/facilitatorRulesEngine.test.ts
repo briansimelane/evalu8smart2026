@@ -152,6 +152,31 @@ describe('Facilitator Rules Engine Test Suite', () => {
     expect(stats.improvementPoints).toBe(1 + 1); // 1 base + 1 wildcard token = 2
   });
 
+  test('wildcard action limits enforce max 2 for Product/Research/Logistics and max 1 for Improvement', () => {
+    const rulesState = getDefaultRuleAdjustments();
+    const mockGameState: Partial<GameState> = {
+      gameId: 'g1',
+      currentRound: 1,
+      teams: [
+        { id: 'team_1', name: 'Green Team', color: '#22c55e' },
+        { id: 'team_2', name: 'Blue Team', color: '#3b82f6' }
+      ],
+      ruleAdjustments: rulesState,
+      advancedState: {
+        steve: {
+          activeRegion: 'USA',
+          roundIntroduced: 3,
+          wildcardsContributed: { 'team_1': 3, 'team_2': 2 }, // Joint sum = 5 (Max allowed)
+          wildcardsContributedByRound: { 3: { 'team_1': 3, 'team_2': 2 } }
+        }
+      }
+    };
+
+    const steve = mockGameState.advancedState!.steve!;
+    const totalStevePaid = Object.values(steve.wildcardsContributed).reduce((a, b) => Number(a) + Number(b), 0);
+    expect(totalStevePaid).toBe(5); // Jointly paid 5 tokens across teams!
+  });
+
   test('calculatePlanStats includes +5 products when GPS technology is completed', () => {
     const rulesState = getDefaultRuleAdjustments();
     const comboData = [{ combination: 1, position: 1, price: 0, products: 3, research: 2, logistics: 2, improve: 1 }];

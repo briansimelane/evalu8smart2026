@@ -1508,13 +1508,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const remaining = Math.max(0, (tWildcard.totalTokens || 10) - totalUsed);
 
       const steveContribs = { ...(steve.wildcardsContributed || {}) };
+      const currentTotalSteve = Object.values(steveContribs).reduce((a, b) => Number(a) + Number(b), 0);
+      const newTotalSteve = currentTotalSteve + delta;
+
+      // Joint total unblocking cap across all teams is 5
+      if (newTotalSteve < 0 || newTotalSteve > 5) return prev;
+
       const currentTeamSteve = steveContribs[teamId] || 0;
       const newTeamSteve = currentTeamSteve + delta;
-
-      if (newTeamSteve < 0 || newTeamSteve > 5) return prev;
+      if (newTeamSteve < 0) return prev;
       if (delta > 0 && remaining < delta) return prev;
 
-      // Combined per-round usage check (conversions + steve in current round)
       const convsByR = { ...(tWildcard.conversionsByRound || {}) };
       const rConvs = { ...(convsByR[currentRound] || {}) };
       const roundConvsTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
@@ -1525,13 +1529,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const newSteveInRound = currentSteveInRound + delta;
       if (newSteveInRound < 0) return prev;
 
-      const roundUsedTotal = roundConvsTotal + newSteveInRound;
-      if (delta > 0 && roundUsedTotal > 2) return prev; // MAX 2 combined per round
-
       steveContribs[teamId] = newTeamSteve;
       roundSteveMap[teamId] = newSteveInRound;
       steveByRoundMap[currentRound] = roundSteveMap;
 
+      const roundUsedTotal = roundConvsTotal + newSteveInRound;
       usedInR[currentRound] = roundUsedTotal;
       wildcardsMap[teamId] = { ...tWildcard, usedInRound: usedInR };
 
@@ -1573,8 +1575,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const rConvs = { ...(convsByR[currentRound] || {}) };
       const currentPhaseVal = rConvs[conversionType] || 0;
 
+      // Per-action cap: up to 2 for product/research/logistics, up to 1 for improvement
+      const maxForAction = conversionType === 'improvement' ? 1 : 2;
       const newPhaseVal = currentPhaseVal + delta;
-      if (newPhaseVal < 0 || newPhaseVal > 2) return prev; // 0, 1, or 2 per conversion type
+      if (newPhaseVal < 0 || newPhaseVal > maxForAction) return prev;
 
       if (delta > 0 && totalUsed + delta > (tWildcard.totalTokens || 10)) return prev;
 
@@ -1584,8 +1588,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const roundConvsTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
       const steveInRound = (prev.advancedState?.steve?.wildcardsContributedByRound?.[currentRound]?.[teamId]) || 0;
       const roundUsedTotal = roundConvsTotal + steveInRound;
-
-      if (delta > 0 && roundUsedTotal > 2) return prev; // MAX 2 combined per round
 
       usedInR[currentRound] = roundUsedTotal;
 

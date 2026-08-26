@@ -91,14 +91,11 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
           <Badge variant="outline" className="text-xs border-indigo-300 dark:border-indigo-500/40 text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 font-bold">
             {remainingTokens} / 10 Left
           </Badge>
-          <Badge variant="outline" className={`text-xs font-bold ${isRoundCapReached ? 'border-amber-400 text-amber-600 bg-amber-50 dark:bg-amber-950/40' : 'border-slate-300 text-slate-600'}`}>
-            R{currentRound}: {usedThisRound}/2 Used
-          </Badge>
         </div>
       </div>
 
       <div className="text-[11px] text-slate-500 dark:text-slate-400">
-        Spend <span className="font-bold text-slate-700 dark:text-slate-200">up to 2 tokens total per round</span> across conversions & Steve removal. Leftover tokens earn <span className="font-bold text-indigo-600 dark:text-indigo-300">1 VP each</span> at game end.
+        Spend <span className="font-bold text-slate-700 dark:text-slate-200">up to 2 tokens/action</span> (Product, Research, Logistics), <span className="font-bold text-slate-700 dark:text-slate-200">up to 1 token</span> for Improvement. Steve unblocking is capped at <span className="font-bold text-slate-700 dark:text-slate-200">5 tokens total</span> jointly across teams.
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
@@ -118,11 +115,11 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             >
               <Minus className="h-2.5 w-2.5" />
             </Button>
-            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.product || 0}</span>
+            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.product || 0} / 2</span>
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.product || 0) >= 2 || isRoundCapReached || remainingTokens <= 0}
+              disabled={(currentRoundConvs.product || 0) >= 2 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('product', 1)}
               className="h-5 w-5 p-0 text-[10px] text-emerald-600"
             >
@@ -131,7 +128,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
           </div>
         </div>
 
-        {/* Improvement Conversion */}
+        {/* Improvement Conversion (Max 1) */}
         <div className="p-2 rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-1.5 truncate">
             <Wrench className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
@@ -147,11 +144,11 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             >
               <Minus className="h-2.5 w-2.5" />
             </Button>
-            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.improvement || 0}</span>
+            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.improvement || 0} / 1</span>
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.improvement || 0) >= 2 || isRoundCapReached || remainingTokens <= 0}
+              disabled={(currentRoundConvs.improvement || 0) >= 1 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('improvement', 1)}
               className="h-5 w-5 p-0 text-[10px] text-amber-600"
             >
@@ -176,11 +173,11 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             >
               <Minus className="h-2.5 w-2.5" />
             </Button>
-            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.research || 0}</span>
+            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.research || 0} / 2</span>
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.research || 0) >= 2 || isRoundCapReached || remainingTokens <= 0}
+              disabled={(currentRoundConvs.research || 0) >= 2 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('research', 1)}
               className="h-5 w-5 p-0 text-[10px] text-purple-600"
             >
@@ -205,11 +202,11 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
             >
               <Minus className="h-2.5 w-2.5" />
             </Button>
-            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.logistics || 0}</span>
+            <span className="font-mono font-bold text-[11px] px-1">{currentRoundConvs.logistics || 0} / 2</span>
             <Button
               size="sm"
               variant="ghost"
-              disabled={(currentRoundConvs.logistics || 0) >= 2 || isRoundCapReached || remainingTokens <= 0}
+              disabled={(currentRoundConvs.logistics || 0) >= 2 || remainingTokens <= 0}
               onClick={() => handleAdjustToken('logistics', 1)}
               className="h-5 w-5 p-0 text-[10px] text-rose-600"
             >
@@ -250,7 +247,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={remainingTokens <= 0 || !steveData.activeRegion || steveTotalContributed >= 5 || isRoundCapReached}
+                disabled={remainingTokens <= 0 || !steveData.activeRegion || steveTotalContributed >= 5}
                 onClick={() => handleAdjustSteve(1)}
                 className="h-5 w-5 p-0 text-[10px] text-emerald-600"
               >
