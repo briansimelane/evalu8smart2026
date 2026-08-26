@@ -461,10 +461,22 @@ export const LogisticsPhase = () => {
                                   <Truck className="h-3.5 w-3.5" />
                                   Logistics Cost: <strong className="text-foreground">{region.logisticsCost}</strong>
                                 </span>
-                                <span className="flex items-center gap-1 font-medium">
-                                  <Users className="h-3.5 w-3.5" />
-                                  Presence: <strong className="text-foreground">{region.teamsPresent.length}/{region.maxTeams} teams</strong>
-                                </span>
+                                {isRuleActiveForTeam(gameState?.ruleAdjustments, 'multiple_offices_per_region', selectedTeam) ? (() => {
+                                  const rl = gameState?.regionLogistics?.[region.name];
+                                  const total = Object.values(rl?.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
+                                  const mine = rl?.officeCounts?.[selectedTeam] || 0;
+                                  return (
+                                    <span className="flex items-center gap-1 font-medium">
+                                      <Users className="h-3.5 w-3.5 text-indigo-500" />
+                                      Offices: <strong className="text-foreground">{mine} yours · {total}/{rl?.maxTeams ?? region.maxTeams} filled</strong>
+                                    </span>
+                                  );
+                                })() : (
+                                  <span className="flex items-center gap-1 font-medium">
+                                    <Users className="h-3.5 w-3.5" />
+                                    Presence: <strong className="text-foreground">{region.teamsPresent.length}/{region.maxTeams} teams</strong>
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-1.5 flex-wrap pt-1">
                                 <span className="text-xs font-semibold text-muted-foreground">Control Points:</span>

@@ -11,7 +11,7 @@ import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
 import { removeUndefined } from '@/lib/utils';
-import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech } from '@/lib/rules';
+import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech, getLogisticsCostForTeam } from '@/lib/rules';
 import { getDefaultRuleAdjustments, isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 
 export interface GameContextType {
@@ -1255,15 +1255,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
         [teamId]: newInvestment
       };
 
-      const baseCost = region.logisticsCost || 2;
       const isMultiOfficeActive = isRuleActiveForTeam(prev.ruleAdjustments, 'multiple_offices_per_region', teamId);
-      const officeCost = isMultiOfficeActive ? Math.max(1, baseCost - 1) : baseCost;
+      const officeCost = getLogisticsCostForTeam(prev, teamId, regionName); // single source of truth
       const alreadyHasPresence = region.teamsPresent.includes(teamId);
       const currentOffices = region.officeCounts?.[teamId] || (alreadyHasPresence ? 1 : 0);
 
-      const officesEarned = Math.floor(newInvestment / officeCost);
-      const updatedOfficeCount = Math.max(currentOffices, officesEarned);
-      const hasPresence = officesEarned >= 1;
+      const officesEarnedRaw = Math.floor(newInvestment / officeCost);
+
+      let updatedOfficeCount: number;
+      if (isMultiOfficeActive) {
+        // Slots occupied by OTHER teams in this region
+        const otherOffices = Object.entries(region.officeCounts || {})
+          .reduce((sum, [tid, n]) => sum + (tid === teamId ? 0 : Number(n)), 0);
+        const maxForThisTeam = Math.max(0, region.maxTeams - otherOffices);
+        // Never exceed available slots; never drop below what the team already holds.
+        updatedOfficeCount = Math.min(Math.max(currentOffices, officesEarnedRaw), maxForThisTeam);
+      } else {
+        // Rule OFF: presence is boolean — at most one office, no multi-office tracking.
+        updatedOfficeCount = officesEarnedRaw >= 1 ? 1 : currentOffices;
+      }
+
+      const hasPresence = updatedOfficeCount >= 1;
 
       const updatedRegion = {
         ...region,

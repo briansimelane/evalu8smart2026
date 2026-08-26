@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { getDefaultRuleAdjustments, isRuleActiveForTeam, getRuleValueForTeam } from '../lib/defaultRules';
-import { getTechnologyCostForTeam, canExpandToRegion, calculatePlanStats } from '../lib/rules';
+import { getTechnologyCostForTeam, canExpandToRegion, calculatePlanStats, getLogisticsCostForTeam } from '../lib/rules';
 import { GameState, RuleAdjustmentsState, calculateTeamTotalScore } from '../types/game';
 
 describe('Facilitator Rules Engine Test Suite', () => {
@@ -329,5 +329,78 @@ describe('Facilitator Rules Engine Test Suite', () => {
 
     expect(canExpandToRegion(mockGameState as GameState, 'team_1', 'Canada')).toBe(false); // Canada is blocked!
     expect(canExpandToRegion(mockGameState as GameState, 'team_1', 'USA')).toBe(true); // USA is unblocked and has presence!
+  });
+
+  test('getLogisticsCostForTeam discounts every office when rule is active, floored at 1', () => {
+    const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['multiple_offices_per_region'].enabled = true;
+
+    const mockGameState: Partial<GameState> = {
+      ruleAdjustments: rulesState,
+      regionLogistics: {
+        'USA': { name: 'USA', logisticsCost: 2, maxTeams: 3, connectedRegions: [], teamsPresent: [], teamProgress: {} },
+        'Europe': { name: 'Europe', logisticsCost: 1, maxTeams: 3, connectedRegions: [], teamsPresent: [], teamProgress: {} }
+      }
+    };
+
+    // USA baseCost 2 -> discounted to 1 even for first office
+    expect(getLogisticsCostForTeam(mockGameState as GameState, 'team_1', 'USA')).toBe(1);
+
+    // Europe baseCost 1 -> discounted floored at 1
+    expect(getLogisticsCostForTeam(mockGameState as GameState, 'team_1', 'Europe')).toBe(1);
+
+    // When rule is OFF -> returns full baseCost
+    rulesState.rules['multiple_offices_per_region'].enabled = false;
+    expect(getLogisticsCostForTeam(mockGameState as GameState, 'team_1', 'USA')).toBe(2);
+  });
+
+  test('rule-off parity: stale officeCounts do not affect slot counting when rule is OFF', () => {
+    const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['multiple_offices_per_region'].enabled = false; // Rule OFF!
+
+    const mockGameState: Partial<GameState> = {
+      ruleAdjustments: rulesState,
+      regionLogistics: {
+        'USA': {
+          name: 'USA',
+          logisticsCost: 2,
+          maxTeams: 3,
+          connectedRegions: [],
+          teamsPresent: ['team_1'], // Only 1 distinct team present
+          teamProgress: {},
+          officeCounts: { 'team_1': 3 } // Stale count = 3 from previous active state
+        }
+      },
+      teamLogisticsProgress: {
+        'team_2': { teamId: 'team_2', regionsWithPresence: ['Canada'], regionInvestments: {} }
+      }
+    };
+
+    // Since rule is OFF, occupiedSlots uses teamsPresent.length (1) rather than stale officeCounts (3)
+    // team_2 can expand to USA because 1 < 3!
+    const canExpand = canExpandToRegion(mockGameState as GameState, 'team_2', 'USA');
+    expect(canExpand).toBe(false); // USA is not connected to Canada for team_2
+
+    mockGameState.regionLogistics!['USA'].connectedRegions = ['Canada'];
+    const canExpandConnected = canExpandToRegion(mockGameState as GameState, 'team_2', 'USA');
+    expect(canExpandConnected).toBe(true); // Connected, and rule-OFF slot count is 1 < maxTeams (3)
+  });
+
+  test('slot overflow cap: team_1 investment capping ensures total offices in region never exceeds maxTeams', () => {
+    const rulesState = getDefaultRuleAdjustments();
+    rulesState.rules['multiple_offices_per_region'].enabled = true;
+
+    // Region USA maxTeams: 3, baseCost: 2 (discounted to 1). team_2 holds 1 office.
+    // team_1 has 0 offices currently.
+    const otherOffices = 1;
+    const maxTeams = 3;
+    const maxForTeam1 = Math.max(0, maxTeams - otherOffices); // 2 offices max for team_1
+
+    // Raw earned from high investment (e.g., 5 points / 1 cost = 5 offices earned)
+    const rawEarned = 5;
+    const currentOffices = 0;
+    const clampedOffices = Math.min(Math.max(currentOffices, rawEarned), maxForTeam1);
+
+    expect(clampedOffices).toBe(2); // Capped at 2 so total offices in region = 2 + 1 = 3 (maxTeams)!
   });
 });

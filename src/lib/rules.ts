@@ -23,12 +23,8 @@ export function getLogisticsCostForTeam(gameState: GameState | null | undefined,
   if (!region) return 2;
   const baseCost = region.logisticsCost || 2;
   const isMultiOfficeActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'multiple_offices_per_region', teamId);
-  const teamProgress = gameState.teamLogisticsProgress?.[teamId];
-  const hasPresence = teamProgress?.regionsWithPresence?.includes(regionName);
-  if (isMultiOfficeActive && hasPresence) {
-    return Math.max(1, baseCost - 1);
-  }
-  return baseCost;
+  // OD-A resolved (a): while the rule is active, EVERY office (including the first) costs baseCost - 1, floored at 1.
+  return isMultiOfficeActive ? Math.max(1, baseCost - 1) : baseCost;
 }
 
 export function calculatePlanStats(
@@ -183,7 +179,9 @@ export function canExpandToRegion(
   // MULTIPLE OFFICES RULE: If team already has presence, can build additional office if slots available
   const isMultiOfficeActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'multiple_offices_per_region', teamId);
   const totalOffices = Object.values(region.officeCounts || {}).reduce((a, b) => a + Number(b), 0);
-  const occupiedSlots = region.officeCounts ? totalOffices : region.teamsPresent.length;
+  const occupiedSlots = isMultiOfficeActive
+    ? (region.officeCounts ? totalOffices : region.teamsPresent.length)
+    : region.teamsPresent.length;
 
   if (teamProgress.regionsWithPresence.includes(regionName)) {
     return isMultiOfficeActive ? occupiedSlots < region.maxTeams : true;
