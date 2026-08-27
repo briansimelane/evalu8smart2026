@@ -442,6 +442,14 @@ describe('Facilitator Rules Engine Test Suite', () => {
       expect(isSteveBlocking(state, 'Canada', 'team_1')).toBe(false);
       expect(canExpandToRegion(state, 'team_1', 'Canada')).toBe(true);
     });
+
+    test('Steve can be placed in any round (including Round 1 and Round 2)', () => {
+      const state = makeGameState();
+      state.currentRound = 1;
+      enableRule(state, 'steve_event_blocker');
+      state.advancedState!.steve = { activeRegion: 'Canada', roundIntroduced: 1 };
+      expect(isSteveBlocking(state, 'Canada', 'team_1')).toBe(true);
+    });
   });
 
   describe('9.6 Cross-Cutting — Toggle Coherence & Regression', () => {

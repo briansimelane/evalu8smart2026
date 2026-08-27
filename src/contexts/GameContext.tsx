@@ -1541,10 +1541,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!effectiveGameState) return;
     mutateGameState(prev => {
       if (!prev) return prev;
-      if (regionName !== null && prev.currentRound < 3) {
-        console.warn('Steve can only be introduced in Round 3+');
-        return prev;
-      }
       const currentAdvanced = prev.advancedState || {};
       return {
         ...prev,
@@ -1552,7 +1548,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           ...currentAdvanced,
           steve: {
             activeRegion: regionName,
-            roundIntroduced: prev.currentRound >= 3 ? prev.currentRound : 3,
+            roundIntroduced: prev.currentRound,
             wildcardsContributed: {},
             wildcardsContributedByRound: {},
           },
