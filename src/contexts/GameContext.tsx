@@ -1144,8 +1144,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
               prev.combinationsData || COMBINATIONS
             );
 
+            const targetProducts = Math.max(existingTeamData.productsProduced || 0, newStats.productsAvailable);
+
             if (
-              existingTeamData.productsProduced !== newStats.productsAvailable ||
+              existingTeamData.productsProduced !== targetProducts ||
               existingTeamData.logisticsIcons !== newStats.logisticsPoints ||
               existingTeamData.researchIcons !== newStats.researchPoints ||
               existingTeamData.price !== newStats.calculatedPrice
@@ -1154,7 +1156,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
               updatedTeamDataMap[t.id] = {
                 ...existingTeamData,
                 price: newStats.calculatedPrice,
-                productsProduced: newStats.productsAvailable,
+                productsProduced: targetProducts,
                 researchIcons: newStats.researchPoints,
                 logisticsIcons: newStats.logisticsPoints,
                 improvementCards: newStats.improvementPoints,
