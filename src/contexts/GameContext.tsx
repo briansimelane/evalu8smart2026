@@ -1619,6 +1619,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
             wildcardsContributedByRound: steveByRoundMap,
           },
         },
+        updatedAt: new Date(),
+      };
+    });
+  }, [effectiveGameState]);
+
   const adjustTeamWildcardTotal = useCallback((teamId: string, delta: number) => {
     if (!effectiveGameState || !teamId) return;
     mutateGameState(prev => {

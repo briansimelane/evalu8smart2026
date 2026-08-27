@@ -3,6 +3,7 @@ import { useGame } from '@/contexts/GameContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sparkles, Package, Microscope, Truck, Wrench, Plus, Minus, ArrowRightLeft, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
@@ -69,6 +70,11 @@ export const FacilitatorWildcardConsole: React.FC = () => {
 
   const usedThisRound = Number(wildcardData.usedInRound?.[currentRound] || 0);
 
+  // Transfer source team state
+  const sourceWcData = gameState.advancedState?.wildcards?.[transferSourceId] || { totalTokens: 10, usedInRound: {} };
+  const sourceUsed = Number(Object.values(sourceWcData.usedInRound || {}).reduce((acc: number, val: any) => acc + Number(val || 0), 0));
+  const sourceRemaining = Math.max(0, Number(sourceWcData.totalTokens || 10) - sourceUsed);
+
   const handleAdjustPhaseToken = (
     targetType: 'product' | 'research' | 'logistics' | 'improvement',
     delta: number
@@ -101,11 +107,12 @@ export const FacilitatorWildcardConsole: React.FC = () => {
       toast.error('Please select two different teams for token transfer.');
       return;
     }
+    if (transferAmount <= 0) {
+      toast.error('Please enter a transfer amount greater than 0.');
+      return;
+    }
     const sourceTeam = teams.find(t => t.id === transferSourceId);
     const targetTeam = teams.find(t => t.id === transferTargetId);
-    const sourceWc = gameState.advancedState?.wildcards?.[transferSourceId] || { totalTokens: 10, usedInRound: {} };
-    const sourceUsed = Number(Object.values(sourceWc.usedInRound || {}).reduce((acc: number, val: any) => acc + Number(val || 0), 0));
-    const sourceRemaining = Math.max(0, Number(sourceWc.totalTokens || 10) - sourceUsed);
 
     if (transferAmount > sourceRemaining) {
       toast.error(`${sourceTeam?.name} only has ${sourceRemaining} remaining wildcard tokens available to transfer.`);
@@ -142,14 +149,19 @@ export const FacilitatorWildcardConsole: React.FC = () => {
               <SelectValue placeholder="Select team" />
             </SelectTrigger>
             <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
-              {teams.map(t => (
-                <SelectItem key={t.id} value={t.id} className="text-xs">
-                  <span className="flex items-center gap-2 font-medium">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: t.color }} />
-                    {t.name}
-                  </span>
-                </SelectItem>
-              ))}
+              {teams.map(t => {
+                const tWc = gameState.advancedState?.wildcards?.[t.id] || { totalTokens: 10, usedInRound: {} };
+                const tUsed = Number(Object.values(tWc.usedInRound || {}).reduce((acc: number, val: any) => acc + Number(val || 0), 0));
+                const tRem = Math.max(0, Number(tWc.totalTokens || 10) - tUsed);
+                return (
+                  <SelectItem key={t.id} value={t.id} className="text-xs">
+                    <span className="flex items-center gap-2 font-medium">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: t.color }} />
+                      {t.name} ({tRem} rem / {tWc.totalTokens || 10} tot)
+                    </span>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -332,11 +344,17 @@ export const FacilitatorWildcardConsole: React.FC = () => {
 
       {/* Facilitator Inter-Team Wildcard Token Transfer Console */}
       <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-100">
-          <ArrowRightLeft className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-          Transfer Wildcard Tokens Between Teams (Trade / Agreement)
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-100">
+            <ArrowRightLeft className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            Transfer Wildcard Tokens Between Teams (Trade / Agreement)
+          </div>
+          <Badge variant="outline" className={`text-[10px] font-mono font-bold ${sourceRemaining > 0 ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-red-300 bg-red-50 text-red-700 dark:bg-red-950/40'}`}>
+            Source Available: {sourceRemaining} Token{sourceRemaining !== 1 ? 's' : ''}
+          </Badge>
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-2 bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40 text-xs">
+
+        <div className="flex flex-col sm:flex-row items-center gap-2.5 bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40 text-xs">
           <div className="flex items-center gap-1.5 w-full sm:w-auto flex-1">
             <span className="font-semibold text-slate-600 dark:text-slate-400 whitespace-nowrap">From:</span>
             <Select value={transferSourceId} onValueChange={setTransferSourceId}>
@@ -344,14 +362,19 @@ export const FacilitatorWildcardConsole: React.FC = () => {
                 <SelectValue placeholder="Source team" />
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-                {teams.map(t => (
-                  <SelectItem key={t.id} value={t.id} className="text-xs">
-                    <span className="flex items-center gap-2 font-medium">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
-                      {t.name}
-                    </span>
-                  </SelectItem>
-                ))}
+                {teams.map(t => {
+                  const tWc = gameState.advancedState?.wildcards?.[t.id] || { totalTokens: 10, usedInRound: {} };
+                  const tUsed = Number(Object.values(tWc.usedInRound || {}).reduce((acc: number, val: any) => acc + Number(val || 0), 0));
+                  const tRem = Math.max(0, Number(tWc.totalTokens || 10) - tUsed);
+                  return (
+                    <SelectItem key={t.id} value={t.id} className="text-xs">
+                      <span className="flex items-center gap-2 font-medium">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
+                        {t.name} ({tRem} rem / {tWc.totalTokens || 10} tot)
+                      </span>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -363,37 +386,63 @@ export const FacilitatorWildcardConsole: React.FC = () => {
                 <SelectValue placeholder="Target team" />
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-                {teams.map(t => (
-                  <SelectItem key={t.id} value={t.id} className="text-xs">
-                    <span className="flex items-center gap-2 font-medium">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
-                      {t.name}
-                    </span>
-                  </SelectItem>
-                ))}
+                {teams.map(t => {
+                  const tWc = gameState.advancedState?.wildcards?.[t.id] || { totalTokens: 10, usedInRound: {} };
+                  const tUsed = Number(Object.values(tWc.usedInRound || {}).reduce((acc: number, val: any) => acc + Number(val || 0), 0));
+                  const tRem = Math.max(0, Number(tWc.totalTokens || 10) - tUsed);
+                  return (
+                    <SelectItem key={t.id} value={t.id} className="text-xs">
+                      <span className="flex items-center gap-2 font-medium">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
+                        {t.name} ({tRem} rem / {tWc.totalTokens || 10} tot)
+                      </span>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
 
+          {/* Unconstrained Amount Counter */}
           <div className="flex items-center gap-1.5 w-full sm:w-auto">
             <span className="font-semibold text-slate-600 dark:text-slate-400 whitespace-nowrap">Amount:</span>
-            <Select value={String(transferAmount)} onValueChange={v => setTransferAmount(Number(v))}>
-              <SelectTrigger className="h-8 w-20 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-xs font-mono font-bold">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-                {[1, 2, 3, 4, 5].map(n => (
-                  <SelectItem key={n} value={String(n)} className="text-xs font-mono font-bold">
-                    {n} Token{n > 1 ? 's' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center bg-white dark:bg-slate-900 rounded border border-slate-300 dark:border-slate-800 p-0.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={transferAmount <= 1}
+                onClick={() => setTransferAmount(prev => Math.max(1, prev - 1))}
+                className="h-6 w-6 p-0 text-xs text-slate-700 dark:text-slate-300"
+              >
+                <Minus className="h-3 w-3" />
+              </Button>
+              <Input
+                type="number"
+                min={1}
+                max={sourceRemaining || 99}
+                value={transferAmount}
+                onChange={e => {
+                  const val = Math.max(1, Number(e.target.value) || 1);
+                  setTransferAmount(val);
+                }}
+                className="w-14 h-6 text-xs font-mono font-bold text-center border-none focus-visible:ring-0 p-0"
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={sourceRemaining > 0 && transferAmount >= sourceRemaining}
+                onClick={() => setTransferAmount(prev => prev + 1)}
+                className="h-6 w-6 p-0 text-xs text-slate-700 dark:text-slate-300"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
 
             <Button
               onClick={handleExecuteTransfer}
+              disabled={sourceRemaining <= 0 || transferSourceId === transferTargetId || transferAmount > sourceRemaining}
               size="sm"
-              className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1.5 shadow-xs"
+              className="h-8 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs gap-1.5 shadow-xs shrink-0"
             >
               <ArrowRightLeft className="h-3.5 w-3.5" /> Transfer
             </Button>
