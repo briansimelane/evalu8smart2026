@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useGame } from '@/contexts/GameContext';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, Wrench, Microscope, Truck, ShoppingCart, PackageX, TrendingUp, ChevronDown, ChevronRight, MapPin, Award, Download, Plus, Minus, CheckCircle, XCircle, FlaskConical, Wifi, Battery, Gamepad2, MapPinned, Nfc, Radio, Trophy, Medal, Box, Users } from 'lucide-react';
+import { Package, Wrench, Microscope, Truck, ShoppingCart, PackageX, TrendingUp, ChevronDown, ChevronRight, MapPin, Award, Download, Plus, Minus, CheckCircle, XCircle, FlaskConical, Wifi, Battery, Gamepad2, MapPinned, Nfc, Radio, Trophy, Medal, Box, Users, RefreshCw } from 'lucide-react';
 import { GameIcon } from './GameIcon';
 import { TEAM_COLORS } from '@/data/combinations';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,8 @@ import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { useSession } from '@/contexts/SessionContext';
 import { calculateTeamTotalScore, getControlPointsForTeamInRound, getInitialScore, getRegionalControlBreakdownForTeamInRound, getTeamPatentPoints } from '@/types/game';
+import { hasTech } from '@/lib/rules';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 export const SimulationReport = () => {
   const { gameState, getTechnologyCostForTeam } = useGame();
@@ -346,6 +348,12 @@ export const SimulationReport = () => {
                       </TableHead>
                       <TableHead className="text-center">
                         <div className="flex flex-col items-center gap-1">
+                          <RefreshCw className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                          <span className="text-xs">Carried</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="text-center">
+                        <div className="flex flex-col items-center gap-1">
                           <PackageX className="h-4 w-4 text-destructive" />
                           <span className="text-xs">Unsold</span>
                         </div>
@@ -390,7 +398,7 @@ export const SimulationReport = () => {
                       if (teamRounds.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={14} className="text-center py-6 text-muted-foreground text-sm">
+                            <TableCell colSpan={15} className="text-center py-6 text-muted-foreground text-sm">
                               No round performance submitted yet for {team.name}.
                             </TableCell>
                           </TableRow>
@@ -400,7 +408,15 @@ export const SimulationReport = () => {
                       return teamRounds.map(round => {
                         const data = round.teamData[team.id];
                         const totalCustomersSold = (data.customersSold?.length || 0) + (data.nfcSalesUnits || 0);
-                        const lostProducts = Math.max(0, data.productsProduced - totalCustomersSold);
+                        const totalUnsold = Math.max(0, data.productsProduced - totalCustomersSold);
+
+                        // Wifi carry-over check: if Wifi perk is active for this team in this round, unsold products carry over
+                        const isWifiActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_permanent_benefits', team.id) &&
+                          hasTech(gameState, team.id, 'WIFI');
+
+                        const carriedProducts = isWifiActive ? totalUnsold : 0;
+                        const lostProducts = isWifiActive ? 0 : totalUnsold;
+
                         const roundControl = getControlPointsForTeamInRound(round, team.id, gameState);
                         const scoreBreakdown = calculateTeamTotalScore(team.id, round.roundNumber, gameState);
                         const overallValue = scoreBreakdown.totalScore;
@@ -434,7 +450,23 @@ export const SimulationReport = () => {
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-center">{totalCustomersSold}</TableCell>
-                              <TableCell className="text-center">{lostProducts}</TableCell>
+                              <TableCell className="text-center">
+                                {carriedProducts > 0 ? (
+                                  <Badge variant="outline" className="bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30 text-xs font-bold gap-1">
+                                    <RefreshCw className="h-3 w-3" />
+                                    {carriedProducts}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">0</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {lostProducts > 0 ? (
+                                  <span className="text-destructive font-medium">{lostProducts}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">0</span>
+                                )}
+                              </TableCell>
                               <TableCell className="text-right">${(data.revenue || 0).toLocaleString()}</TableCell>
                               <TableCell className="text-right">+{roundControl} pts</TableCell>
                               <TableCell className="text-right font-medium">{((data.revenue || 0) + roundControl).toLocaleString()} pts</TableCell>
@@ -450,7 +482,7 @@ export const SimulationReport = () => {
                             </TableRow>
                             {isExpanded && (
                               <TableRow>
-                                <TableCell colSpan={14} className="bg-muted/20 p-4 print:p-2">
+                                <TableCell colSpan={15} className="bg-muted/20 p-4 print:p-2">
                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:gap-2 print:grid-cols-3">
                                     {/* Customers Sold */}
                                     <Card className="print:shadow-none print:border-border/50">
