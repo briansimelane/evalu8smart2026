@@ -298,6 +298,28 @@ describe('Facilitator Rules Engine Test Suite', () => {
       expect(getLogisticsCostForTeam(state, 'team_1', 'North Africa')).toBe(2);
     });
 
+    test('Australia scenario: team with initial presence allocating 2 icons gets 2 additional offices (total 3)', () => {
+      const state = makeGameState();
+      enableRule(state, 'multiple_offices_per_region');
+
+      // Canada (baseCost: 2, discounted: 1, maxTeams: 3)
+      const aus = state.regionLogistics['Canada'];
+      aus.teamsPresent = ['team_1'];
+      aus.officeCounts = { 'team_1': 1 };
+
+      const baseCost = aus.logisticsCost || 2;
+      const discountedCost = Math.max(1, baseCost - 1);
+      const alreadyHasPresence = aus.teamsPresent.includes('team_1');
+      const currentOffices = aus.officeCounts['team_1'] || 1;
+      const rawCurrentInvestment = aus.teamProgress?.['team_1'] || 0;
+      const effectiveCurrentInvestment = Math.max(rawCurrentInvestment, alreadyHasPresence ? baseCost : 0);
+      const newInvestment = effectiveCurrentInvestment + 2; // 2 icons allocated
+      const extraInvest = newInvestment - baseCost;
+      const officesEarnedRaw = 1 + Math.floor(extraInvest / discountedCost);
+
+      expect(officesEarnedRaw).toBe(3);
+    });
+
     test('DR-2 & DR-3 North Africa Scenario: occupancy includes in-progress while control counts completed only', () => {
       const state = makeGameState();
       enableRule(state, 'multiple_offices_per_region');

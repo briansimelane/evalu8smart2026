@@ -470,10 +470,11 @@ export const LogisticsPhase = () => {
               {availableRegions.map(region => {
                 const isSteveBlocking = isSteveBlockingRule(gameState, region.name, selectedTeam);
                 const status = isSteveBlocking ? 'unavailable' : getRegionStatus(region.name);
-                const currentInvestment = teamProgress?.regionInvestments[region.name] || 0;
+                const baseCost = region.logisticsCost || 2;
+                const rawCurrentInvestment = teamProgress?.regionInvestments[region.name] || region.teamProgress?.[selectedTeam] || 0;
+                const currentInvestment = Math.max(rawCurrentInvestment, status === 'present' ? baseCost : 0);
 
                 const isMultiOfficeActive = isRuleActiveForTeam(gameState?.ruleAdjustments, 'multiple_offices_per_region', selectedTeam);
-                const baseCost = region.logisticsCost || 2;
                 const discountedCost = Math.max(1, baseCost - 1);
                 const effectiveCost = getLogisticsCostForTeam(gameState, selectedTeam, region.name);
                 const isDiscountedCost = isMultiOfficeActive && status === 'present' && effectiveCost < baseCost;

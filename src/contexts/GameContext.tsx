@@ -1263,8 +1263,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
         return prev;
       }
 
-      const currentInvestment = teamProgress.regionInvestments[regionName] || 0;
-      const newInvestment = currentInvestment + points;
+      const baseCost = region.logisticsCost || 2;
+      const discountedCost = Math.max(1, baseCost - 1);
+      const alreadyHasPresence = region.teamsPresent.includes(teamId) || ((region.officeCounts?.[teamId] || 0) > 0);
+      const currentOffices = region.officeCounts?.[teamId] || (alreadyHasPresence ? 1 : 0);
+
+      const rawCurrentInvestment = teamProgress.regionInvestments[regionName] || region.teamProgress?.[teamId] || 0;
+      const effectiveCurrentInvestment = Math.max(rawCurrentInvestment, alreadyHasPresence ? baseCost : 0);
+      const newInvestment = effectiveCurrentInvestment + points;
 
       const updatedRegionProgress = {
         ...region.teamProgress,
@@ -1272,10 +1278,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       };
 
       const isMultiOfficeActive = isRuleActiveForTeam(prev.ruleAdjustments, 'multiple_offices_per_region', teamId);
-      const baseCost = region.logisticsCost || 2;
-      const discountedCost = Math.max(1, baseCost - 1);
-      const alreadyHasPresence = region.teamsPresent.includes(teamId);
-      const currentOffices = region.officeCounts?.[teamId] || (alreadyHasPresence ? 1 : 0);
 
       let officesEarnedRaw = 0;
       if (isMultiOfficeActive) {
