@@ -324,6 +324,9 @@ export const getControlPointsForTeamInRound = (
       const td = roundObj.teamData[t.id];
       if (!td || !td.customersSold) return;
 
+      const hasOfficeInRegion = (teamsPresent.includes(t.id)) || ((regionLogisticsData?.officeCounts?.[t.id] || 0) > 0);
+      if (!hasOfficeInRegion) return;
+
       const soldInRegion = td.customersSold.filter(cid => customers.some(c => c.id === cid));
       if (soldInRegion.length > 0) {
         let minPos = Infinity;
@@ -380,6 +383,9 @@ export const getRegionalControlBreakdownForTeamInRound = (
     gameState.teams.forEach(t => {
       const td = roundObj.teamData[t.id];
       if (!td || !td.customersSold) return;
+
+      const hasOfficeInRegion = (teamsPresent.includes(t.id)) || ((regionLogisticsData?.officeCounts?.[t.id] || 0) > 0);
+      if (!hasOfficeInRegion) return;
 
       const soldInRegion = td.customersSold.filter(cid => customers.some(c => c.id === cid));
       if (soldInRegion.length > 0) {

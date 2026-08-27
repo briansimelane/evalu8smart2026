@@ -7,8 +7,10 @@ import {
   calculatePlanStats, 
   getTechnologyCostForTeam, 
   getAvailableRegionsForTeam, 
-  isCustomerEligible 
+  isCustomerEligible,
+  hasTech 
 } from '@/lib/rules';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 // Seeded PRNG mulberry32
 export function mulberry32(seed: number) {
@@ -390,37 +392,49 @@ export function decideSales(
   const research = gameState.teamResearchProgress[teamId];
   const completedTechs = research?.completedTechnologies || [];
 
-  // Enumerate all eligible customers across our present regions
-  const eligibleCustomers: Customer[] = [];
-  teamRegions.forEach(regionName => {
-    const regionData = REGION_CUSTOMERS.find(r => r.region === regionName);
-    if (!regionData) return;
+  const has4G = isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_permanent_benefits', teamId) && hasTech(gameState, teamId, '4G');
 
-    regionData.customers.forEach(customer => {
+  // Enumerate eligible office vs 4G remote customers
+  const officeCustomers: Customer[] = [];
+  const remote4GCustomers: Customer[] = [];
+
+  REGION_CUSTOMERS.forEach(({ region, customers }) => {
+    const isOffice = teamRegions.includes(region);
+    if (!isOffice && !has4G) return;
+
+    customers.forEach(customer => {
       if (isCustomerEligible(customer, teamId, teamPrice, completedTechs, soldCustomers)) {
-        eligibleCustomers.push(customer);
+        if (isOffice) {
+          officeCustomers.push(customer);
+        } else {
+          remote4GCustomers.push(customer);
+        }
       }
     });
   });
 
-  // Sort eligible customers
+  // Sort office customers greedily
   if (difficulty === 'EASY') {
-    // Easy profile shuffles/randomizes selection
-    eligibleCustomers.sort(() => rng() - 0.5);
+    officeCustomers.sort(() => rng() - 0.5);
   } else {
-    // Hard/Medium sort greedily
-    eligibleCustomers.sort((a, b) => {
-      // 1. Prefer customer positions to win leftmost tie-breaks
-      if (a.position !== b.position) {
-        return a.position - b.position;
-      }
-      return a.id.localeCompare(b.id);
-    });
+    officeCustomers.sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
   }
 
-  // Slice up to capacity
-  const chosenCustomers = eligibleCustomers.slice(0, productsAvailable).map(c => c.id);
-  return chosenCustomers;
+  // Pick up to capacity from office regions
+  const chosenOffice = officeCustomers.slice(0, productsAvailable);
+  const chosenIds = chosenOffice.map(c => c.id);
+
+  // If products remain and 4G perk is active, pick 1 customer from a non-office region
+  if (has4G && chosenIds.length < productsAvailable && remote4GCustomers.length > 0) {
+    if (difficulty === 'EASY') {
+      remote4GCustomers.sort(() => rng() - 0.5);
+    } else {
+      remote4GCustomers.sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+    }
+    chosenIds.push(remote4GCustomers[0].id);
+  }
+
+  return chosenIds;
 }
 
 export function decideImprovement(

@@ -11,7 +11,7 @@ import {
   isSteveBlocking,
   hasTech,
 } from '../lib/rules';
-import { GameState, Team, calculateTeamTotalScore } from '../types/game';
+import { GameState, Team, calculateTeamTotalScore, getControlPointsForTeamInRound } from '../types/game';
 import { getControlPointsForRegion } from '../data/control';
 
 // 9.0 Shared Harness
@@ -477,6 +477,27 @@ describe('Facilitator Rules Engine Test Suite', () => {
       const minExpectedProducts = existingTeamData.productsProduced;
       expect(minExpectedProducts).toBe(9);
       expect(existingTeamData.productsProduced >= minExpectedProducts).toBe(true);
+    });
+
+    test('4G remote sale in non-office region does NOT award control points', () => {
+      const state = makeGameState({ currentRound: 1 });
+      enableRule(state, 'tech_permanent_benefits');
+      completeTech(state, 'team_1', '4G');
+
+      // team_1 has presence ONLY in USA
+      state.regionLogistics['USA'].teamsPresent = ['team_1'];
+      state.regionLogistics['Canada'].teamsPresent = []; // No office in Canada
+
+      // team_1 sells to customer in Canada via 4G
+      const roundObj = {
+        roundNumber: 1,
+        teamData: {
+          'team_1': { price: 5, customersSold: ['can-p1'] } as any
+        }
+      };
+
+      const controlPoints = getControlPointsForTeamInRound(roundObj, 'team_1', state);
+      expect(controlPoints).toBe(0);
     });
 
     test('Standard game regression snapshot (All advanced rules OFF)', () => {

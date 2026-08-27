@@ -24,6 +24,7 @@ const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string 
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
 import { isSteveBlocking as isSteveBlockingRule, hasTech } from '@/lib/rules';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 export const SalesPhase = () => {
   const { gameState, addRoundData, getCurrentRound, getTeamLogisticsProgress, calculatePlayOrder } = useGame();
@@ -112,6 +113,27 @@ export const SalesPhase = () => {
   const teamResearch = selectedTeam ? gameState.teamResearchProgress[selectedTeam] : null;
   const completedTechs = new Set(teamResearch?.completedTechnologies || []);
   
+  // 4G Direct Sales calculation (up to 1 sale across non-office regions)
+  const has4GTech = selectedTeam
+    ? (isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && hasTech(gameState, selectedTeam, '4G'))
+    : false;
+
+  const displayedRegions = useMemo(() => {
+    if (has4GTech) {
+      return REGION_CUSTOMERS.map(r => r.region);
+    }
+    return teamRegions;
+  }, [has4GTech, teamRegions]);
+
+  const g4SalesCount = useMemo(() => {
+    return Object.entries(selectedCustomers).reduce((count, [regionName, customerIds]) => {
+      if (!teamRegions.includes(regionName)) {
+        return count + customerIds.length;
+      }
+      return count;
+    }, 0);
+  }, [selectedCustomers, teamRegions]);
+
   // NFC Direct Sales calculation
   const hasNfcTech = Array.from(completedTechs).some(t => (t || '').toUpperCase() === 'NFC') || (selectedTeam ? hasTech(gameState, selectedTeam, 'NFC') : false);
   const regionalSalesCount = Object.values(selectedCustomers).flat().length;
@@ -125,7 +147,7 @@ export const SalesPhase = () => {
   const calculatedRevenue = selectedTeamData ? selectedTeamData.price * totalProductsToSell : 0;
   const salesExceedProduction = totalProductsToSell > productsAvailable;
 
-  // Calculate eligible price and value customers for the selected team across present regions
+  // Calculate eligible price and value customers for the selected team across displayed regions
   const eligibleCustomerCounts = useMemo(() => {
     if (!selectedTeam || !selectedTeamData) {
       return { priceCount: 0, valueCount: 0, totalEligible: 0 };
@@ -134,7 +156,7 @@ export const SalesPhase = () => {
     let priceCount = 0;
     let valueCount = 0;
 
-    teamRegions.forEach(regionName => {
+    displayedRegions.forEach(regionName => {
       const regionData = REGION_CUSTOMERS.find(r => r.region === regionName);
       if (!regionData) return;
 
@@ -163,7 +185,7 @@ export const SalesPhase = () => {
       valueCount,
       totalEligible: priceCount + valueCount
     };
-  }, [selectedTeam, selectedTeamData, teamRegions, soldCustomers, completedTechs]);
+  }, [selectedTeam, selectedTeamData, displayedRegions, soldCustomers, completedTechs]);
 
   const demandFulfillmentRate = useMemo(() => {
     if (eligibleCustomerCounts.totalEligible === 0) return 0;
@@ -215,6 +237,16 @@ export const SalesPhase = () => {
   };
 
   const toggleCustomer = (regionName: string, customerId: string) => {
+    const isOfficeRegion = teamRegions.includes(regionName);
+    const isCurrentlySelected = (selectedCustomers[regionName] || []).includes(customerId);
+
+    if (!isOfficeRegion && !isCurrentlySelected) {
+      if (g4SalesCount >= 1) {
+        toast.error('4G Technology allows a maximum of 1 product sale across non-office regions.');
+        return;
+      }
+    }
+
     setSelectedCustomers(prev => {
       const regionCustomers = prev[regionName] || [];
       const isSelected = regionCustomers.includes(customerId);
@@ -627,10 +659,31 @@ export const SalesPhase = () => {
                       </Card>
                     )}
 
+                    {has4GTech && (
+                      <Card className="border border-amber-500/30 bg-amber-500/5 shadow-xs">
+                        <CardHeader className="py-3 px-4">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                              <Signal className="h-4 w-4 text-amber-500 animate-pulse" />
+                              <span>4G Direct Sale (No Office Required)</span>
+                            </CardTitle>
+                            <Badge className="bg-amber-600 text-white font-bold text-xs">
+                              Max 1 Sale Across Non-Office Regions ({g4SalesCount}/1 Used)
+                            </Badge>
+                          </div>
+                          <CardDescription className="text-xs">
+                            4G technology allows your team to sell 1 product in a region where you have no office (earns sales revenue, no control points).
+                          </CardDescription>
+                        </CardHeader>
+                      </Card>
+                    )}
+
                     <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">Select Customers (Only Eligible Regions)</h3>
+                      <h3 className="text-lg font-semibold">
+                        Select Customers {has4GTech ? '(Office & 4G Remote Regions)' : '(Only Office Regions)'}
+                      </h3>
                       
-                      {teamRegions.length === 0 && (
+                      {displayedRegions.length === 0 && (
                         <Alert>
                           <AlertDescription>
                             This team has no regional presence yet. Expand to regions in the Logistics phase first.
@@ -638,10 +691,12 @@ export const SalesPhase = () => {
                         </Alert>
                       )}
 
-                      {teamRegions.map(regionName => {
+                      {displayedRegions.map(regionName => {
                         const regionData = REGION_CUSTOMERS.find(r => r.region === regionName);
                         if (!regionData) return null;
 
+                        const isOfficeRegion = teamRegions.includes(regionName);
+                        const is4GRemoteRegion = !isOfficeRegion;
                         const isSteveBlocking = isSteveBlockingRule(gameState, regionName, selectedTeam);
                         const regionLogisticsData = gameState.regionLogistics?.[regionName];
                         const teamsPresentCount = regionLogisticsData?.teamsPresent?.length || 0;
@@ -650,12 +705,21 @@ export const SalesPhase = () => {
                         const secondPlaceControl = getControlPointsForRegion(regionName, effectiveTeamsCount, 'second');
 
                         return (
-                          <Card key={regionName} className={isSteveBlocking ? 'border-red-500 bg-red-950/10 ring-2 ring-red-500/40' : ''}>
+                          <Card key={regionName} className={
+                            isSteveBlocking ? 'border-red-500 bg-red-950/10 ring-2 ring-red-500/40' :
+                            is4GRemoteRegion ? 'border-amber-500/40 bg-amber-500/5' : ''
+                          }>
                             <CardHeader className="pb-3">
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                 <CardTitle className="text-base flex items-center gap-2">
                                   <MapPin className="h-4 w-4 text-primary" />
                                   {regionName}
+                                  {is4GRemoteRegion && (
+                                    <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs font-semibold gap-1">
+                                      <Signal className="h-3 w-3" />
+                                      4G Direct Sale (No Office)
+                                    </Badge>
+                                  )}
                                   {isSteveBlocking && (
                                     <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-xs font-bold gap-1 [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
                                       <SteveIcon size={14} />
@@ -664,17 +728,25 @@ export const SalesPhase = () => {
                                   )}
                                 </CardTitle>
                                 <div className="flex items-center gap-2 flex-wrap text-xs">
-                                  <span className="text-muted-foreground font-semibold">Potential Control:</span>
-                                  <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-bold gap-1">
-                                    <Trophy className="h-3 w-3 text-warning" />
-                                    1st Place: +{firstPlaceControl} pts
-                                  </Badge>
-                                  {secondPlaceControl > 0 && (
-                                    <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30 text-xs font-bold gap-1">
-                                      2nd Place: +{secondPlaceControl} pts
-                                    </Badge>
+                                  {isOfficeRegion ? (
+                                    <>
+                                      <span className="text-muted-foreground font-semibold">Potential Control:</span>
+                                      <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-bold gap-1">
+                                        <Trophy className="h-3 w-3 text-warning" />
+                                        1st Place: +{firstPlaceControl} pts
+                                      </Badge>
+                                      {secondPlaceControl > 0 && (
+                                        <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/30 text-xs font-bold gap-1">
+                                          2nd Place: +{secondPlaceControl} pts
+                                        </Badge>
+                                      )}
+                                      <span className="text-xs text-muted-foreground italic">({teamsPresentCount} {teamsPresentCount === 1 ? 'team' : 'teams'} present)</span>
+                                    </>
+                                  ) : (
+                                    <span className="text-amber-600 dark:text-amber-400 text-xs italic font-medium">
+                                      (No office — No control points earned)
+                                    </span>
                                   )}
-                                  <span className="text-xs text-muted-foreground italic">({teamsPresentCount} {teamsPresentCount === 1 ? 'team' : 'teams'} present)</span>
                                 </div>
                               </div>
                             </CardHeader>
