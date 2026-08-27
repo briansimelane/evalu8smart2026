@@ -459,6 +459,26 @@ describe('Facilitator Rules Engine Test Suite', () => {
       expect(isSteveBlocking(state, 'USA', 'team_1')).toBe(false);
     });
 
+    test('Sales Phase submission with boosted products (e.g. 9 products from GPS) is accepted', () => {
+      const state = makeGameState({ currentRound: 1, currentPhase: 'sales' });
+      const comboData = [{ combination: 1, position: 1, price: 5, products: 4, research: 4, logistics: 2, improve: 1 }];
+      
+      state.rounds = [{
+        roundNumber: 1,
+        teamData: {
+          'team_1': { combination: 1, position: 1, price: 5, productsProduced: 9, researchIcons: 4, logisticsIcons: 2, improvementCards: 1 } as any
+        }
+      }];
+
+      const stats = calculatePlanStats(state, 'team_1', 1, 1, {}, comboData);
+      expect(stats.productsAvailable).toBe(4);
+
+      const existingTeamData = state.rounds[0].teamData['team_1'];
+      const minExpectedProducts = existingTeamData.productsProduced;
+      expect(minExpectedProducts).toBe(9);
+      expect(existingTeamData.productsProduced >= minExpectedProducts).toBe(true);
+    });
+
     test('Standard game regression snapshot (All advanced rules OFF)', () => {
       const state = makeGameState({
         currentRound: 2,

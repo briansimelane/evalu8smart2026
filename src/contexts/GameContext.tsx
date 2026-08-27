@@ -348,13 +348,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
         combinations
       );
 
+      const existingTeamData = prev.rounds.find(r => r.roundNumber === roundNumber)?.teamData?.[teamId];
+      const minExpectedProducts = existingTeamData?.productsProduced ?? stats.productsAvailable;
+
       if (
         data.price !== stats.calculatedPrice ||
-        data.productsProduced !== stats.productsAvailable ||
+        data.productsProduced < minExpectedProducts ||
         data.researchIcons !== stats.researchPoints ||
         data.logisticsIcons !== stats.logisticsPoints
       ) {
-        console.error(`Planning stats mismatch for team ${teamId}. Given: price=${data.price}, produced=${data.productsProduced}, research=${data.researchIcons}, logistics=${data.logisticsIcons}. Expected: price=${stats.calculatedPrice}, produced=${stats.productsAvailable}, research=${stats.researchPoints}, logistics=${stats.logisticsPoints}.`);
+        console.error(`Planning stats mismatch for team ${teamId}. Given: price=${data.price}, produced=${data.productsProduced}, research=${data.researchIcons}, logistics=${data.logisticsIcons}. Expected min produced=${minExpectedProducts}, price=${stats.calculatedPrice}, research=${stats.researchPoints}, logistics=${stats.logisticsPoints}.`);
         return prev;
       }
 
@@ -463,8 +466,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
               prev.combinationsData || COMBINATIONS
             );
 
+            const targetProducts = Math.max(existingTeamData.productsProduced || 0, newStats.productsAvailable);
+
             if (
-              existingTeamData.productsProduced !== newStats.productsAvailable ||
+              existingTeamData.productsProduced !== targetProducts ||
               existingTeamData.logisticsIcons !== newStats.logisticsPoints ||
               existingTeamData.researchIcons !== newStats.researchPoints ||
               existingTeamData.price !== newStats.calculatedPrice
@@ -473,7 +478,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
               updatedTeamDataMap[t.id] = {
                 ...existingTeamData,
                 price: newStats.calculatedPrice,
-                productsProduced: newStats.productsAvailable,
+                productsProduced: targetProducts,
                 researchIcons: newStats.researchPoints,
                 logisticsIcons: newStats.logisticsPoints,
                 improvementCards: newStats.improvementPoints,
@@ -1681,6 +1686,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
             prev.combinationsData || COMBINATIONS
           );
 
+          const targetProducts = Math.max(existingTeamData.productsProduced || 0, newStats.productsAvailable);
+
           updatedRounds = [...prev.rounds];
           updatedRounds[roundIndex] = {
             ...roundData,
@@ -1689,7 +1696,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
               [teamId]: {
                 ...existingTeamData,
                 price: newStats.calculatedPrice,
-                productsProduced: newStats.productsAvailable,
+                productsProduced: targetProducts,
                 researchIcons: newStats.researchPoints,
                 logisticsIcons: newStats.logisticsPoints,
                 improvementCards: newStats.improvementPoints,
