@@ -1740,6 +1740,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
             const teamData = round.teamData[team.id];
             if (!teamData || !teamData.customersSold || teamData.customersSold.length === 0) return;
 
+            const regionLogisticsData = prev.regionLogistics[region];
+            const teamsPresent = regionLogisticsData?.teamsPresent || [];
+            const hasOfficeInRegion = (teamsPresent.includes(team.id)) || ((regionLogisticsData?.officeCounts?.[team.id] || 0) > 0);
+            if (!hasOfficeInRegion) return;
+
             const soldInRegion = teamData.customersSold.filter(customerId =>
               regionData.customers.some(c => c.id === customerId)
             );

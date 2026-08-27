@@ -76,6 +76,11 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
         const regionData = REGION_CUSTOMERS.find(r => r.region === region);
         if (!regionData) return;
 
+        const regionLogisticsData = gameState.regionLogistics?.[region];
+        const teamsPresent = regionLogisticsData?.teamsPresent || [];
+        const hasOfficeInRegion = (teamsPresent.includes(team.id)) || ((regionLogisticsData?.officeCounts?.[team.id] || 0) > 0);
+        if (!hasOfficeInRegion) return;
+
         const customersInRegion = teamData.customersSold.filter(customerId =>
           regionData.customers.some(c => c.id === customerId)
         );
