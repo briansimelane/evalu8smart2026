@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Award, CheckCircle2, AlertCircle, Lock, ShieldCheck } from 'lucide-react';
 import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
+import { getCarriedOverProductsForTeam } from '@/lib/rules';
 import { toast } from 'sonner';
 
 export interface DirectiveDefinition {
@@ -52,7 +53,7 @@ export const DIRECTIVES_LIST: DirectiveDefinition[] = [
     id: 'directive_21',
     number: 21,
     title: 'Inventory Clearance',
-    description: 'Discard 4 or more unsold products in 1 round.',
+    description: 'Discard 4 or more unsold products in 1 round (excluding products carried over from previous round).',
   },
   {
     id: 'directive_22',
@@ -87,7 +88,9 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
 
   const teamProduced = selectedTeamRoundData?.productsProduced || 0;
   const teamSold = selectedTeamRoundData?.customersSold?.length || 0;
-  const teamUnsold = Math.max(0, teamProduced - teamSold);
+  const carriedOver = getCarriedOverProductsForTeam(gameState, targetTeamId);
+  const teamNewlyProduced = Math.max(0, teamProduced - carriedOver);
+  const teamUnsoldNet = Math.max(0, (teamProduced - teamSold) - carriedOver);
   const teamRegionsSold = selectedTeamRoundData?.salesByRegion
     ? Object.entries(selectedTeamRoundData.salesByRegion).filter(([_, count]) => count > 0).length
     : 0;
@@ -95,15 +98,15 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
   const getMetricForDirective = (dirId: string) => {
     switch (dirId) {
       case 'directive_2':
-        return { text: `R${currentRound} Produced: ${teamProduced}/13`, met: teamProduced >= 13 };
+        return { text: `R${currentRound} Produced: ${teamNewlyProduced}/13 (excl. carried)`, met: teamNewlyProduced >= 13 };
       case 'directive_5':
         return { text: `R${currentRound} Sold: ${teamSold}/10`, met: teamSold >= 10 };
       case 'directive_6':
-        return { text: `R${currentRound} Sold: ${teamSold}`, met: teamSold === 0 && teamProduced > 0 };
+        return { text: `R${currentRound} Sold: ${teamSold}`, met: teamSold === 0 && teamNewlyProduced > 0 };
       case 'directive_7':
         return { text: `R${currentRound} Regions Sold: ${teamRegionsSold}/5`, met: teamRegionsSold >= 5 };
       case 'directive_21':
-        return { text: `R${currentRound} Unsold: ${teamUnsold}/4`, met: teamUnsold >= 4 };
+        return { text: `R${currentRound} Unsold: ${teamUnsoldNet}/4 (excl. carried)`, met: teamUnsoldNet >= 4 };
       case 'directive_22':
         return { text: `R${currentRound} Regions Sold: ${teamRegionsSold}`, met: false };
       default:
