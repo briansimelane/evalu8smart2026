@@ -466,11 +466,19 @@ describe('Facilitator Rules Engine Test Suite', () => {
       const round1 = state.rounds[0] || { roundNumber: 1, teamData: {} };
       if (!round1.teamData) round1.teamData = {};
       round1.teamData['team_1'] = {
+        teamId: 'team_1',
+        price: 5,
+        productsProduced: 1,
+        productsSold: 1,
+        revenue: 5,
+        researchSpent: {},
+        logisticsSpent: {},
+        improvementCards: [],
         combination: null,
         position: null,
         customersSold: ['can-p1'],
         regionControlPoints: { 'Canada': 5 }
-      };
+      } as any;
 
       // Recalculating control points suppresses Canada control due to Steve
       state.regionLogistics['Canada'].teamsPresent = ['team_1'];
