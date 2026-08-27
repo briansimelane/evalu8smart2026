@@ -74,6 +74,8 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
 
   // Calculate region control leaders for the current round
   const controlLeaders = useMemo(() => {
+    if (isSteveBlockingRule(gameState, regionName)) return null;
+
     const teamSalesMap: Record<string, number> = {};
     if (gameState.rounds) {
       for (const rData of gameState.rounds) {

@@ -1790,6 +1790,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         });
 
         REGIONS.forEach(region => {
+          if (isSteveBlocking(prev, region)) return;
+
           const regionData = REGION_CUSTOMERS.find(r => r.region === region);
           if (!regionData) return;
 

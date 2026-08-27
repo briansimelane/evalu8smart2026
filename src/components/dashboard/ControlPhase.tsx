@@ -65,6 +65,11 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
     const results: RegionControlResult[] = [];
 
     REGIONS.forEach(region => {
+      if (isSteveBlockingRule(gameState, region)) {
+        results.push({ region, firstPlace: null, secondPlace: null });
+        return;
+      }
+
       const teamSales: Array<{ teamId: string; teamName: string; teamColor: string; sales: number; leftmostPosition: number }> = [];
 
       // Get sales data for each team - check customers sold in this region

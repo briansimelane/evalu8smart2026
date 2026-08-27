@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { useOptionalMotion } from '../motion/MotionContext';
 import { getMotionClass, getMotionStyles } from '../motion/motionClass';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
+import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -86,6 +87,8 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
 
   // Control leaders per world
   const computeControlLeaders = (gState: GameState, round: number) => {
+    if (isSteveBlockingRule(gState, regionName)) return null;
+
     const teamSalesMap: Record<string, number> = {};
     if (gState.rounds) {
       for (const rData of gState.rounds) {

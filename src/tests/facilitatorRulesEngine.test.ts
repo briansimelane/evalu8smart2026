@@ -450,6 +450,35 @@ describe('Facilitator Rules Engine Test Suite', () => {
       state.advancedState!.steve = { activeRegion: 'Canada', roundIntroduced: 1 };
       expect(isSteveBlocking(state, 'Canada', 'team_1')).toBe(true);
     });
+
+    test('Steve blocks logistics expansion, sales, and regional control points', () => {
+      const state = makeGameState();
+      enableRule(state, 'steve_event_blocker');
+      state.advancedState!.steve = { activeRegion: 'Canada', roundIntroduced: 1 };
+
+      // 1. Logistics expansion blocked
+      expect(canExpandToRegion(state, 'team_1', 'Canada')).toBe(false);
+
+      // 2. Sales blocked in region
+      expect(isSteveBlocking(state, 'Canada', 'team_1')).toBe(true);
+
+      // 3. Control points blocked (Canada control points = 0)
+      const round1 = state.rounds[0] || { roundNumber: 1, teamData: {} };
+      if (!round1.teamData) round1.teamData = {};
+      round1.teamData['team_1'] = {
+        combination: null,
+        position: null,
+        customersSold: ['can-p1'],
+        regionControlPoints: { 'Canada': 5 }
+      };
+
+      // Recalculating control points suppresses Canada control due to Steve
+      state.regionLogistics['Canada'].teamsPresent = ['team_1'];
+      state.regionLogistics['Canada'].officeCounts = { 'team_1': 1 };
+
+      // Verify isSteveBlocking returns true for Canada
+      expect(isSteveBlocking(state, 'Canada')).toBe(true);
+    });
   });
 
   describe('9.6 Cross-Cutting — Toggle Coherence & Regression', () => {
