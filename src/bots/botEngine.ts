@@ -394,9 +394,9 @@ export function decideSales(
 
   const has4G = isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_permanent_benefits', teamId) && hasTech(gameState, teamId, '4G');
 
-  // Enumerate eligible office vs 4G remote customers
+  // Group eligible remote 4G customers by non-office region
   const officeCustomers: Customer[] = [];
-  const remote4GCustomers: Customer[] = [];
+  const remote4GByRegion: Record<string, Customer[]> = {};
 
   REGION_CUSTOMERS.forEach(({ region, customers }) => {
     const isOffice = teamRegions.includes(region);
@@ -407,7 +407,8 @@ export function decideSales(
         if (isOffice) {
           officeCustomers.push(customer);
         } else {
-          remote4GCustomers.push(customer);
+          if (!remote4GByRegion[region]) remote4GByRegion[region] = [];
+          remote4GByRegion[region].push(customer);
         }
       }
     });
@@ -424,14 +425,18 @@ export function decideSales(
   const chosenOffice = officeCustomers.slice(0, productsAvailable);
   const chosenIds = chosenOffice.map(c => c.id);
 
-  // If products remain and 4G perk is active, pick 1 customer from a non-office region
-  if (has4G && chosenIds.length < productsAvailable && remote4GCustomers.length > 0) {
-    if (difficulty === 'EASY') {
-      remote4GCustomers.sort(() => rng() - 0.5);
-    } else {
-      remote4GCustomers.sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
-    }
-    chosenIds.push(remote4GCustomers[0].id);
+  // If products remain and 4G perk is active, pick at most 1 customer per non-office region
+  if (has4G && chosenIds.length < productsAvailable) {
+    Object.values(remote4GByRegion).forEach(custs => {
+      if (chosenIds.length < productsAvailable && custs.length > 0) {
+        if (difficulty === 'EASY') {
+          custs.sort(() => rng() - 0.5);
+        } else {
+          custs.sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+        }
+        chosenIds.push(custs[0].id);
+      }
+    });
   }
 
   return chosenIds;

@@ -241,8 +241,9 @@ export const SalesPhase = () => {
     const isCurrentlySelected = (selectedCustomers[regionName] || []).includes(customerId);
 
     if (!isOfficeRegion && !isCurrentlySelected) {
-      if (g4SalesCount >= 1) {
-        toast.error('4G Technology allows a maximum of 1 product sale across non-office regions.');
+      const currentRegionCount = (selectedCustomers[regionName] || []).length;
+      if (currentRegionCount >= 1) {
+        toast.error(`4G Technology allows a maximum of 1 product sale in ${regionName} (non-office region).`);
         return;
       }
     }
@@ -668,11 +669,11 @@ export const SalesPhase = () => {
                               <span>4G Direct Sale (No Office Required)</span>
                             </CardTitle>
                             <Badge className="bg-amber-600 text-white font-bold text-xs">
-                              Max 1 Sale Across Non-Office Regions ({g4SalesCount}/1 Used)
+                              Max 1 Sale Per Non-Office Region
                             </Badge>
                           </div>
                           <CardDescription className="text-xs">
-                            4G technology allows your team to sell 1 product in a region where you have no office (earns sales revenue, no control points).
+                            4G technology allows your team to sell 1 product in each region where you have no office (earns sales revenue, no control points).
                           </CardDescription>
                         </CardHeader>
                       </Card>
