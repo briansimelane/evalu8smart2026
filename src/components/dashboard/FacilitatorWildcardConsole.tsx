@@ -2,17 +2,28 @@ import React, { useState } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sparkles, Package, Microscope, Truck, Wrench, Plus, Minus, ShieldAlert } from 'lucide-react';
+import { Sparkles, Package, Microscope, Truck, Wrench, Plus, Minus, ArrowRightLeft, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { SteveIcon } from './SteveIcon';
 
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 export const FacilitatorWildcardConsole: React.FC = () => {
-  const { gameState, allocateWildcardToken, contributeWildcardsToSteve, moveSteve } = useGame();
+  const {
+    gameState,
+    allocateWildcardToken,
+    contributeWildcardsToSteve,
+    moveSteve,
+    adjustTeamWildcardTotal,
+    transferWildcardTokens
+  } = useGame();
+  
   const [selectedTeamId, setSelectedTeamId] = useState<string>(gameState?.teams[0]?.id || '');
+  const [transferSourceId, setTransferSourceId] = useState<string>(gameState?.teams[0]?.id || '');
+  const [transferTargetId, setTransferTargetId] = useState<string>(gameState?.teams[1]?.id || gameState?.teams[0]?.id || '');
+  const [transferAmount, setTransferAmount] = useState<number>(1);
 
   if (!gameState) return null;
 
@@ -57,7 +68,6 @@ export const FacilitatorWildcardConsole: React.FC = () => {
   const steveTotalContributed: number = Number(Object.values(steveData.wildcardsContributed || {}).reduce((acc: number, val: any) => acc + Number(val || 0), 0));
 
   const usedThisRound = Number(wildcardData.usedInRound?.[currentRound] || 0);
-  const isRoundCapReached = usedThisRound >= 2;
 
   const handleAdjustPhaseToken = (
     targetType: 'product' | 'research' | 'logistics' | 'improvement',
@@ -86,20 +96,40 @@ export const FacilitatorWildcardConsole: React.FC = () => {
     }
   };
 
+  const handleExecuteTransfer = () => {
+    if (transferSourceId === transferTargetId) {
+      toast.error('Please select two different teams for token transfer.');
+      return;
+    }
+    const sourceTeam = teams.find(t => t.id === transferSourceId);
+    const targetTeam = teams.find(t => t.id === transferTargetId);
+    const sourceWc = gameState.advancedState?.wildcards?.[transferSourceId] || { totalTokens: 10, usedInRound: {} };
+    const sourceUsed = Number(Object.values(sourceWc.usedInRound || {}).reduce((acc: number, val: any) => acc + Number(val || 0), 0));
+    const sourceRemaining = Math.max(0, Number(sourceWc.totalTokens || 10) - sourceUsed);
+
+    if (transferAmount > sourceRemaining) {
+      toast.error(`${sourceTeam?.name} only has ${sourceRemaining} remaining wildcard tokens available to transfer.`);
+      return;
+    }
+
+    transferWildcardTokens(transferSourceId, transferTargetId, transferAmount);
+    toast.success(`Transferred ${transferAmount} Wildcard Token(s) from ${sourceTeam?.name} to ${targetTeam?.name}!`);
+  };
+
   return (
-    <Card className="border border-indigo-200 dark:border-indigo-500/40 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm rounded-xl space-y-3 p-4">
+    <Card className="border border-indigo-200 dark:border-indigo-500/40 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm rounded-xl space-y-3.5 p-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-indigo-100 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-2.5">
           <Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
           <div>
             <div className="text-sm font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
-              Facilitator Wildcard Allocation Console
+              Facilitator Wildcard Allocation & Transfer Console
               <Badge variant="outline" className="border-indigo-300 dark:border-indigo-500/40 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 text-[10px] font-semibold">
                 Phase: {currentPhase.toUpperCase()}
               </Badge>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Rule: Spend <span className="font-bold text-slate-800 dark:text-slate-200">up to 2 tokens/action</span> (Product, Research, Logistics), <span className="font-bold text-slate-800 dark:text-slate-200">up to 1 token</span> for Improvement. Steve unblocking is capped at <span className="font-bold text-slate-800 dark:text-slate-200">5 tokens total</span> jointly across teams.
+              Facilitator controls for granting extra tokens, inter-team transfers, and Steve region unblocking.
             </p>
           </div>
         </div>
@@ -125,17 +155,43 @@ export const FacilitatorWildcardConsole: React.FC = () => {
         </div>
       </div>
 
-      {/* Active Team Token Summary */}
-      <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 text-xs">
+      {/* Active Team Token Summary + Facilitator Adjust Pool */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 text-xs gap-2">
         <div className="flex items-center gap-2">
           <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: activeTeam?.color }} />
           <span className="font-bold text-slate-900 dark:text-slate-100">{activeTeam?.name} Wildcard Tokens:</span>
+          <Badge variant="outline" className="border-indigo-300 dark:border-indigo-500/40 text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 text-xs font-extrabold ml-1">
+            {remainingTokens} / {wildcardData.totalTokens || 10} Remaining
+          </Badge>
         </div>
 
-        <div className="flex items-center gap-2 font-mono">
-          <Badge variant="outline" className="border-indigo-300 dark:border-indigo-500/40 text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 text-xs font-extrabold">
-            {remainingTokens} / 10 Remaining
-          </Badge>
+        {/* Facilitator Adjust Total Token Pool */}
+        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-md border border-slate-200 dark:border-slate-800">
+          <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 px-1">Total Pool:</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={(wildcardData.totalTokens || 10) <= 0}
+            onClick={() => {
+              adjustTeamWildcardTotal(activeTeamId, -1);
+              toast.info(`Reduced ${activeTeam?.name}'s total wildcard token pool to ${(wildcardData.totalTokens || 10) - 1}.`);
+            }}
+            className="h-6 w-6 p-0 text-xs text-red-600"
+          >
+            <Minus className="h-3 w-3" />
+          </Button>
+          <span className="font-mono font-extrabold text-xs px-1">{wildcardData.totalTokens || 10} Tokens</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              adjustTeamWildcardTotal(activeTeamId, 1);
+              toast.success(`Added +1 extra Wildcard token to ${activeTeam?.name}'s pool! (Total: ${(wildcardData.totalTokens || 10) + 1})`);
+            }}
+            className="h-6 w-6 p-0 text-xs text-emerald-600"
+          >
+            <Plus className="h-3 w-3" />
+          </Button>
         </div>
       </div>
 
@@ -270,6 +326,77 @@ export const FacilitatorWildcardConsole: React.FC = () => {
                 <Plus className="h-3 w-3" />
               </Button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Facilitator Inter-Team Wildcard Token Transfer Console */}
+      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-100">
+          <ArrowRightLeft className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+          Transfer Wildcard Tokens Between Teams (Trade / Agreement)
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-2 bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40 text-xs">
+          <div className="flex items-center gap-1.5 w-full sm:w-auto flex-1">
+            <span className="font-semibold text-slate-600 dark:text-slate-400 whitespace-nowrap">From:</span>
+            <Select value={transferSourceId} onValueChange={setTransferSourceId}>
+              <SelectTrigger className="h-8 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-xs">
+                <SelectValue placeholder="Source team" />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                {teams.map(t => (
+                  <SelectItem key={t.id} value={t.id} className="text-xs">
+                    <span className="flex items-center gap-2 font-medium">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
+                      {t.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-1.5 w-full sm:w-auto flex-1">
+            <span className="font-semibold text-slate-600 dark:text-slate-400 whitespace-nowrap">To:</span>
+            <Select value={transferTargetId} onValueChange={setTransferTargetId}>
+              <SelectTrigger className="h-8 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-xs">
+                <SelectValue placeholder="Target team" />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                {teams.map(t => (
+                  <SelectItem key={t.id} value={t.id} className="text-xs">
+                    <span className="flex items-center gap-2 font-medium">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
+                      {t.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <span className="font-semibold text-slate-600 dark:text-slate-400 whitespace-nowrap">Amount:</span>
+            <Select value={String(transferAmount)} onValueChange={v => setTransferAmount(Number(v))}>
+              <SelectTrigger className="h-8 w-20 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-xs font-mono font-bold">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                {[1, 2, 3, 4, 5].map(n => (
+                  <SelectItem key={n} value={String(n)} className="text-xs font-mono font-bold">
+                    {n} Token{n > 1 ? 's' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              onClick={handleExecuteTransfer}
+              size="sm"
+              className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1.5 shadow-xs"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" /> Transfer
+            </Button>
           </div>
         </div>
       </div>

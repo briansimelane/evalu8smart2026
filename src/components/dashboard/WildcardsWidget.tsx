@@ -107,7 +107,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-500 dark:text-slate-400">
         <div>
-          Spend <span className="font-bold text-slate-700 dark:text-slate-200">up to 2 tokens/action</span> (Product, Research, Logistics), <span className="font-bold text-slate-700 dark:text-slate-200">up to 1 token</span> for Improvement. Steve unblocking is capped at <span className="font-bold text-slate-700 dark:text-slate-200">5 tokens total</span> jointly across teams.
+          Spend <span className="font-bold text-slate-700 dark:text-slate-200">up to 2 tokens/action</span> (Product, Research, Logistics), <span className="font-bold text-slate-700 dark:text-slate-200">up to 1 token</span> for Improvement. Leftover tokens award 1 VP each at Game End.
         </div>
         {isReadOnly && (
           <span className="text-[10px] italic text-amber-600 dark:text-amber-400 font-medium shrink-0">
@@ -116,7 +116,7 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
         {/* Product Conversion (Black Box) */}
         <div className="p-2 rounded-lg border border-slate-900 bg-slate-900 text-white dark:bg-slate-950 dark:border-slate-800 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-1.5 truncate">
@@ -231,50 +231,6 @@ export const WildcardsWidget: React.FC<WildcardsWidgetProps> = ({ teamId }) => {
               <Plus className="h-2.5 w-2.5" />
             </Button>
           </div>
-        </div>
-
-        {/* Steve Contribution */}
-        <div className="p-2 rounded-lg border border-red-200 bg-red-50/50 dark:bg-slate-950/50 dark:border-slate-800 flex items-center justify-between col-span-2 sm:col-span-1">
-          <div className="flex items-center gap-1.5 truncate">
-            <SteveIcon size={16} />
-            <span className="font-bold truncate text-[11px]">Unblock</span>
-          </div>
-          {steveTotalContributed >= 5 && steveData.activeRegion ? (
-            <Button
-              size="sm"
-              disabled={isReadOnly}
-              onClick={() => {
-                if (isReadOnly) return;
-                moveSteve(null);
-                toast.success(`Steve cleared! ${steveData.activeRegion} is now unblocked.`);
-              }}
-              className="h-6 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-2 shadow-xs"
-            >
-              Clear Steve (5/5 Paid)
-            </Button>
-          ) : (
-            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-slate-200 dark:border-slate-800 flex-shrink-0">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={isReadOnly || teamSteveContrib <= 0}
-                onClick={() => handleAdjustSteve(-1)}
-                className="h-5 w-5 p-0 text-[10px] text-red-600"
-              >
-                <Minus className="h-2.5 w-2.5" />
-              </Button>
-              <span className="font-mono font-bold text-[11px] px-1">{teamSteveContrib}</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={isReadOnly || remainingTokens <= 0 || !steveData.activeRegion || steveTotalContributed >= 5}
-                onClick={() => handleAdjustSteve(1)}
-                className="h-5 w-5 p-0 text-[10px] text-emerald-600"
-              >
-                <Plus className="h-2.5 w-2.5" />
-              </Button>
-            </div>
-          )}
         </div>
       </div>
     </Card>

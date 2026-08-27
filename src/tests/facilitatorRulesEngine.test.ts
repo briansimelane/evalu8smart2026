@@ -281,6 +281,25 @@ describe('Facilitator Rules Engine Test Suite', () => {
       const scoreOff = calculateTeamTotalScore('team_1', 5, state);
       expect(scoreOff.wildcardBonus).toBe(0);
     });
+
+    test('Facilitator wildcard pool adjustment & inter-team wildcard transfer', () => {
+      const state = makeGameState();
+      enableRule(state, 'wildcard_tokens_system');
+
+      state.advancedState!.wildcards!['team_1'] = { teamId: 'team_1', totalTokens: 10, usedInRound: {} };
+      state.advancedState!.wildcards!['team_2'] = { teamId: 'team_2', totalTokens: 10, usedInRound: {} };
+
+      // Give +3 extra tokens to team_1
+      state.advancedState!.wildcards!['team_1'].totalTokens += 3;
+      expect(state.advancedState!.wildcards!['team_1'].totalTokens).toBe(13);
+
+      // Transfer 2 tokens from team_1 to team_2
+      state.advancedState!.wildcards!['team_1'].totalTokens -= 2;
+      state.advancedState!.wildcards!['team_2'].totalTokens += 2;
+
+      expect(state.advancedState!.wildcards!['team_1'].totalTokens).toBe(11);
+      expect(state.advancedState!.wildcards!['team_2'].totalTokens).toBe(12);
+    });
   });
 
   describe('9.3 Rule 3 — Multiple Offices & Occupancy (multiple_offices_per_region)', () => {

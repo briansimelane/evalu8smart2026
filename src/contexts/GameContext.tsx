@@ -50,6 +50,8 @@ export interface GameContextType {
   revokeDirective: (directiveId: string) => void;
   moveSteve: (regionName: string | null) => void;
   contributeWildcardsToSteve: (teamId: string, delta?: number) => void;
+  adjustTeamWildcardTotal: (teamId: string, delta: number) => void;
+  transferWildcardTokens: (fromTeamId: string, toTeamId: string, amount: number) => void;
   allocateWildcardToken: (teamId: string, conversionType: 'product' | 'research' | 'logistics' | 'improvement', delta?: number) => void;
   recalculateControlPoints: () => void;
   updatePhase: (phase: GamePhase) => void;
@@ -1617,7 +1619,63 @@ export function GameProvider({ children }: { children: ReactNode }) {
             wildcardsContributedByRound: steveByRoundMap,
           },
         },
-        updatedAt: new Date(),
+  const adjustTeamWildcardTotal = useCallback((teamId: string, delta: number) => {
+    if (!effectiveGameState || !teamId) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      const currentAdvanced = prev.advancedState || {};
+      const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
+      const tWildcard = wildcardsMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
+      
+      const newTotal = Math.max(0, (tWildcard.totalTokens || 10) + delta);
+      wildcardsMap[teamId] = {
+        ...tWildcard,
+        totalTokens: newTotal
+      };
+
+      return {
+        ...prev,
+        advancedState: {
+          ...currentAdvanced,
+          wildcards: wildcardsMap
+        },
+        updatedAt: new Date()
+      };
+    });
+  }, [effectiveGameState]);
+
+  const transferWildcardTokens = useCallback((fromTeamId: string, toTeamId: string, amount: number) => {
+    if (!effectiveGameState || !fromTeamId || !toTeamId || amount <= 0 || fromTeamId === toTeamId) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      const currentAdvanced = prev.advancedState || {};
+      const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
+
+      const fromWc = wildcardsMap[fromTeamId] || { teamId: fromTeamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
+      const toWc = wildcardsMap[toTeamId] || { teamId: toTeamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
+
+      const fromUsed = Object.values(fromWc.usedInRound || {}).reduce((a: number, b: any) => a + Number(b || 0), 0);
+      const fromRemaining = Math.max(0, (fromWc.totalTokens || 10) - fromUsed);
+
+      if (amount > fromRemaining) return prev;
+
+      wildcardsMap[fromTeamId] = {
+        ...fromWc,
+        totalTokens: Math.max(0, (fromWc.totalTokens || 10) - amount)
+      };
+
+      wildcardsMap[toTeamId] = {
+        ...toWc,
+        totalTokens: (toWc.totalTokens || 10) + amount
+      };
+
+      return {
+        ...prev,
+        advancedState: {
+          ...currentAdvanced,
+          wildcards: wildcardsMap
+        },
+        updatedAt: new Date()
       };
     });
   }, [effectiveGameState]);
@@ -1869,6 +1927,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         revokeDirective,
         moveSteve,
         contributeWildcardsToSteve,
+        adjustTeamWildcardTotal,
+        transferWildcardTokens,
         allocateWildcardToken,
         recalculateControlPoints,
         endGame,
