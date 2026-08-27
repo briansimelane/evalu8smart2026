@@ -11,7 +11,7 @@ import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { SimulationClass } from '@/types/game';
 import { removeUndefined } from '@/lib/utils';
-import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech, getLogisticsCostForTeam, getRegionOccupancy, getCompletedOffices, isTeamBuildingOffice, getTechnologyCostForTeam as getTechnologyCostForTeamRule } from '@/lib/rules';
+import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech, isSteveBlocking, getLogisticsCostForTeam, getRegionOccupancy, getCompletedOffices, isTeamBuildingOffice, getTechnologyCostForTeam as getTechnologyCostForTeamRule } from '@/lib/rules';
 import { getDefaultRuleAdjustments, isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 
 export interface GameContextType {
