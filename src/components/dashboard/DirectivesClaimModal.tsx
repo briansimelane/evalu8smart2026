@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Award, CheckCircle2, AlertCircle, Lock, ShieldCheck } from 'lucide-react';
 import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
-import { getCarriedOverProductsForTeam } from '@/lib/rules';
+import { getCarriedOverProductsForTeam, hasTech } from '@/lib/rules';
 import { toast } from 'sonner';
 
 export interface DirectiveDefinition {
@@ -53,7 +53,7 @@ export const DIRECTIVES_LIST: DirectiveDefinition[] = [
     id: 'directive_21',
     number: 21,
     title: 'Inventory Clearance',
-    description: 'Discard 4 or more unsold products in 1 round (excluding products carried over from previous round).',
+    description: 'Discard 4 or more unsold products in 1 round (without Wifi carry-over benefit).',
   },
   {
     id: 'directive_22',
@@ -90,7 +90,12 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
   const teamSold = selectedTeamRoundData?.customersSold?.length || 0;
   const carriedOver = getCarriedOverProductsForTeam(gameState, targetTeamId);
   const teamNewlyProduced = Math.max(0, teamProduced - carriedOver);
-  const teamUnsoldNet = Math.max(0, (teamProduced - teamSold) - carriedOver);
+  const rawUnsold = Math.max(0, teamProduced - teamSold);
+
+  // Check if team has Wifi perk (unsold products carry over instead of being discarded)
+  const hasWifiPerk = isRuleActiveForTeam(gameState?.ruleAdjustments, 'tech_permanent_benefits', targetTeamId) && hasTech(gameState, targetTeamId, 'WIFI');
+  const teamDiscarded = hasWifiPerk ? 0 : rawUnsold;
+
   const teamRegionsSold = selectedTeamRoundData?.salesByRegion
     ? Object.entries(selectedTeamRoundData.salesByRegion).filter(([_, count]) => count > 0).length
     : 0;
@@ -106,7 +111,10 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
       case 'directive_7':
         return { text: `R${currentRound} Regions Sold: ${teamRegionsSold}/5`, met: teamRegionsSold >= 5 };
       case 'directive_21':
-        return { text: `R${currentRound} Unsold: ${teamUnsoldNet}/4 (excl. carried)`, met: teamUnsoldNet >= 4 };
+        if (hasWifiPerk) {
+          return { text: `R${currentRound} Discarded: 0/4 (Wifi active — products carried over)`, met: false };
+        }
+        return { text: `R${currentRound} Discarded: ${teamDiscarded}/4`, met: teamDiscarded >= 4 };
       case 'directive_22':
         return { text: `R${currentRound} Regions Sold: ${teamRegionsSold}`, met: false };
       default:
