@@ -108,6 +108,11 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
         const tData = roundData?.teamData[team.id];
         if (!tData || !tData.customersSold) return;
 
+        const regLogistics = gameState.regionLogistics?.[region];
+        const teamsPres = regLogistics?.teamsPresent || [];
+        const hasOfficeInRegion = (teamsPres.includes(team.id)) || ((regLogistics?.officeCounts?.[team.id] || 0) > 0);
+        if (!hasOfficeInRegion) return;
+
         const soldInRegion = tData.customersSold.filter(cid => customers.some(c => c.id === cid));
         if (soldInRegion.length > 0) {
           let minPos = Infinity;

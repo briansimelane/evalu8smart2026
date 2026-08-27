@@ -91,6 +91,11 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
       for (const rData of gState.rounds) {
         if (rData.roundNumber === round && rData.teamData) {
           for (const teamId of Object.keys(rData.teamData)) {
+            const regLogistics = gState.regionLogistics?.[regionName];
+            const teamsPres = regLogistics?.teamsPresent || [];
+            const hasOfficeInRegion = (teamsPres.includes(teamId)) || ((regLogistics?.officeCounts?.[teamId] || 0) > 0);
+            if (!hasOfficeInRegion) continue;
+
             const sold = rData.teamData[teamId]?.customersSold || [];
             const matchingCount = customerData.filter(c => sold.includes(c.id)).length;
             if (matchingCount > 0) {

@@ -79,6 +79,11 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
       for (const rData of gameState.rounds) {
         if (rData.roundNumber === round && rData.teamData) {
           for (const teamId of Object.keys(rData.teamData)) {
+            const regLogistics = gameState.regionLogistics?.[regionName];
+            const teamsPres = regLogistics?.teamsPresent || [];
+            const hasOfficeInRegion = (teamsPres.includes(teamId)) || ((regLogistics?.officeCounts?.[teamId] || 0) > 0);
+            if (!hasOfficeInRegion) continue;
+
             const sold = rData.teamData[teamId]?.customersSold || [];
             const matchingCount = customerData.filter(c => sold.includes(c.id)).length;
             if (matchingCount > 0) {
