@@ -3,6 +3,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { GameState, Team } from '@/types/game';
 import { decidePlanning, decideResearch, decideLogistics, decideSales, decideImprovement } from '@/bots/botEngine';
+import { AVAILABLE_IMPROVEMENT_CARDS } from '@/data/improvements';
 import { calculatePlanStats, getTechnologyCostForTeam } from '@/lib/rules';
 import { COMBINATIONS } from '@/data/combinations';
 import { REGION_CUSTOMERS } from '@/data/customers';
@@ -38,38 +39,46 @@ export function useMultiWorldBotRunner(classId: string | undefined, gameState: G
     if (phase === 'planning') {
       activeBotTeam = playOrder.find(t => isBotTeam(t) && !roundData?.teamData[t.id]);
     } else if (phase === 'improvement') {
-      activeBotTeam = playOrder.find(t => {
-        if (!isBotTeam(t)) return false;
+      const activeTeam = playOrder.find(t => {
         const count = roundData?.teamData[t.id]?.improvementCards || 0;
         const isDone = gameState.improvementCards?.some(c =>
           (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === round
         );
         return count > 0 && !isDone;
       });
+      if (activeTeam && isBotTeam(activeTeam)) {
+        activeBotTeam = activeTeam;
+      }
     } else if (phase === 'research') {
-      activeBotTeam = playOrder.find(t => {
-        if (!isBotTeam(t)) return false;
+      const activeTeam = playOrder.find(t => {
         const icons = roundData?.teamData[t.id]?.researchIcons || 0;
         const spent = (gameState.researchAllocatedByRound || {})[round]?.[t.id] || 0;
         return icons > 0 && spent < icons;
       });
+      if (activeTeam && isBotTeam(activeTeam)) {
+        activeBotTeam = activeTeam;
+      }
     } else if (phase === 'logistics') {
-      activeBotTeam = playOrder.find(t => {
-        if (!isBotTeam(t)) return false;
+      const activeTeam = playOrder.find(t => {
         const icons = roundData?.teamData[t.id]?.logisticsIcons || 0;
         const spent = (gameState.logisticsAllocatedByRound || {})[round]?.[t.id] || 0;
         return icons > 0 && spent < icons;
       });
+      if (activeTeam && isBotTeam(activeTeam)) {
+        activeBotTeam = activeTeam;
+      }
     } else if (phase === 'sales') {
       const activeSalesPlayOrder = playOrder.filter(team => {
         const tData = roundData?.teamData[team.id];
         return (tData?.productsProduced || 0) > 0;
       });
-      activeBotTeam = activeSalesPlayOrder.find(t => {
-        if (!isBotTeam(t)) return false;
+      const activeTeam = activeSalesPlayOrder.find(t => {
         const tData = roundData?.teamData[t.id];
         return !tData?.customersSold;
       });
+      if (activeTeam && isBotTeam(activeTeam)) {
+        activeBotTeam = activeTeam;
+      }
     }
 
     if (!activeBotTeam) return;
@@ -237,12 +246,12 @@ export function useMultiWorldBotRunner(classId: string | undefined, gameState: G
                 nextState.regionLogistics[regionName] = reg;
 
                 // Sync teamLogisticsProgress
-                const teamLog = nextState.teamLogisticsProgress[teamId] || { teamId, regionsWithPresence: [], regionProgress: {} };
+                const teamLog = nextState.teamLogisticsProgress[teamId] || { teamId, regionsWithPresence: [], regionInvestments: {} };
                 if (newInvested >= reg.logisticsCost && !teamLog.regionsWithPresence.includes(regionName)) {
                   teamLog.regionsWithPresence = [...teamLog.regionsWithPresence, regionName];
                 }
-                teamLog.regionProgress = teamLog.regionProgress || {};
-                teamLog.regionProgress[regionName] = newInvested;
+                teamLog.regionInvestments = teamLog.regionInvestments || {};
+                teamLog.regionInvestments[regionName] = newInvested;
                 nextState.teamLogisticsProgress[teamId] = teamLog;
               }
             });

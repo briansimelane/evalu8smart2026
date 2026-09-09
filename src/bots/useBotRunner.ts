@@ -77,7 +77,7 @@ export function useBotRunner() {
         const isDone = effectiveState.improvementCards.some(c => 
           (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === round
         );
-        return count > 0 && !isDone && isTeamBot(t.id);
+        return count > 0 && !isDone;
       });
     } else if (phase === 'research') {
       activeTurnTeam = playOrder.find(t => {

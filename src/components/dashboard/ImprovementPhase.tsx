@@ -91,6 +91,22 @@ export const ImprovementPhase = () => {
     );
   }, [gameState, currentRoundData]);
 
+  const fullPlayOrder = useMemo(() => {
+    return calculatePlayOrder(gameState?.currentRound || 1);
+  }, [gameState?.currentRound, calculatePlayOrder]);
+
+  const improvementPlayOrder = useMemo(() => {
+    return fullPlayOrder.filter(t => (currentRoundData?.teamData[t.id]?.improvementCards || 0) > 0);
+  }, [fullPlayOrder, currentRoundData]);
+
+  const activeTurnTeam = useMemo(() => {
+    if (!gameState) return null;
+    return improvementPlayOrder.find(t => {
+      const isDone = allocations[t.id as any] !== undefined || (gameState.improvementCards || []).some(c => (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === gameState.currentRound);
+      return !isDone;
+    });
+  }, [gameState, improvementPlayOrder, allocations]);
+
   const teamsWithPlans = useMemo(() => {
     return currentRoundData
       ? Object.keys(currentRoundData.teamData).map(teamId => {
@@ -253,7 +269,16 @@ export const ImprovementPhase = () => {
       )}
 
       {/* Waiting alert for students if plans are submitted but cards not allocated yet */}
-      {allTeamsHavePlans && !(isAllocated || allocationsCompleted) && currentRole === 'STUDENT' && (
+      {allTeamsHavePlans && !(isAllocated || allocationsCompleted) && currentRole === 'STUDENT' && activeTurnTeam && activeTurnTeam.id !== currentTeamId && (
+        <Alert className="border-warning/50 bg-warning/10">
+          <AlertTriangle className="h-4 w-4 text-warning" />
+          <AlertDescription>
+            Waiting for <strong>{activeTurnTeam.name}</strong> to select their improvement card in turn order...
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {allTeamsHavePlans && !(isAllocated || allocationsCompleted) && currentRole === 'STUDENT' && !activeTurnTeam && (
         <Alert>
           <AlertTriangle className="h-4 w-4 text-primary" />
           <AlertDescription>
@@ -316,13 +341,6 @@ export const ImprovementPhase = () => {
 
       {/* Turn Order & Improvement Overview */}
       {(() => {
-        const fullPlayOrder = calculatePlayOrder(gameState.currentRound);
-        const improvementPlayOrder = fullPlayOrder.filter(t => (currentRoundData?.teamData[t.id]?.improvementCards || 0) > 0);
-        const activeTurnTeam = improvementPlayOrder.find(t => {
-          const isDone = isTeamAllocated(t.id) || gameState.improvementCards.some(c => (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === gameState.currentRound);
-          return !isDone;
-        });
-
         return (
           <div className="space-y-2 p-4 bg-card border border-border rounded-xl shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -517,7 +535,7 @@ export const ImprovementPhase = () => {
                           onValueChange={(value) => handleAllocate(parseInt(value), team.id)}
                           disabled={
                             currentRole === 'STUDENT' && 
-                            (isReadOnly || team.id !== currentTeamId || activePhase !== 'improvement')
+                            (isReadOnly || team.id !== currentTeamId || activePhase !== 'improvement' || (activeTurnTeam && team.id !== activeTurnTeam.id))
                           }
                         >
                           <SelectTrigger>
@@ -542,7 +560,7 @@ export const ImprovementPhase = () => {
                           <Button
                             size="sm"
                             className="w-full mt-2 bg-success hover:bg-success text-white font-semibold"
-                            disabled={!allocatedCardId}
+                            disabled={!allocatedCardId || (currentRole === 'STUDENT' && activeTurnTeam !== null && team.id !== activeTurnTeam?.id)}
                             onClick={() => {
                               if (allocatedCardId) {
                                 claimImprovementCard(parseInt(allocatedCardId), team.id);
