@@ -7,6 +7,7 @@ import { GameIcon } from '@/components/dashboard/GameIcon';
 import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn, removeUndefined, safeIsoString } from '@/lib/utils';
+import { useSession } from '@/contexts/SessionContext';
 
 interface TopBarProps {
   classData: SimulationClass;
@@ -25,6 +26,8 @@ const getContrastTextColor = (hexColor: string) => {
 };
 
 export function TopBar({ classData, gameState }: TopBarProps) {
+  const { currentRole, isReadOnly } = useSession();
+  const canChangePhase = currentRole !== 'STUDENT' && !isReadOnly;
   const round = gameState.currentRound;
   const roundData = gameState.rounds.find(r => r.roundNumber === round);
   const m = useMotion();
@@ -75,6 +78,7 @@ export function TopBar({ classData, gameState }: TopBarProps) {
 
   // Handler to switch phase directly from Viewer TopBar
   const handlePhaseClick = async (phaseKey: string) => {
+    if (!canChangePhase) return;
     if (phaseKey === 'improvement' && round >= 5) return;
     if (!classData?.id || !gameState) return;
     try {
@@ -131,7 +135,6 @@ export function TopBar({ classData, gameState }: TopBarProps) {
     return 'future';
   };
 
-  const isProductionPhase = getPhaseState(1) === 'active';
   const isProductionOrLater = getPhaseState(1) !== 'future';
 
   return (
@@ -149,47 +152,45 @@ export function TopBar({ classData, gameState }: TopBarProps) {
             playOrder.map((team, idx) => {
               const isActive = activeTurnTeam?.id === team.id;
               const textColor = getContrastTextColor(team.color);
-              const isTeamChanged = m.tierFor(`price:${team.id}`) > 0 || m.tierFor(`money:${team.id}`) > 0;
+
+              const turnKey = `turn:${team.id}`;
+              const turnClass = getMotionClass(m, turnKey, 'sm');
+              const turnStyles = getMotionStyles(m, turnKey, team.color);
 
               return (
                 <div 
                   key={team.id}
-                  style={{ backgroundColor: team.color, color: textColor }}
+                  style={{ backgroundColor: team.color, color: textColor, ...turnStyles }}
                   className={cn(
-                    "relative w-10 h-10 rounded-full shadow-md flex items-center justify-center text-sm font-black transition-all duration-500 border border-black/10 shrink-0 mo-dimmable",
-                    isActive 
-                      ? 'mo-turn ring-4 ring-offset-2 ring-emerald-500 scale-110 z-10 font-extrabold' 
-                      : 'opacity-85 hover:opacity-100',
-                    isTeamChanged && "z-20"
+                    "px-3 py-1.5 rounded-lg text-xs font-black shadow-sm ring-1 ring-black/10 transition-all duration-300 flex items-center gap-1.5",
+                    isActive && "ring-2 ring-purple-600 ring-offset-2 scale-105 animate-pulse",
+                    turnClass
                   )}
-                  data-changed={isTeamChanged ? '1' : undefined}
-                  title={`${idx + 1}. ${team.name}`}
                 >
-                  <span>{idx + 1}</span>
+                  <span className="font-mono">{idx + 1}.</span>
+                  <span>{team.name}</span>
                 </div>
               );
             })
           ) : (
-            <span className="text-xs font-bold italic text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-              Hidden during Planning Phase
-            </span>
+            <span className="text-xs text-slate-400 italic">Determined in Production</span>
           )}
         </div>
       </div>
 
-      {/* Phase Track */}
-      <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-xl border border-slate-200/80">
+      {/* 8 Phase Stepper Bar */}
+      <div className="flex items-center gap-2">
         {phases.map((p, idx) => {
           const state = getPhaseState(idx);
           const isDisabled = p.key === 'improvement' && round >= 5;
-          
+          const isClickable = canChangePhase && !isDisabled;
+
+          let borderClass = 'border-slate-300 bg-white';
           let opacityClass = 'opacity-100';
-          let borderClass = 'border-slate-200 bg-white shadow-xs';
-          let scaleClass = 'scale-95';
+          let scaleClass = 'scale-100';
 
           if (state === 'active') {
-            opacityClass = 'opacity-100';
-            borderClass = 'border-amber-500 bg-white ring-4 ring-amber-400/80 ring-offset-2 shadow-xl z-20 font-black';
+            borderClass = 'border-purple-600 bg-purple-50 ring-2 ring-purple-500/20 shadow-sm';
             scaleClass = 'scale-105';
           } else if (state === 'past') {
             opacityClass = 'opacity-50';
@@ -205,14 +206,15 @@ export function TopBar({ classData, gameState }: TopBarProps) {
             <button 
               key={p.key}
               onClick={() => handlePhaseClick(p.key)}
-              disabled={isDisabled}
-              title={isDisabled ? 'Improvement phase skipped in Round 5+' : `Switch to ${p.label}`}
+              disabled={!isClickable}
+              title={isDisabled ? 'Improvement phase skipped in Round 5+' : (canChangePhase ? `Switch to ${p.label}` : p.label)}
               className={cn(
-                "relative flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all duration-300 select-none cursor-pointer",
+                "relative flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all duration-300 select-none",
                 borderClass,
                 opacityClass,
                 scaleClass,
-                !isDisabled && state !== 'active' && "hover:scale-105 hover:bg-white hover:border-slate-400 hover:shadow-md active:scale-95",
+                isClickable ? "cursor-pointer" : "cursor-default",
+                isClickable && state !== 'active' && "hover:scale-105 hover:bg-white hover:border-slate-400 hover:shadow-md active:scale-95",
                 isDisabled && "cursor-not-allowed opacity-40"
               )}
             >

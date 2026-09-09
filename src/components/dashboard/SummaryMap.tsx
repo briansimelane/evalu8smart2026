@@ -193,7 +193,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
         <div>
           <h2 className="text-lg sm:text-2xl md:text-3xl font-extrabold flex items-center gap-2 flex-wrap text-foreground tracking-tight">
             <Globe className="h-6 w-6 sm:h-7 sm:w-7 text-success shrink-0" />
-            <span>End of Round Summary Map</span>
+            <span>End of Round Summary</span>
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             Complete overview of Sales, Regional Control, Technology, and Logistics for Round {activeRoundNumber}
@@ -385,9 +385,8 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                         <Badge
                           key={customer.id}
                           variant={buyerTeam ? "default" : "outline"}
-                          className={`text-[10px] gap-1 px-1.5 py-0.5 ${
-                            buyerTeam ? 'border-success/50' : 'opacity-60'
-                          }`}
+                          className={`text-[10px] gap-1 px-1.5 py-0.5 ${buyerTeam ? 'border-success/50' : 'opacity-60'
+                            }`}
                           style={buyerTeam ? { backgroundColor: buyerTeam.color + '25', borderColor: buyerTeam.color, color: 'inherit' } : undefined}
                           title={buyerTeam ? `Sold to ${buyerTeam.name}` : `Unsold customer`}
                         >
@@ -430,9 +429,8 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
             {teamStandings.map((item, idx) => (
               <div
                 key={item.team.id}
-                className={`p-3.5 rounded-xl border ${
-                  idx === 0 ? 'bg-warning/10 border-warning/40 shadow-sm' : 'bg-card border-border'
-                }`}
+                className={`p-3.5 rounded-xl border ${idx === 0 ? 'bg-warning/10 border-warning/40 shadow-sm' : 'bg-card border-border'
+                  }`}
               >
                 <div className="flex items-center justify-between border-b border-border/60 pb-2">
                   <div className="flex items-center gap-2">

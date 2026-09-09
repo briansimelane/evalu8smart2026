@@ -15,6 +15,7 @@ import { SimulationReport } from './dashboard/SimulationReport';
 import { LogisticsPhase } from './dashboard/LogisticsPhase';
 import { FinancialsPhase } from './dashboard/FinancialsPhase';
 import { SummaryMap } from './dashboard/SummaryMap';
+import { ParticipantWorldMap } from './dashboard/ParticipantWorldMap';
 import { GameSettingsDialog } from './dashboard/GameSettingsDialog';
 import { RulesAdjustmentPanel } from './dashboard/RulesAdjustmentPanel';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -22,7 +23,7 @@ import { TeamSubmissionStatus } from './dashboard/TeamSubmissionStatus';
 import { CombinationsGuideModal } from './dashboard/CombinationsGuideModal';
 import { DirectivesClaimModal } from './dashboard/DirectivesClaimModal';
 import { TeamPerksBanner } from './dashboard/TeamPerksBanner';
-import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation, Sliders } from 'lucide-react';
+import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation, Sliders, Map } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -647,11 +648,19 @@ export const Dashboard = () => {
               </TabsTrigger>
               <TabsTrigger value="summary-map" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
                 <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Summary Map</span>
+                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">
+                  {currentRole === 'STUDENT' ? 'Summary View' : 'Summary Map'}
+                </span>
               </TabsTrigger>
               <TabsTrigger value="scoreboard" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
-                <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Scoreboard</span>
+                {currentRole === 'STUDENT' ? (
+                  <Map className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                ) : (
+                  <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                )}
+                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">
+                  {currentRole === 'STUDENT' ? 'World Map' : 'Scoreboard'}
+                </span>
               </TabsTrigger>
               <TabsTrigger value="analytics" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
                 <BarChart3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -780,11 +789,15 @@ export const Dashboard = () => {
 
                 <TabsContent value="scoreboard" className="space-y-4">
                   {isPlaceholderMode ? (
-                    renderPhasePlaceholder("Scoreboard")
+                    renderPhasePlaceholder(currentRole === 'STUDENT' ? 'World Map' : 'Scoreboard')
                   ) : (
                     <GameContext.Provider value={restrictedGameContextValue}>
-                      <TeamSubmissionStatus tabName="Scoreboard" isCompact realRound={realActiveRound} />
-                      <Scoreboard onEditTeamData={handleEditTeamData} />
+                      <TeamSubmissionStatus tabName={currentRole === 'STUDENT' ? 'World Map' : 'Scoreboard'} isCompact realRound={realActiveRound} />
+                      {currentRole === 'STUDENT' ? (
+                        <ParticipantWorldMap />
+                      ) : (
+                        <Scoreboard onEditTeamData={handleEditTeamData} />
+                      )}
                     </GameContext.Provider>
                   )}
                 </TabsContent>
