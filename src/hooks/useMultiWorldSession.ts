@@ -104,6 +104,9 @@ export function useMultiWorldSession(sessionIdOrCode: string) {
                     if (gState) {
                       gState.createdAt = toValidDate(gState.createdAt);
                       gState.updatedAt = toValidDate(gState.updatedAt);
+                      if (!gState.currentPhase) {
+                        gState.currentPhase = 'planning';
+                      }
                       gameState = gState;
                     }
                   }

@@ -163,6 +163,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           if (data) {
             if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
             if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
+            if (!data.currentPhase) data.currentPhase = 'planning';
             setGameState(data);
           } else {
             setGameState(null);

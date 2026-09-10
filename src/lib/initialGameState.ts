@@ -79,6 +79,7 @@ export const buildInitialGameState = (teams: Team[]): GameState => {
     gameId: Date.now().toString(),
     teams,
     currentRound: 1,
+    currentPhase: 'planning',
     rounds: [],
     technologies: TECHNOLOGIES.reduce((acc, tech) => ({
       ...acc,
