@@ -665,9 +665,9 @@ export const ResearchPhase = () => {
 
             {/* Allocation Summary */}
             {selectedTeam && totalAllocated > 0 && (
-              <Card className="bg-primary/5 border-primary/20">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Current Allocations</CardTitle>
+              <Card className="bg-card/95 backdrop-blur border-primary/30 sticky bottom-0 z-30 shadow-2xl sm:static sm:shadow-none sm:bg-primary/5 sm:border-primary/20">
+                <CardHeader className="py-2.5 px-4 sm:pb-3">
+                  <CardTitle className="text-sm sm:text-base">Current Allocations</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">

@@ -813,21 +813,22 @@ export const SalesPhase = () => {
                       })}
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
-                      <Button 
-                        onClick={handleSubmit} 
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap gap-2 pt-4 sticky bottom-0 z-30 bg-card/95 backdrop-blur p-3 -mx-6 -mb-6 border-t border-border shadow-2xl sm:static sm:p-0 sm:m-0 sm:shadow-none sm:border-0 sm:bg-transparent">
+                      <Button
+                        onClick={handleSubmit}
+                        className="flex-1 font-bold"
                         size="lg"
                         disabled={salesExceedProduction || totalProductsToSell === 0 || isReadOnlyMode}
-                        className="flex-1"
                       >
-                        <Save className="mr-2 h-4 w-4" />
+                        <Save className="mr-2 h-5 w-5" />
                         Submit Sales
                       </Button>
                       {currentRole !== 'STUDENT' && (
                         <Button
                           type="button"
-                          size="lg"
                           variant="outline"
+                          size="lg"
                           onClick={() => {
                             handleSaveSales();
                           }}

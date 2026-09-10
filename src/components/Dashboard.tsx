@@ -630,7 +630,7 @@ export const Dashboard = () => {
               };
 
               return (
-                <TabsList className="grid grid-cols-4 sm:grid-cols-8 gap-1 h-auto w-full bg-muted text-muted-foreground border border-border shadow-sm p-1 sm:p-1.5 rounded-xl">
+                <TabsList className="flex sm:grid sm:grid-cols-8 gap-1 h-auto w-full bg-muted text-muted-foreground border border-border shadow-sm p-1 sm:p-1.5 rounded-xl overflow-x-auto scrollbar-none snap-x touch-pan-x">
                   {renderPhaseTrigger('planning', 'Planning', <GameIcon type="planning" size="xs" />)}
                   {renderPhaseTrigger('production', 'Production', <GameIcon type="production" size="xs" />)}
                   {renderPhaseTrigger(
@@ -650,18 +650,18 @@ export const Dashboard = () => {
             })()}
 
             {/* Bottom Row - Data Views */}
-            <TabsList className="grid grid-cols-3 sm:grid-cols-6 gap-1 h-auto w-full border border-border p-1 sm:p-1.5 rounded-xl">
-              <TabsTrigger value="state" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
+            <TabsList className="flex sm:grid sm:grid-cols-6 gap-1 h-auto w-full border border-border p-1 sm:p-1.5 rounded-xl overflow-x-auto scrollbar-none snap-x touch-pan-x">
+              <TabsTrigger value="state" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
                 <LayoutDashboard className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Current State</span>
               </TabsTrigger>
-              <TabsTrigger value="summary-map" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
+              <TabsTrigger value="summary-map" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
                 <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">
                   {currentRole === 'STUDENT' ? 'Summary View' : 'Summary Map'}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="scoreboard" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
+              <TabsTrigger value="scoreboard" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
                 {currentRole === 'STUDENT' ? (
                   <Map className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 ) : (
@@ -671,15 +671,15 @@ export const Dashboard = () => {
                   {currentRole === 'STUDENT' ? 'World Map' : 'Scoreboard'}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="analytics" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
+              <TabsTrigger value="analytics" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
                 <BarChart3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Analytics</span>
               </TabsTrigger>
-              <TabsTrigger value="financials" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
+              <TabsTrigger value="financials" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
                 <BarChart2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Financials</span>
               </TabsTrigger>
-              <TabsTrigger value="report" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2">
+              <TabsTrigger value="report" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
                 <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Simulation Report</span>
               </TabsTrigger>

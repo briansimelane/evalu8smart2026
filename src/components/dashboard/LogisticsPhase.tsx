@@ -724,7 +724,7 @@ export const LogisticsPhase = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap gap-2 pt-4">
+          <div className="flex flex-wrap gap-2 pt-4 sticky bottom-0 z-30 bg-card/95 backdrop-blur p-3 -mx-6 -mb-6 border-t border-border shadow-2xl sm:static sm:p-0 sm:m-0 sm:shadow-none sm:border-0 sm:bg-transparent">
             <Button
               onClick={handleConfirmAllocations}
               disabled={totalAllocated === 0 || totalAllocated > availableThisTeam || isReadOnlyMode}

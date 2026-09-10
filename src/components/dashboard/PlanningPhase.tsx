@@ -641,39 +641,39 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
           <>
             <Card className="bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5 border-primary/20">
               <CardContent className="pt-6">
-                <div className="grid grid-cols-5 gap-4">
-                  <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.price ? 'scale-110 shadow-lg shadow-red-500/50 bg-red-500/10 border-red-500/50' : ''}`}>
-                    <GameIcon type="price" size="xl" className="mb-2" />
-                    <div className="text-sm text-muted-foreground mb-1">Price</div>
-                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.price ? 'scale-150 text-success' : ''}`}>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-4">
+                  <div className={`flex flex-col items-center justify-center p-2.5 sm:p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.price ? 'scale-110 shadow-lg shadow-red-500/50 bg-red-500/10 border-red-500/50' : ''}`}>
+                    <GameIcon type="price" size="lg" className="mb-1 sm:mb-2" />
+                    <div className="text-xs sm:text-sm text-muted-foreground mb-0.5 sm:mb-1">Price</div>
+                    <div className={`text-lg sm:text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.price ? 'scale-150 text-success' : ''}`}>
                       ${calculatedPrice}
                     </div>
                   </div>
-                  <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.products ? 'scale-110 shadow-lg shadow-black/30 dark:shadow-white/30 bg-black/10 dark:bg-white/10 border-black/50 dark:border-white/50' : ''}`}>
-                    <GameIcon type="production" size="xl" className="mb-2" />
-                    <div className="text-sm text-muted-foreground mb-1">Products</div>
-                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.products ? 'scale-150 text-black dark:text-white' : ''}`}>
+                  <div className={`flex flex-col items-center justify-center p-2.5 sm:p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.products ? 'scale-110 shadow-lg shadow-black/30 dark:shadow-white/30 bg-black/10 dark:bg-white/10 border-black/50 dark:border-white/50' : ''}`}>
+                    <GameIcon type="production" size="lg" className="mb-1 sm:mb-2" />
+                    <div className="text-xs sm:text-sm text-muted-foreground mb-0.5 sm:mb-1">Products</div>
+                    <div className={`text-lg sm:text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.products ? 'scale-150 text-black dark:text-white' : ''}`}>
                       {productsAvailable}
                     </div>
                   </div>
-                  <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.improvement ? 'scale-110 shadow-lg shadow-yellow-500/50 bg-yellow-500/10 border-yellow-500/50' : ''}`}>
-                    <GameIcon type="improvement" size="xl" className="mb-2" />
-                    <div className="text-sm text-muted-foreground mb-1">Improvement</div>
-                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.improvement ? 'scale-150 text-yellow-500' : ''}`}>
+                  <div className={`flex flex-col items-center justify-center p-2.5 sm:p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.improvement ? 'scale-110 shadow-lg shadow-yellow-500/50 bg-yellow-500/10 border-yellow-500/50' : ''}`}>
+                    <GameIcon type="improvement" size="lg" className="mb-1 sm:mb-2" />
+                    <div className="text-xs sm:text-sm text-muted-foreground mb-0.5 sm:mb-1">Improvement</div>
+                    <div className={`text-lg sm:text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.improvement ? 'scale-150 text-yellow-500' : ''}`}>
                       {improvementPoints}
                     </div>
                   </div>
-                  <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.research ? 'scale-110 shadow-lg shadow-purple-500/50 bg-purple-500/10 border-purple-500/50' : ''}`}>
-                    <GameIcon type="research" size="xl" className="mb-2" />
-                    <div className="text-sm text-muted-foreground mb-1">Research</div>
-                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.research ? 'scale-150 text-purple-400' : ''}`}>
+                  <div className={`flex flex-col items-center justify-center p-2.5 sm:p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.research ? 'scale-110 shadow-lg shadow-purple-500/50 bg-purple-500/10 border-purple-500/50' : ''}`}>
+                    <GameIcon type="research" size="lg" className="mb-1 sm:mb-2" />
+                    <div className="text-xs sm:text-sm text-muted-foreground mb-0.5 sm:mb-1">Research</div>
+                    <div className={`text-lg sm:text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.research ? 'scale-150 text-purple-400' : ''}`}>
                       {researchPoints}
                     </div>
                   </div>
-                  <div className={`flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.logistics ? 'scale-110 shadow-lg shadow-cyan-500/50 bg-cyan-500/10 border-cyan-500/50' : ''}`}>
-                    <GameIcon type="logistics" size="xl" className="mb-2" />
-                    <div className="text-sm text-muted-foreground mb-1">Logistics</div>
-                    <div className={`text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.logistics ? 'scale-150 text-cyan-400' : ''}`}>
+                  <div className={`col-span-2 sm:col-span-1 flex flex-col items-center justify-center p-2.5 sm:p-4 rounded-lg bg-card/50 border border-border/50 transition-all duration-700 ${animatingValues.logistics ? 'scale-110 shadow-lg shadow-cyan-500/50 bg-cyan-500/10 border-cyan-500/50' : ''}`}>
+                    <GameIcon type="logistics" size="lg" className="mb-1 sm:mb-2" />
+                    <div className="text-xs sm:text-sm text-muted-foreground mb-0.5 sm:mb-1">Logistics</div>
+                    <div className={`text-lg sm:text-2xl font-bold text-foreground transition-all duration-700 ${animatingValues.logistics ? 'scale-150 text-cyan-400' : ''}`}>
                       {logisticsPoints}
                     </div>
                   </div>
