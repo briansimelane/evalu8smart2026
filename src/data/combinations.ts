@@ -131,13 +131,15 @@ export const COMBINATIONS: Combination[] = [
 ];
 
 export const TEAM_COLORS = [
-  { name: 'Red', value: '#ef4444' },
-  { name: 'Blue', value: '#3b82f6' },
   { name: 'Green', value: '#22c55e' },
+  { name: 'Blue', value: '#3b82f6' },
+  { name: 'Black', value: '#1f2937' },
   { name: 'Yellow', value: '#eab308' },
-  { name: 'Purple', value: '#a855f7' },
-  { name: 'Black', value: '#1f2937' }
+  { name: 'Red', value: '#ef4444' },
+  { name: 'Purple', value: '#a855f7' }
 ];
+
+export const STANDARD_5_COLORS = TEAM_COLORS.slice(0, 5);
 
 export const getTeamColorName = (teamColorHex: string, teamName: string = ''): string => {
   const hex = (teamColorHex || '').toLowerCase();

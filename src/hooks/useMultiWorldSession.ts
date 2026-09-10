@@ -1,18 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { doc, getDoc, onSnapshot, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { MultiWorldSession } from '@/types/multiworld';
+import { MultiWorldSession, WorldKey } from '@/types/multiworld';
 import { SimulationClass, GameState } from '@/types/game';
 import { toValidDate } from '@/lib/utils';
+import { normaliseSession } from '@/lib/multiworld/normaliseSession';
+
+export interface WorldSubState {
+  key: WorldKey;
+  classId: string;
+  label: string;
+  teamCount: number;
+  classData: SimulationClass | null;
+  gameState: GameState | null;
+}
 
 export function useMultiWorldSession(sessionIdOrCode: string) {
   const [session, setSession] = useState<MultiWorldSession | null>(null);
-  const [worldAClass, setWorldAClass] = useState<SimulationClass | null>(null);
-  const [worldBClass, setWorldBClass] = useState<SimulationClass | null>(null);
-  const [worldAGameState, setWorldAGameState] = useState<GameState | null>(null);
-  const [worldBGameState, setWorldBGameState] = useState<GameState | null>(null);
+  const [worldStates, setWorldStates] = useState<Record<string, { classData: SimulationClass | null; gameState: GameState | null }>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const unsubscribes = useRef<Record<string, () => void>>({});
 
   useEffect(() => {
     if (!sessionIdOrCode) {
@@ -24,23 +33,17 @@ export function useMultiWorldSession(sessionIdOrCode: string) {
     setError(null);
 
     let unsubSession: (() => void) | null = null;
-    let unsubClassA: (() => void) | null = null;
-    let unsubClassB: (() => void) | null = null;
-    let unsubGameA: (() => void) | null = null;
-    let unsubGameB: (() => void) | null = null;
 
     const findAndSubscribeSession = async () => {
       try {
         let realSessionId: string | null = null;
 
-        // 1. Check if direct doc exists
         const directRef = doc(db, 'multiworld_sessions', sessionIdOrCode);
         const directSnap = await getDoc(directRef);
 
         if (directSnap.exists()) {
           realSessionId = sessionIdOrCode;
         } else {
-          // 2. Query by sessionCode (case-insensitive)
           const qSession = query(
             collection(db, 'multiworld_sessions'),
             where('sessionCode', '==', sessionIdOrCode.toUpperCase())
@@ -57,67 +60,60 @@ export function useMultiWorldSession(sessionIdOrCode: string) {
           return;
         }
 
-        // Subscribe to multiworld session doc
         const sessionRef = doc(db, 'multiworld_sessions', realSessionId);
         unsubSession = onSnapshot(sessionRef, (snap) => {
           if (snap.exists()) {
-            const data = { id: snap.id, ...snap.data() } as MultiWorldSession;
-            setSession(data);
+            const raw = { id: snap.id, ...snap.data() };
+            const norm = normaliseSession(raw);
+            setSession(norm);
 
-            // Subscribe to World A & World B classes
-            if (data.worldAClassId && !unsubClassA) {
-              const classARef = doc(db, 'classes', data.worldAClassId);
-              unsubClassA = onSnapshot(classARef, (cSnap) => {
-                if (cSnap.exists()) {
-                  setWorldAClass({ id: cSnap.id, ...cSnap.data() } as SimulationClass);
-                } else {
-                  setWorldAClass(null);
-                }
-              });
+            // Subscribe to each world's class and game state
+            const currentClassIds = new Set(norm.worlds.map(w => w.classId));
 
-              const gameARef = doc(db, 'classes', data.worldAClassId, 'state', 'game');
-              unsubGameA = onSnapshot(gameARef, (gSnap) => {
-                if (gSnap.exists()) {
-                  const gState = gSnap.data()?.gameState as GameState;
-                  if (gState) {
-                    gState.createdAt = toValidDate(gState.createdAt);
-                    gState.updatedAt = toValidDate(gState.updatedAt);
-                    setWorldAGameState(gState);
-                  } else {
-                    setWorldAGameState(null);
+            // Clean up obsolete subscriptions
+            Object.keys(unsubscribes.current).forEach(key => {
+              const classId = key.replace(/^(class|game)_/, '');
+              if (!currentClassIds.has(classId)) {
+                unsubscribes.current[key]();
+                delete unsubscribes.current[key];
+              }
+            });
+
+            norm.worlds.forEach(w => {
+              const classId = w.classId;
+              const classSubKey = `class_${classId}`;
+              const gameSubKey = `game_${classId}`;
+
+              if (!unsubscribes.current[classSubKey]) {
+                const classRef = doc(db, 'classes', classId);
+                unsubscribes.current[classSubKey] = onSnapshot(classRef, (cSnap) => {
+                  const classData = cSnap.exists() ? ({ id: cSnap.id, ...cSnap.data() } as SimulationClass) : null;
+                  setWorldStates(prev => ({
+                    ...prev,
+                    [classId]: { ...(prev[classId] || { gameState: null }), classData }
+                  }));
+                });
+              }
+
+              if (!unsubscribes.current[gameSubKey]) {
+                const gameRef = doc(db, 'classes', classId, 'state', 'game');
+                unsubscribes.current[gameSubKey] = onSnapshot(gameRef, (gSnap) => {
+                  let gameState: GameState | null = null;
+                  if (gSnap.exists()) {
+                    const gState = gSnap.data()?.gameState as GameState;
+                    if (gState) {
+                      gState.createdAt = toValidDate(gState.createdAt);
+                      gState.updatedAt = toValidDate(gState.updatedAt);
+                      gameState = gState;
+                    }
                   }
-                } else {
-                  setWorldAGameState(null);
-                }
-              });
-            }
-
-            if (data.worldBClassId && !unsubClassB) {
-              const classBRef = doc(db, 'classes', data.worldBClassId);
-              unsubClassB = onSnapshot(classBRef, (cSnap) => {
-                if (cSnap.exists()) {
-                  setWorldBClass({ id: cSnap.id, ...cSnap.data() } as SimulationClass);
-                } else {
-                  setWorldBClass(null);
-                }
-              });
-
-              const gameBRef = doc(db, 'classes', data.worldBClassId, 'state', 'game');
-              unsubGameB = onSnapshot(gameBRef, (gSnap) => {
-                if (gSnap.exists()) {
-                  const gState = gSnap.data()?.gameState as GameState;
-                  if (gState) {
-                    gState.createdAt = toValidDate(gState.createdAt);
-                    gState.updatedAt = toValidDate(gState.updatedAt);
-                    setWorldBGameState(gState);
-                  } else {
-                    setWorldBGameState(null);
-                  }
-                } else {
-                  setWorldBGameState(null);
-                }
-              });
-            }
+                  setWorldStates(prev => ({
+                    ...prev,
+                    [classId]: { ...(prev[classId] || { classData: null }), gameState }
+                  }));
+                });
+              }
+            });
 
             setLoading(false);
           } else {
@@ -142,10 +138,8 @@ export function useMultiWorldSession(sessionIdOrCode: string) {
 
     return () => {
       if (unsubSession) unsubSession();
-      if (unsubClassA) unsubClassA();
-      if (unsubClassB) unsubClassB();
-      if (unsubGameA) unsubGameA();
-      if (unsubGameB) unsubGameB();
+      Object.values(unsubscribes.current).forEach(unsub => unsub());
+      unsubscribes.current = {};
     };
   }, [sessionIdOrCode]);
 
@@ -159,14 +153,41 @@ export function useMultiWorldSession(sessionIdOrCode: string) {
     }
   };
 
+  const updateTeamLabelMode = async (mode: 'name' | 'code') => {
+    if (!session) return;
+    try {
+      const sessionRef = doc(db, 'multiworld_sessions', session.id);
+      await updateDoc(sessionRef, { teamLabelMode: mode });
+    } catch (err) {
+      console.error("Failed to update teamLabelMode:", err);
+    }
+  };
+
+  const worlds: WorldSubState[] = (session?.worlds || []).map(w => ({
+    key: w.key,
+    classId: w.classId,
+    label: w.label,
+    teamCount: w.teamCount || 5,
+    classData: worldStates[w.classId]?.classData || null,
+    gameState: worldStates[w.classId]?.gameState || null,
+  }));
+
+  // Backward compatibility getters for 2-world legacy code
+  const worldAClass = worlds.find(w => w.key === 'A')?.classData || null;
+  const worldBClass = worlds.find(w => w.key === 'B')?.classData || null;
+  const worldAGameState = worlds.find(w => w.key === 'A')?.gameState || null;
+  const worldBGameState = worlds.find(w => w.key === 'B')?.gameState || null;
+
   return {
     session,
+    worlds,
     worldAClass,
     worldBClass,
     worldAGameState,
     worldBGameState,
     loading,
     error,
-    updateAdvanceMode
+    updateAdvanceMode,
+    updateTeamLabelMode
   };
 }

@@ -13,6 +13,7 @@ import { SimulationClass } from '@/types/game';
 import { removeUndefined } from '@/lib/utils';
 import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech, isSteveBlocking, getLogisticsCostForTeam, getRegionOccupancy, getCompletedOffices, isTeamBuildingOffice, getTechnologyCostForTeam as getTechnologyCostForTeamRule } from '@/lib/rules';
 import { getDefaultRuleAdjustments, isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
+import { advanceOnePhase } from '@/lib/phaseEngine';
 
 export interface GameContextType {
   gameState: GameState | null;
@@ -55,6 +56,7 @@ export interface GameContextType {
   allocateWildcardToken: (teamId: string, conversionType: 'product' | 'research' | 'logistics' | 'improvement', delta?: number) => void;
   recalculateControlPoints: () => void;
   updatePhase: (phase: GamePhase) => void;
+  updateTeamLabelMode: (mode: 'name' | 'code') => void;
   endGame: () => void;
 }
 
@@ -687,40 +689,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const advanceRound = () => {
     if (!effectiveGameState) return;
-
     mutateGameState(prev => {
       if (!prev) return prev;
-
-      const currentRound = prev.currentRound;
-      const currentRoundData = prev.rounds.find(r => r.roundNumber === currentRound);
-      const carriedOverMap: Record<string, number> = { ...(prev.advancedState?.carriedOverProducts || {}) };
-
-      prev.teams.forEach(team => {
-        const tData = currentRoundData?.teamData[team.id];
-        if (tData) {
-          const produced = tData.productsProduced || 0;
-          const sumSold = tData.salesByRegion
-            ? Object.values(tData.salesByRegion).reduce((a, b) => a + Number(b), 0)
-            : (tData.customersSold ? tData.customersSold.length : 0);
-          const unsold = Math.max(0, produced - sumSold);
-          const wifiActive = isRuleActiveForTeam(prev.ruleAdjustments, 'tech_permanent_benefits', team.id)
-                             && hasTech(prev, team.id, 'WIFI');
-          carriedOverMap[team.id] = wifiActive ? unsold : 0;
-        } else {
-          carriedOverMap[team.id] = 0;
-        }
-      });
-
-      return {
-        ...prev,
-        currentRound: prev.currentRound + 1,
-        currentPhase: 'planning',
-        advancedState: {
-          ...(prev.advancedState || {}),
-          carriedOverProducts: carriedOverMap,
-        },
-        updatedAt: new Date()
-      };
+      return advanceOnePhase({ ...prev, currentPhase: 'scoring' });
     });
   };
 
@@ -731,12 +702,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (!prev) return prev;
 
       let targetPhase = phase;
-      if (prev.currentRound >= 5 && targetPhase === 'improvement') {
-        targetPhase = 'research';
+      if (prev.currentRound >= 5 && (targetPhase === 'improvement' || targetPhase === 'IMPROVEMENT')) {
+        targetPhase = 'innovation';
       }
 
+      const rawTarget = (targetPhase || 'planning').toLowerCase();
+      const normTarget = rawTarget === 'research' ? 'innovation' : (rawTarget === 'logistics' ? 'expansion' : rawTarget) as GamePhase;
+
       const newCards = [...(prev.improvementCards || [])];
-      if (targetPhase === 'improvement') {
+      if (normTarget === 'improvement') {
         const currentRoundData = prev.rounds.find(r => r.roundNumber === prev.currentRound);
         if (currentRoundData) {
           prev.teams.forEach(t => {
@@ -762,8 +736,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       return {
         ...prev,
+        currentPhase: normTarget,
         improvementCards: newCards,
-        currentPhase: targetPhase,
+        updatedAt: new Date()
+      };
+    });
+  };
+
+  const updateTeamLabelMode = (mode: 'name' | 'code') => {
+    if (!effectiveGameState) return;
+    mutateGameState(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        teamLabelMode: mode,
         updatedAt: new Date()
       };
     });
@@ -1906,6 +1892,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         allocateImprovementCards,
         advanceRound,
         updatePhase,
+        updateTeamLabelMode,
         claimImprovementCard,
         unclaimImprovementCard,
         setBotThinking,

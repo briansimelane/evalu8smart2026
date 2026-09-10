@@ -5,6 +5,8 @@ import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn } from '@/lib/utils';
 
+import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
+
 interface PriceLadderProps {
   gameState: GameState;
 }
@@ -145,12 +147,12 @@ export function PriceLadder({ gameState }: PriceLadderProps) {
                           ...priceStyles
                         }}
                         className={cn(
-                          "w-9 h-9 aspect-square rounded-full shadow-md ring-2 ring-white flex items-center justify-center font-black text-sm shrink-0 border border-black/10 transition-all duration-300",
+                          "min-w-9 h-9 px-1 rounded-full shadow-md ring-2 ring-white flex items-center justify-center font-black text-sm shrink-0 border border-black/10 transition-all duration-300 whitespace-nowrap",
                           priceClass
                         )}
                         title={`${team.name}: $${price}`}
                       >
-                        {team.name.charAt(0).toUpperCase()}
+                        {getTeamBubbleText(team)}
                       </div>
                     );
                   })}
@@ -172,13 +174,13 @@ export function PriceLadder({ gameState }: PriceLadderProps) {
                   <div 
                     key={team.id}
                     className={cn(
-                      "w-7 h-7 aspect-square rounded-full border border-black/20 flex items-center justify-center font-black text-xs shadow-md ring-2 ring-white shrink-0 transition-all",
+                      "min-w-7 h-7 px-1 rounded-full border border-black/20 flex items-center justify-center font-black text-xs shadow-md ring-2 ring-white shrink-0 transition-all whitespace-nowrap",
                       m.isRecent(priceKey) && 'mo-recent'
                     )}
                     style={{ backgroundColor: team.color, color: textColor }}
                     title={`${team.name} (Planning...)`}
                   >
-                    {team.name.charAt(0).toUpperCase()}
+                    {getTeamBubbleText(team)}
                   </div>
                 );
               })}

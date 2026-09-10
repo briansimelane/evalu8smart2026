@@ -17,6 +17,7 @@ export interface Team {
   isBot?: boolean;
   botProfile?: BotProfile;
   botDifficulty?: BotDifficulty;
+  teamNumber?: number;
 }
 
 export type UserRole = 'ADMIN' | 'FACILITATOR' | 'STUDENT';
@@ -31,6 +32,7 @@ export interface ClassTeam {
   isBot?: boolean;
   botProfile?: BotProfile;
   botDifficulty?: BotDifficulty;
+  teamNumber?: number;
 }
 
 export interface FacilitatorUser {
@@ -53,6 +55,7 @@ export interface SimulationClass {
   createdAt: string;
   createdByEmail?: string;
   createdByName?: string;
+  teamLabelMode?: 'name' | 'code';
 }
 
 export interface Technology {
@@ -118,6 +121,7 @@ export interface TeamRoundData {
   eligibleValueCustomers?: number;
   eligibleSalesUnits?: number;
   demandFulfillmentRate?: number;
+  facilitatorDefault?: boolean;
 }
 
 export interface RegionLogistics {
@@ -215,6 +219,7 @@ export interface GameState {
   ruleAdjustments?: RuleAdjustmentsState; // custom rule toggles & requirement overrides
   advancedState?: AdvancedRulesState; // 5 Advanced Rules state tracking
   currentPhase?: GamePhase;
+  teamLabelMode?: 'name' | 'code';
   createdAt: Date;
   updatedAt: Date;
   botConfig?: {
@@ -230,6 +235,7 @@ export interface GameState {
     at: string;
   }>;
   gameEnded?: boolean;
+  stateVersion?: number;
 }
 
 export const PATENT_POINTS: Record<string, number> = {

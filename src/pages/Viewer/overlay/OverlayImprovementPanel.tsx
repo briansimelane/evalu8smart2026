@@ -7,6 +7,7 @@ import { Plus, Minus } from 'lucide-react';
 import { useOptionalMotion } from '../motion/MotionContext';
 import { getMotionClass, getMotionStyles } from '../motion/motionClass';
 import { cn } from '@/lib/utils';
+import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
 
 interface OverlayImprovementPanelProps {
   gameStateA: GameState;
@@ -227,13 +228,13 @@ export const OverlayImprovementPanel: React.FC<OverlayImprovementPanelProps> = (
                     >
                       {/* Team Color Circle Marker */}
                       <div
-                        className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-black shrink-0 shadow-2xs"
+                        className="min-w-[14px] min-h-[14px] px-0.5 rounded-full flex items-center justify-center text-[7.5px] leading-none tracking-tighter whitespace-nowrap overflow-hidden font-black shrink-0 shadow-2xs"
                         style={{
                           backgroundColor: team.color,
                           color: getContrastTextColor(team.color)
                         }}
                       >
-                        {team.name.charAt(0).toUpperCase()}
+                        {getTeamBubbleText(team)}
                       </div>
 
                       {/* Visual Card Effect Icons (No Words) */}

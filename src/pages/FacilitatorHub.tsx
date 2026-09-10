@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MultiWorldCreationModal } from '@/components/multiworld/MultiWorldCreationModal';
 import { MultiWorldSession } from '@/types/multiworld';
+import { normaliseSession } from '@/lib/multiworld/normaliseSession';
 
 // Predefined colors for teams
 const DEFAULT_TEAMS = [
@@ -556,9 +557,26 @@ export const FacilitatorHub: React.FC = () => {
                   <TableBody>
                     {multiWorldSessions.map((mw) => (
                       <TableRow key={mw.id} className="border-border hover:bg-muted/10 transition-colors">
-                        <TableCell className="font-semibold text-foreground flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-purple-500" />
-                          {mw.name}
+                        <TableCell className="font-semibold text-foreground">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-purple-500" />
+                            <span>{mw.name}</span>
+                          </div>
+                          {(() => {
+                            const norm = normaliseSession(mw);
+                            const totalTeams = norm.worlds.reduce((sum, w) => sum + (w.teamCount || 5), 0);
+                            return (
+                              <div className="flex items-center gap-1.5 mt-1 text-[11px]">
+                                <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300 font-bold">
+                                  {norm.worlds.length} {norm.worlds.length === 1 ? 'World' : 'Worlds'} ({totalTeams} Teams)
+                                </span>
+                                <span className="text-muted-foreground">·</span>
+                                <span className="text-muted-foreground uppercase font-mono">
+                                  {norm.worlds.map(w => w.key).join(', ')}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="font-mono text-purple-700 dark:text-purple-400 font-bold text-xs">
                           {mw.sessionCode}

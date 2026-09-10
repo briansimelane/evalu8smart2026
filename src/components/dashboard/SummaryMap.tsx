@@ -12,6 +12,7 @@ import { SteveIcon } from './SteveIcon';
 import { getControlPointsForRegion } from '@/data/control';
 import { getControlPointsForTeamInRound, getTeamPatentPoints, getInitialScore, calculateTeamTotalScore } from '@/types/game';
 import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
+import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
 
 interface SummaryMapProps {
   initialRound?: number;
@@ -391,7 +392,11 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                           title={buyerTeam ? `Sold to ${buyerTeam.name}` : `Unsold customer`}
                         >
                           {customer.type === 'price' ? `$${customer.price}` : customer.technology}
-                          {buyerTeam && <CheckCircle className="h-3 w-3 text-success" />}
+                          {buyerTeam && (
+                            <span className="px-1 py-0.2 rounded text-[9px] font-black text-white ml-0.5 shrink-0" style={{ backgroundColor: buyerTeam.color }}>
+                              {getTeamBubbleText(buyerTeam)}
+                            </span>
+                          )}
                         </Badge>
                       ))}
                     </div>

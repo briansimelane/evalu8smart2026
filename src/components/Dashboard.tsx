@@ -73,7 +73,7 @@ const PHASE_DISPLAY_NAMES: Record<string, string> = {
 export const Dashboard = () => {
   const navigate = useNavigate();
   const gameContext = useGame();
-  const { gameState, resetGame, advanceRound, updatePhase, calculatePlayOrder, endGame } = gameContext;
+  const { gameState, resetGame, advanceRound, updatePhase, calculatePlayOrder, endGame, updateTeamLabelMode } = gameContext;
   const { currentRole, logout, activeClass, selectClass, selectTeam, isDemo, exitDemo } = useSession();
   
   // Housekeeping for demo mode
@@ -544,6 +544,15 @@ export const Dashboard = () => {
                       </DialogContent>
                     </Dialog>
                     <GameSettingsDialog />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updateTeamLabelMode?.(gameState.teamLabelMode === 'code' ? 'name' : 'code')}
+                      className="text-xs h-8 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 font-bold"
+                      title="Toggle team display label between Name and Code (e.g. T1WA / 1A)"
+                    >
+                      Labels: {gameState.teamLabelMode === 'code' ? 'Code' : 'Name'}
+                    </Button>
                     <Button
                       variant="default"
                       size="sm"

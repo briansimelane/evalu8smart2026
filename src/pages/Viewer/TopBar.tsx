@@ -8,6 +8,7 @@ import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn, removeUndefined, safeIsoString } from '@/lib/utils';
 import { useSession } from '@/contexts/SessionContext';
+import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
 
 interface TopBarProps {
   classData: SimulationClass;
@@ -263,7 +264,7 @@ export function TopBar({ classData, gameState }: TopBarProps) {
                   )}
                   title={`${team.name}: ${unsold} unsold products remaining (${produced} produced, ${sold} sold)`}
                 >
-                  <span>{team.name[0]}:</span>
+                  <span>{getTeamBubbleText(team)}:</span>
                   <span className="font-mono text-sm">{unsold}</span>
                 </div>
               );

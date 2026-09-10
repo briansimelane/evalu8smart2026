@@ -14,6 +14,7 @@ import { OverlayTechPanel } from './overlay/OverlayTechPanel';
 import { OverlayImprovementPanel } from './overlay/OverlayImprovementPanel';
 import { MotionProvider, useOptionalMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
+import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
 
 interface MultiWorldSingleBoardProps {
   session: MultiWorldSession;
@@ -118,7 +119,7 @@ function SingleBoardContent({ session, gameStateA, gameStateB }: { session: Mult
                       <div key={`turn-A-${t.team.id}`} className="flex items-center gap-1">
                         {idx > 0 && <span className="text-slate-400 font-bold text-[10px]">→</span>}
                         <WorldMarker world="A" teamColor={t.team.color} size="xs" title={`${t.team.name}: $${t.price}`}>
-                          {t.team.name.charAt(0).toUpperCase()}
+                          {getTeamBubbleText(t.team)}
                         </WorldMarker>
                         <span className="font-mono text-[10px] font-extrabold text-slate-800">${t.price}</span>
                       </div>
@@ -138,7 +139,7 @@ function SingleBoardContent({ session, gameStateA, gameStateB }: { session: Mult
                       <div key={`turn-B-${t.team.id}`} className="flex items-center gap-1">
                         {idx > 0 && <span className="text-slate-400 font-bold text-[10px]">→</span>}
                         <WorldMarker world="B" teamColor={t.team.color} size="xs" title={`${t.team.name}: $${t.price}`}>
-                          {t.team.name.charAt(0).toUpperCase()}
+                          {getTeamBubbleText(t.team)}
                         </WorldMarker>
                         <span className="font-mono text-[10px] font-extrabold text-slate-800">${t.price}</span>
                       </div>
@@ -182,7 +183,7 @@ function SingleBoardContent({ session, gameStateA, gameStateB }: { session: Mult
                       title={`World A · ${team.name}: ${produced} Produced, ${sold} Sold, ${unsold} Unsold`}
                     >
                       <WorldMarker world="A" teamColor={team.color} size="xs">
-                        {team.name.charAt(0).toUpperCase()}
+                        {getTeamBubbleText(team)}
                       </WorldMarker>
                       <span className="font-mono text-slate-900 font-extrabold">{produced}</span>
                       {produced > 0 && (
@@ -216,7 +217,7 @@ function SingleBoardContent({ session, gameStateA, gameStateB }: { session: Mult
                       title={`World B · ${team.name}: ${produced} Produced, ${sold} Sold, ${unsold} Unsold`}
                     >
                       <WorldMarker world="B" teamColor={team.color} size="xs">
-                        {team.name.charAt(0).toUpperCase()}
+                        {getTeamBubbleText(team)}
                       </WorldMarker>
                       <span className="font-mono text-slate-900 font-extrabold">{produced}</span>
                       {produced > 0 && (

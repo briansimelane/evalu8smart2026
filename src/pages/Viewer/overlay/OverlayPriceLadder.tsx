@@ -4,6 +4,7 @@ import { WorldMarker, WorldTag } from './WorldMarker';
 import { useOptionalMotion } from '../motion/MotionContext';
 import { getMotionClass, getMotionStyles } from '../motion/motionClass';
 import { cn } from '@/lib/utils';
+import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
 
 interface OverlayPriceLadderProps {
   gameStateA: GameState;
@@ -103,7 +104,7 @@ export const OverlayPriceLadder: React.FC<OverlayPriceLadderProps> = ({ gameStat
                             style={{ ...priceStyles }}
                             title={`World A · ${team.name}: $${price} (${produced} units produced${produced > 0 ? `, ${unsold} unsold` : ''})`}
                           >
-                            {team.name.charAt(0).toUpperCase()}
+                            {getTeamBubbleText(team)}
                           </WorldMarker>
                         );
                       })
@@ -140,7 +141,7 @@ export const OverlayPriceLadder: React.FC<OverlayPriceLadderProps> = ({ gameStat
                             style={{ ...priceStyles }}
                             title={`World B · ${team.name}: $${price} (${produced} units produced${produced > 0 ? `, ${unsold} unsold` : ''})`}
                           >
-                            {team.name.charAt(0).toUpperCase()}
+                            {getTeamBubbleText(team)}
                           </WorldMarker>
                         );
                       })

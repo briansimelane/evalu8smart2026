@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { useMultiWorldSession } from '@/hooks/useMultiWorldSession';
-import { useGameBoardState } from '@/hooks/useGameBoardState';
+import { useMultiWorldSession, WorldSubState } from '@/hooks/useMultiWorldSession';
 import { ViewerBoard } from './ViewerPage';
 import { MultiWorldSingleBoard } from './MultiWorldSingleBoard';
+import { TeamLabelProvider, useTeamLabel } from './TeamLabelContext';
+import { WorldKey } from '@/types/multiworld';
 import { calculateTeamTotalScore, getPatentPointsForTech } from '@/types/game';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Globe, Trophy, Maximize2, AlertCircle, Monitor, Layers, Columns, MonitorCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { Globe, Trophy, Maximize2, AlertCircle, Monitor, Layers, Columns, MonitorCheck, ChevronDown, ChevronUp, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import './viewer.css';
 
@@ -15,7 +16,8 @@ interface ScoredTeam {
   teamId: string;
   teamName: string;
   color: string;
-  worldLabel: 'A' | 'B';
+  worldKey: WorldKey;
+  worldLabel: string;
   startValue: number;
   totalScore: number;
   cumulativeRevenue: number;
@@ -23,20 +25,18 @@ interface ScoredTeam {
   patentBonus: number;
   patentsHeld: string[];
   isBot: boolean;
+  teamIndex: number;
 }
 
-export function CombinedViewerPage() {
+export function CombinedViewerContent() {
   const { sessionCode } = useParams<{ sessionCode: string }>();
-  const { session, loading: sessionLoading, error: sessionError } = useMultiWorldSession(sessionCode || '');
+  const { session, worlds, loading: sessionLoading, error: sessionError } = useMultiWorldSession(sessionCode || '');
+  const { formatTeamLabel } = useTeamLabel();
 
-  const classIdA = session?.worldAClassId || '';
-  const classIdB = session?.worldBClassId || '';
-
-  const { classData: classDataA, gameState: gameStateA, loading: loadingA, error: errorA } = useGameBoardState(classIdA);
-  const { classData: classDataB, gameState: gameStateB, loading: loadingB, error: errorB } = useGameBoardState(classIdB);
-
-  // Layout mode switcher: 'single' (both worlds overlay on 1 board) by default!
-  const [layoutMode, setLayoutMode] = useState<'single' | 'stacked' | 'side' | 'leaderboard' | 'worldA' | 'worldB'>('single');
+  // Selected view mode: 'single' (overlay if 2 worlds), 'grid' (1-10 worlds), 'leaderboard', or 'world:<key>'
+  const [layoutMode, setLayoutMode] = useState<string>(
+    worlds.length > 2 ? 'grid' : 'single'
+  );
   const [expandedTeamKey, setExpandedTeamKey] = useState<string | null>(null);
 
   const toggleFullscreen = () => {
@@ -53,21 +53,31 @@ export function CombinedViewerPage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'f') {
         toggleFullscreen();
+      } else if (e.key >= '1' && e.key <= '9') {
+        const idx = parseInt(e.key, 10) - 1;
+        if (idx < worlds.length) {
+          setLayoutMode(`world:${worlds[idx].key}`);
+        }
+      } else if (e.key === '0' && worlds.length >= 10) {
+        setLayoutMode(`world:${worlds[9].key}`);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [worlds]);
 
-  // Compute combined leaderboard
+  // Compute combined leaderboard across all 1-10 worlds
   const combinedLeaderboard = useMemo<ScoredTeam[]>(() => {
     const list: ScoredTeam[] = [];
 
-    if (gameStateA) {
-      const roundA = gameStateA.currentRound;
-      gameStateA.teams.forEach((t) => {
-        const score = calculateTeamTotalScore(t.id, roundA, gameStateA);
-        const patents = Object.entries(gameStateA.patents || {})
+    worlds.forEach((w) => {
+      const gState = w.gameState;
+      if (!gState) return;
+
+      const round = gState.currentRound;
+      gState.teams.forEach((t, tIdx) => {
+        const score = calculateTeamTotalScore(t.id, round, gState);
+        const patents = Object.entries(gState.patents || {})
           .filter(([_, holderId]) => holderId === t.id)
           .map(([tech]) => tech);
 
@@ -75,58 +85,40 @@ export function CombinedViewerPage() {
           teamId: t.id,
           teamName: t.name,
           color: t.color,
-          worldLabel: 'A',
+          worldKey: w.key,
+          worldLabel: w.label,
           startValue: score.startValue,
           totalScore: score.totalScore,
           cumulativeRevenue: score.cumulativeRevenue,
           cumulativeControl: score.cumulativeControl,
           patentBonus: score.patentBonus,
           patentsHeld: patents,
-          isBot: !!t.isBot
+          isBot: !!t.isBot,
+          teamIndex: tIdx
         });
       });
-    }
-
-    if (gameStateB) {
-      const roundB = gameStateB.currentRound;
-      gameStateB.teams.forEach((t) => {
-        const score = calculateTeamTotalScore(t.id, roundB, gameStateB);
-        const patents = Object.entries(gameStateB.patents || {})
-          .filter(([_, holderId]) => holderId === t.id)
-          .map(([tech]) => tech);
-
-        list.push({
-          teamId: t.id,
-          teamName: t.name,
-          color: t.color,
-          worldLabel: 'B',
-          startValue: score.startValue,
-          totalScore: score.totalScore,
-          cumulativeRevenue: score.cumulativeRevenue,
-          cumulativeControl: score.cumulativeControl,
-          patentBonus: score.patentBonus,
-          patentsHeld: patents,
-          isBot: !!t.isBot
-        });
-      });
-    }
+    });
 
     list.sort((a, b) => b.totalScore - a.totalScore);
     return list;
-  }, [gameStateA, gameStateB]);
+  }, [worlds]);
 
   const isProvisional = useMemo(() => {
-    if (!gameStateA || !gameStateB) return true;
-    if (gameStateA.currentRound !== gameStateB.currentRound) return true;
-    if (gameStateA.currentPhase !== gameStateB.currentPhase) return true;
-    return false;
-  }, [gameStateA, gameStateB]);
+    const loaded = worlds.filter(w => w.gameState);
+    if (loaded.length < worlds.length) return true;
+    if (loaded.length === 0) return true;
 
-  if (sessionLoading || (loadingA && loadingB)) {
+    const firstRound = loaded[0].gameState?.currentRound;
+    const firstPhase = loaded[0].gameState?.currentPhase;
+
+    return loaded.some(w => w.gameState?.currentRound !== firstRound || w.gameState?.currentPhase !== firstPhase);
+  }, [worlds]);
+
+  if (sessionLoading) {
     return (
       <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col items-center justify-center gap-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600" />
-        <p className="text-lg font-semibold animate-pulse text-purple-700">Loading Multi-World Board...</p>
+        <p className="text-lg font-semibold animate-pulse text-purple-700">Loading Multi-World Viewer...</p>
       </div>
     );
   }
@@ -142,17 +134,20 @@ export function CombinedViewerPage() {
     );
   }
 
+  const worldA = worlds.find(w => w.key === 'A');
+  const worldB = worlds.find(w => w.key === 'B');
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col select-none">
       {/* Top Header Bar */}
-      <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-xs z-20">
+      <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-xs z-20 flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <Globe className="h-6 w-6 text-purple-600 animate-pulse" />
           <div>
             <h1 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
               {session.name}
               <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs">
-                Multi-World
+                {worlds.length} Worlds
               </Badge>
             </h1>
             <p className="text-xs text-slate-500 font-mono">
@@ -162,39 +157,31 @@ export function CombinedViewerPage() {
         </div>
 
         {/* View Mode Switcher */}
-        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-semibold">
-          <button
-            onClick={() => setLayoutMode('single')}
-            className={cn(
-              "px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5",
-              layoutMode === 'single' ? "bg-purple-600 text-white font-bold shadow-xs" : "text-slate-700 hover:bg-slate-200"
-            )}
-            title="Both Worlds Overlay on Single Board"
-          >
-            <MonitorCheck className="h-3.5 w-3.5" />
-            Single Board
-          </button>
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-semibold flex-wrap">
+          {worlds.length === 2 && (
+            <button
+              onClick={() => setLayoutMode('single')}
+              className={cn(
+                "px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5",
+                layoutMode === 'single' ? "bg-purple-600 text-white font-bold shadow-xs" : "text-slate-700 hover:bg-slate-200"
+              )}
+              title="Both Worlds Overlay on Single Board"
+            >
+              <MonitorCheck className="h-3.5 w-3.5" />
+              Overlay Board
+            </button>
+          )}
 
           <button
-            onClick={() => setLayoutMode('stacked')}
+            onClick={() => setLayoutMode('grid')}
             className={cn(
               "px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5",
-              layoutMode === 'stacked' ? "bg-purple-600 text-white font-bold shadow-xs" : "text-slate-700 hover:bg-slate-200"
+              layoutMode === 'grid' ? "bg-purple-600 text-white font-bold shadow-xs" : "text-slate-700 hover:bg-slate-200"
             )}
+            title="All Worlds Grid View"
           >
-            <Layers className="h-3.5 w-3.5" />
-            Stacked
-          </button>
-
-          <button
-            onClick={() => setLayoutMode('side')}
-            className={cn(
-              "px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5",
-              layoutMode === 'side' ? "bg-purple-600 text-white font-bold shadow-xs" : "text-slate-700 hover:bg-slate-200"
-            )}
-          >
-            <Columns className="h-3.5 w-3.5" />
-            Side-by-Side
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Grid ({worlds.length})
           </button>
 
           <button
@@ -205,28 +192,23 @@ export function CombinedViewerPage() {
             )}
           >
             <Trophy className="h-3.5 w-3.5" />
-            Leaderboard
+            Leaderboard ({combinedLeaderboard.length})
           </button>
 
-          <button
-            onClick={() => setLayoutMode('worldA')}
-            className={cn(
-              "px-3 py-1.5 rounded-md transition-colors",
-              layoutMode === 'worldA' ? "bg-purple-600 text-white font-bold shadow-xs" : "text-slate-700 hover:bg-slate-200"
-            )}
-          >
-            {session.worldALabel}
-          </button>
-
-          <button
-            onClick={() => setLayoutMode('worldB')}
-            className={cn(
-              "px-3 py-1.5 rounded-md transition-colors",
-              layoutMode === 'worldB' ? "bg-purple-600 text-white font-bold shadow-xs" : "text-slate-700 hover:bg-slate-200"
-            )}
-          >
-            {session.worldBLabel}
-          </button>
+          {/* Individual World Selector Buttons */}
+          {worlds.map((w, idx) => (
+            <button
+              key={w.key}
+              onClick={() => setLayoutMode(`world:${w.key}`)}
+              className={cn(
+                "px-2.5 py-1.5 rounded-md transition-colors font-bold",
+                layoutMode === `world:${w.key}` ? "bg-purple-600 text-white shadow-xs" : "text-slate-700 hover:bg-slate-200"
+              )}
+              title={`Press ${idx + 1} to switch to World ${w.key}`}
+            >
+              World {w.key}
+            </button>
+          ))}
         </div>
 
         <div className="flex items-center gap-3">
@@ -248,176 +230,98 @@ export function CombinedViewerPage() {
       </header>
 
       {/* Main Viewport Content */}
-      <main className="flex-1 flex flex-col items-center justify-center p-2 relative overflow-hidden bg-slate-100">
-        {/* Layout 1: Both Worlds Overlay on Single Board */}
-        {layoutMode === 'single' && (
+      <main className="flex-1 flex flex-col items-center justify-center p-3 relative overflow-auto bg-slate-100">
+        {/* Layout 1: Single Board Overlay (for 2 worlds) */}
+        {layoutMode === 'single' && worldA && worldB && (
           <div className="w-full flex justify-center">
-            {gameStateA && gameStateB ? (
+            {worldA.gameState && worldB.gameState ? (
               <MultiWorldSingleBoard
                 session={session}
-                gameStateA={gameStateA}
-                gameStateB={gameStateB}
-                classDataA={classDataA}
-                classDataB={classDataB}
+                gameStateA={worldA.gameState}
+                gameStateB={worldB.gameState}
+                classDataA={worldA.classData}
+                classDataB={worldB.classData}
               />
             ) : (
               <div className="h-[500px] flex items-center justify-center text-slate-400">
-                {errorA || errorB || 'Board data loading...'}
+                Board data loading...
               </div>
             )}
           </div>
         )}
 
-        {/* Layout 2: World A & World B Stacked Vertically */}
-        {layoutMode === 'stacked' && (
-          <div className="w-full max-w-[1920px] flex flex-col gap-4 py-2">
-            <div className="flex flex-col items-center border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xl p-2 relative">
-              <div className="w-full bg-purple-50 px-4 py-2 flex items-center justify-between border-b border-purple-200 mb-2">
-                <span className="font-extrabold text-purple-800 text-sm flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-purple-600" />
-                  {session.worldALabel}
-                </span>
-                <span className="text-xs text-slate-600 font-semibold">
-                  Round {gameStateA?.currentRound || 1} — {gameStateA?.currentPhase}
-                </span>
-              </div>
-              {gameStateA ? (
-                <ViewerBoard classData={classDataA || { name: session.worldALabel }} gameState={gameStateA} />
-              ) : (
-                <div className="h-[500px] flex items-center justify-center text-slate-400">
-                  {errorA || 'World A unavailable'}
+        {/* Layout 2: Responsive Grid (1-10 worlds) */}
+        {layoutMode === 'grid' && (
+          <div className={cn(
+            "w-full max-w-[1920px] grid gap-6 py-2",
+            worlds.length === 1 ? "grid-cols-1" :
+            worlds.length === 2 ? "grid-cols-1 lg:grid-cols-2" :
+            worlds.length <= 4 ? "grid-cols-1 md:grid-cols-2" :
+            "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+          )}>
+            {worlds.map((w) => (
+              <div key={w.key} className="flex flex-col items-center border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xl p-2 relative">
+                <div className="w-full bg-purple-50/80 px-4 py-2 flex items-center justify-between border-b border-purple-200 mb-2">
+                  <span className="font-black text-purple-900 text-sm flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-600" />
+                    World {w.key}: {w.label}
+                  </span>
+                  <span className="text-xs text-slate-600 font-semibold">
+                    Round {w.gameState?.currentRound || 1} — {w.gameState?.currentPhase}
+                  </span>
                 </div>
-              )}
-            </div>
-
-            <div className="flex flex-col items-center border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xl p-2 relative">
-              <div className="w-full bg-blue-50 px-4 py-2 flex items-center justify-between border-b border-blue-200 mb-2">
-                <span className="font-extrabold text-blue-800 text-sm flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                  {session.worldBLabel}
-                </span>
-                <span className="text-xs text-slate-600 font-semibold">
-                  Round {gameStateB?.currentRound || 1} — {gameStateB?.currentPhase}
-                </span>
+                {w.gameState ? (
+                  <ViewerBoard classData={w.classData || { name: w.label }} gameState={w.gameState} />
+                ) : (
+                  <div className="h-[350px] flex items-center justify-center text-slate-400 italic">
+                    Loading World {w.key} state...
+                  </div>
+                )}
               </div>
-              {gameStateB ? (
-                <ViewerBoard classData={classDataB || { name: session.worldBLabel }} gameState={gameStateB} />
-              ) : (
-                <div className="h-[500px] flex items-center justify-center text-slate-400">
-                  {errorB || 'World B unavailable'}
-                </div>
-              )}
-            </div>
+            ))}
           </div>
         )}
 
-        {/* Layout 3: World A & World B Side by Side */}
-        {layoutMode === 'side' && (
-          <div className="w-full max-w-[1920px] grid grid-cols-1 lg:grid-cols-2 gap-4 py-2">
-            <div className="flex flex-col items-center border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xl p-2 relative">
-              <div className="w-full bg-purple-50 px-4 py-2 flex items-center justify-between border-b border-purple-200 mb-2">
-                <span className="font-extrabold text-purple-800 text-sm flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-purple-600" />
-                  {session.worldALabel}
-                </span>
-                <span className="text-xs text-slate-600 font-semibold">
-                  Round {gameStateA?.currentRound || 1} — {gameStateA?.currentPhase}
-                </span>
-              </div>
-              {gameStateA ? (
-                <div className="w-full flex justify-center">
-                  <ViewerBoard classData={classDataA || { name: session.worldALabel }} gameState={gameStateA} />
-                </div>
-              ) : (
-                <div className="h-[500px] flex items-center justify-center text-slate-400">
-                  {errorA || 'World A unavailable'}
-                </div>
-              )}
-            </div>
+        {/* Layout 3: Single World Focused View (`world:<key>`) */}
+        {layoutMode.startsWith('world:') && (() => {
+          const targetKey = layoutMode.split(':')[1];
+          const targetWorld = worlds.find(w => w.key === targetKey);
+          if (!targetWorld) return null;
 
-            <div className="flex flex-col items-center border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xl p-2 relative">
-              <div className="w-full bg-blue-50 px-4 py-2 flex items-center justify-between border-b border-blue-200 mb-2">
-                <span className="font-extrabold text-blue-800 text-sm flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                  {session.worldBLabel}
-                </span>
-                <span className="text-xs text-slate-600 font-semibold">
-                  Round {gameStateB?.currentRound || 1} — {gameStateB?.currentPhase}
-                </span>
+          return (
+            <div className="w-full h-full min-h-[calc(100vh-100px)] flex flex-col items-center justify-center p-2">
+              <div className="w-full max-w-[1920px] flex flex-col items-center border border-purple-200 rounded-xl overflow-hidden bg-white shadow-xl p-2 relative">
+                <div className="w-full bg-purple-50 px-4 py-2 flex items-center justify-between border-b border-purple-200 mb-2">
+                  <span className="font-extrabold text-purple-900 text-base flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-purple-600" />
+                    World {targetWorld.key}: {targetWorld.label}
+                  </span>
+                  <span className="text-xs text-slate-600 font-semibold">
+                    Round {targetWorld.gameState?.currentRound || 1} — {targetWorld.gameState?.currentPhase} Phase
+                  </span>
+                </div>
+                {targetWorld.gameState ? (
+                  <div className="w-full h-[85vh] flex items-center justify-center overflow-hidden">
+                    <ViewerBoard classData={targetWorld.classData || { name: targetWorld.label }} gameState={targetWorld.gameState} />
+                  </div>
+                ) : (
+                  <div className="h-[500px] flex items-center justify-center text-slate-400">
+                    World {targetWorld.key} data loading...
+                  </div>
+                )}
               </div>
-              {gameStateB ? (
-                <div className="w-full flex justify-center">
-                  <ViewerBoard classData={classDataB || { name: session.worldBLabel }} gameState={gameStateB} />
-                </div>
-              ) : (
-                <div className="h-[500px] flex items-center justify-center text-slate-400">
-                  {errorB || 'World B unavailable'}
-                </div>
-              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
-        {/* Layout 4: World A Only */}
-        {layoutMode === 'worldA' && (
-          <div className="w-full h-full min-h-[calc(100vh-100px)] flex flex-col items-center justify-center p-2">
-            <div className="w-full max-w-[1920px] flex flex-col items-center border border-purple-200 rounded-xl overflow-hidden bg-white shadow-xl p-2 relative">
-              <div className="w-full bg-purple-50 px-4 py-2 flex items-center justify-between border-b border-purple-200 mb-2">
-                <span className="font-extrabold text-purple-800 text-sm flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-purple-600" />
-                  {session.worldALabel}
-                </span>
-                <span className="text-xs text-slate-600 font-semibold">
-                  Round {gameStateA?.currentRound || 1} — {gameStateA?.currentPhase} Phase
-                </span>
-              </div>
-              {gameStateA ? (
-                <div className="w-full h-[85vh] flex items-center justify-center overflow-hidden">
-                  <ViewerBoard classData={classDataA || { name: session.worldALabel }} gameState={gameStateA} />
-                </div>
-              ) : (
-                <div className="h-[500px] flex items-center justify-center text-slate-400">
-                  {errorA || 'World A unavailable'}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Layout 5: World B Only */}
-        {layoutMode === 'worldB' && (
-          <div className="w-full h-full min-h-[calc(100vh-100px)] flex flex-col items-center justify-center p-2">
-            <div className="w-full max-w-[1920px] flex flex-col items-center border border-blue-200 rounded-xl overflow-hidden bg-white shadow-xl p-2 relative">
-              <div className="w-full bg-blue-50 px-4 py-2 flex items-center justify-between border-b border-blue-200 mb-2">
-                <span className="font-extrabold text-blue-800 text-sm flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                  {session.worldBLabel}
-                </span>
-                <span className="text-xs text-slate-600 font-semibold">
-                  Round {gameStateB?.currentRound || 1} — {gameStateB?.currentPhase} Phase
-                </span>
-              </div>
-              {gameStateB ? (
-                <div className="w-full h-[85vh] flex items-center justify-center overflow-hidden">
-                  <ViewerBoard classData={classDataB || { name: session.worldBLabel }} gameState={gameStateB} />
-                </div>
-              ) : (
-                <div className="h-[500px] flex items-center justify-center text-slate-400">
-                  {errorB || 'World B unavailable'}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Layout 6: Combined Leaderboard with Down-Click Score Breakdown */}
+        {/* Layout 4: Combined Leaderboard */}
         {layoutMode === 'leaderboard' && (
-          <Card className="w-full max-w-4xl bg-white border-slate-200 shadow-xl my-4 text-slate-900">
+          <Card className="w-full max-w-5xl bg-white border-slate-200 shadow-xl my-4 text-slate-900">
             <CardHeader className="border-b border-slate-200 pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
                   <Trophy className="h-6 w-6 text-amber-500" />
-                  Combined Overall Leaderboard
+                  Combined Overall Leaderboard ({combinedLeaderboard.length} Teams)
                 </CardTitle>
                 {isProvisional && (
                   <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs">
@@ -431,8 +335,9 @@ export function CombinedViewerPage() {
                 {combinedLeaderboard.map((team, idx) => {
                   const isTop3 = idx < 3;
                   const rankBadge = idx === 0 ? '🥇 1st' : idx === 1 ? '🥈 2nd' : idx === 2 ? '🥉 3rd' : `#${idx + 1}`;
-                  const teamKey = `${team.worldLabel}-${team.teamId}`;
+                  const teamKey = `${team.worldKey}-${team.teamId}`;
                   const isExpanded = expandedTeamKey === teamKey;
+                  const displayLabel = formatTeamLabel({ id: team.teamId, name: team.teamName, color: team.color, isBot: team.isBot }, team.teamIndex);
 
                   return (
                     <div
@@ -442,7 +347,7 @@ export function CombinedViewerPage() {
                         isTop3 ? "border-amber-300 shadow-xs" : "border-slate-200"
                       )}
                     >
-                      {/* Interactive Header Row (Down-Click to Expand) */}
+                      {/* Interactive Header Row */}
                       <div
                         onClick={() => setExpandedTeamKey(isExpanded ? null : teamKey)}
                         className={cn(
@@ -453,21 +358,14 @@ export function CombinedViewerPage() {
                       >
                         <div className="flex items-center gap-4">
                           <span className="font-extrabold text-sm min-w-[50px] text-amber-700">{rankBadge}</span>
-                          <Badge
-                            className={cn(
-                              "text-xs px-2 py-0.5 font-bold font-mono",
-                              team.worldLabel === 'A'
-                                ? "bg-purple-100 text-purple-800 border-purple-200"
-                                : "bg-blue-100 text-blue-800 border-blue-200"
-                            )}
-                          >
-                            World {team.worldLabel}
+                          <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-xs px-2 py-0.5 font-bold font-mono">
+                            World {team.worldKey}
                           </Badge>
                           <span
                             className="w-4 h-4 rounded-full border border-slate-300 shrink-0"
                             style={{ backgroundColor: team.color }}
                           />
-                          <span className="font-bold text-slate-900 text-base">{team.teamName}</span>
+                          <span className="font-bold text-slate-900 text-base">{displayLabel}</span>
                           {team.isBot && (
                             <span className="text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-medium">
                               🤖 Bot
@@ -497,7 +395,7 @@ export function CombinedViewerPage() {
                       {isExpanded && (
                         <div className="p-4 bg-slate-100/90 border-t border-slate-200 text-xs space-y-3 font-sans animate-scale-in">
                           <div className="font-bold text-slate-700 uppercase tracking-wider text-[11px] flex items-center justify-between border-b border-slate-200 pb-1.5">
-                            <span>Score Breakdown — {team.teamName} (World {team.worldLabel})</span>
+                            <span>Score Breakdown — {displayLabel} (World {team.worldKey})</span>
                             <span className="font-mono text-purple-700 font-black text-sm">Total: {team.totalScore} Pts</span>
                           </div>
 
@@ -547,4 +445,16 @@ export function CombinedViewerPage() {
   );
 }
 
+export function CombinedViewerPage() {
+  const { sessionCode } = useParams<{ sessionCode: string }>();
+  const { session } = useMultiWorldSession(sessionCode || '');
+
+  return (
+    <TeamLabelProvider labelMode={session?.teamLabelMode || 'name'}>
+      <CombinedViewerContent />
+    </TeamLabelProvider>
+  );
+}
+
 export default CombinedViewerPage;
+

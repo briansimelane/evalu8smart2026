@@ -10,6 +10,7 @@ import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn } from '@/lib/utils';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import { isSteveBlocking as isSteveBlockingRule, isTeamBuildingOffice, getCompletedOffices } from '@/lib/rules';
+import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -310,13 +311,13 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
                   ...getMotionStyles(m, officeKey, team.color)
                 }}
                 className={cn(
-                  "w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ring-2 ring-amber-400 shadow-md shrink-0 transition-all",
+                  "w-7 h-7 rounded-full flex items-center justify-center text-xs leading-none tracking-tighter whitespace-nowrap overflow-hidden font-black ring-2 ring-amber-400 shadow-md shrink-0 transition-all",
                   getMotionClass(m, officeKey, 'sm'),
                   isNewOffice && 'mo-arrive'
                 )}
                 title={`Office #${officeIndex + 1} established by ${team.name} (Logistics Complete!)`}
               >
-                {team.name[0]}
+                {getTeamBubbleText(team)}
               </div>
             );
           })}
@@ -374,14 +375,17 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
                 <div 
                   style={{ 
                     backgroundColor: buyerTeam.color,
+                    color: getContrastTextColor(buyerTeam.color),
                     ...getMotionStyles(m, custKey, buyerTeam.color)
                   }}
                   className={cn(
-                    "absolute -bottom-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full shadow-lg ring-2 ring-white z-20 transition-all",
+                    "absolute -bottom-2 left-1/2 -translate-x-1/2 min-w-6 h-6 px-1 rounded-full flex items-center justify-center text-[10px] leading-none tracking-tighter font-black shadow-lg ring-2 ring-white z-20 transition-all whitespace-nowrap",
                     getMotionClass(m, custKey, 'sm')
                   )}
                   title={`Sold to ${buyerTeam.name}`}
-                />
+                >
+                  {getTeamBubbleText(buyerTeam)}
+                </div>
               )}
             </div>
           );

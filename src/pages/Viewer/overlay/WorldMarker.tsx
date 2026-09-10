@@ -30,6 +30,13 @@ const SIZE_CLASSES = {
   lg: 'w-10 h-10 text-sm',
 };
 
+const MULTI_CHAR_SIZE_CLASSES = {
+  xs: 'min-w-[20px] h-4 px-1 text-[8.5px] leading-none tracking-tighter whitespace-nowrap',
+  sm: 'min-w-[26px] h-6 px-1 text-[10px] leading-none tracking-tighter whitespace-nowrap',
+  md: 'min-w-[32px] h-8 px-1.5 text-xs leading-none tracking-tight whitespace-nowrap',
+  lg: 'min-w-[40px] h-10 px-1.5 text-xs leading-none tracking-tight whitespace-nowrap',
+};
+
 export const WorldMarker: React.FC<WorldMarkerProps> = ({
   world,
   teamColor,
@@ -42,12 +49,16 @@ export const WorldMarker: React.FC<WorldMarkerProps> = ({
 }) => {
   const accent = WORLD_ACCENT[world];
   const textColor = getContrastTextColor(teamColor);
+  const childrenStr = children !== null && children !== undefined && (typeof children === 'string' || typeof children === 'number')
+    ? String(children)
+    : '';
+  const isMultiChar = childrenStr.length > 1;
 
   return (
     <div
       className={cn(
         'rounded-full flex items-center justify-center font-black shrink-0 relative transition-all duration-200',
-        SIZE_CLASSES[size],
+        isMultiChar ? MULTI_CHAR_SIZE_CLASSES[size] : SIZE_CLASSES[size],
         className
       )}
       style={{

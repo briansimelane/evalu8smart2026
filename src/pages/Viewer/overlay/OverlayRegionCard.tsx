@@ -11,6 +11,7 @@ import { useOptionalMotion } from '../motion/MotionContext';
 import { getMotionClass, getMotionStyles } from '../motion/motionClass';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
+import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
 
 const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'GPS': MapPin,
@@ -184,7 +185,7 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
               size="xs"
               title={`World ${world} · Office #${officeIndex + 1} established by ${team.name}`}
             >
-              {team.name.charAt(0).toUpperCase()}
+              {getTeamBubbleText(team)}
             </WorldMarker>
           ))}
 
@@ -373,7 +374,9 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
                     teamColor={buyerA.color}
                     size="xs"
                     title={`A · Sold to ${buyerA.name}`}
-                  />
+                  >
+                    {getTeamBubbleText(buyerA)}
+                  </WorldMarker>
                 ) : (
                   <div className="w-3.5 h-3.5 rounded-full border border-dashed border-purple-300 bg-purple-50/80 shadow-xs" title="A · Unsold" />
                 )}
@@ -387,7 +390,9 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
                     teamColor={buyerB.color}
                     size="xs"
                     title={`B · Sold to ${buyerB.name}`}
-                  />
+                  >
+                    {getTeamBubbleText(buyerB)}
+                  </WorldMarker>
                 ) : (
                   <div className="w-3.5 h-3.5 rounded-full border border-dashed border-slate-400 bg-slate-100 shadow-xs" title="B · Unsold" />
                 )}
