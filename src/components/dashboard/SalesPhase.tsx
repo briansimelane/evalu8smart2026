@@ -829,9 +829,7 @@ export const SalesPhase = () => {
                           type="button"
                           variant="outline"
                           size="lg"
-                          onClick={() => {
-                            handleSaveSales();
-                          }}
+                          onClick={handleSubmit}
                           className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
                         >
                           <UserCheck className="h-4 w-4" />

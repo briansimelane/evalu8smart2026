@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw, Globe, Sparkles } from 'lucide-react';
+import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw, Globe, Sparkles, Archive, RotateCcw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Team, SimulationClass, ClassTeam, BotProfile, BotDifficulty } from '@/types/game';
-import { collection, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, deleteDoc, doc, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -240,6 +240,9 @@ export const FacilitatorHub: React.FC = () => {
     currentRole, 
     currentUserEmail, 
     createClass, 
+    archiveClass,
+    restoreClass,
+    deleteClassPermanently,
     deleteClass, 
     logout, 
     currentClassId, 
@@ -270,6 +273,14 @@ export const FacilitatorHub: React.FC = () => {
     });
   }, [classes, currentRole, currentUserEmail, currentClassId]);
 
+  const activeClasses = useMemo(() => {
+    return visibleClasses.filter(c => !c.isArchived);
+  }, [visibleClasses]);
+
+  const archivedClasses = useMemo(() => {
+    return visibleClasses.filter(c => !!c.isArchived);
+  }, [visibleClasses]);
+
   const [className, setClassName] = useState('');
   const [numTeams, setNumTeams] = useState(5);
   const [teamConfigs, setTeamConfigs] = useState<typeof DEFAULT_TEAMS>(DEFAULT_TEAMS);
@@ -292,6 +303,22 @@ export const FacilitatorHub: React.FC = () => {
 
     return () => unsub();
   }, []);
+
+  const visibleMultiWorldSessions = useMemo(() => {
+    if (currentRole === 'ADMIN') return multiWorldSessions;
+    return multiWorldSessions.filter(mw => {
+      if (currentUserEmail && mw.createdByEmail?.toLowerCase() === currentUserEmail.toLowerCase()) return true;
+      return false;
+    });
+  }, [multiWorldSessions, currentRole, currentUserEmail]);
+
+  const activeMultiWorldSessions = useMemo(() => {
+    return visibleMultiWorldSessions.filter(mw => !mw.isArchived);
+  }, [visibleMultiWorldSessions]);
+
+  const archivedMultiWorldSessions = useMemo(() => {
+    return visibleMultiWorldSessions.filter(mw => !!mw.isArchived);
+  }, [visibleMultiWorldSessions]);
 
   const toggleExpandClass = (id: string) => {
     setExpandedClasses(prev => ({
@@ -317,6 +344,7 @@ export const FacilitatorHub: React.FC = () => {
           id: `team_${idx + 1}`,
           name: t.name,
           color: t.color,
+          teamNumber: idx + 1,
           isBot: !!t.isBot,
         };
         if (t.isBot) {
@@ -342,6 +370,74 @@ export const FacilitatorHub: React.FC = () => {
         toast.success(`Class "${name}" deleted.`);
       } catch (err) {
         toast.error('Failed to delete class.');
+      }
+    }
+  };
+
+  const handleArchiveClass = async (id: string, name: string) => {
+    if (confirm(`Move class "${name}" to Archive?\n\nIt will be hidden from active classes and can be restored or permanently deleted from the Archive.`)) {
+      try {
+        await archiveClass(id);
+        toast.success(`Class "${name}" moved to archive.`);
+      } catch (err) {
+        toast.error('Failed to archive class.');
+      }
+    }
+  };
+
+  const handleRestoreClass = async (id: string, name: string) => {
+    try {
+      await restoreClass(id);
+      toast.success(`Class "${name}" restored to active classes.`);
+    } catch (err) {
+      toast.error('Failed to restore class.');
+    }
+  };
+
+  const handlePermanentDeleteClass = async (id: string, name: string) => {
+    if (confirm(`PERMANENT DELETE: Are you sure you want to permanently delete class "${name}"?\n\nThis will permanently destroy all game data, team submissions, and history. This action CANNOT be undone.`)) {
+      try {
+        await deleteClassPermanently(id);
+        toast.success(`Class "${name}" has been permanently deleted.`);
+      } catch (err) {
+        toast.error('Failed to permanently delete class.');
+      }
+    }
+  };
+
+  const handleArchiveMultiWorld = async (id: string, name: string) => {
+    if (confirm(`Move Multi-World Session "${name}" to Archive?\n\nIt will be hidden from active sessions and can be restored or permanently deleted from the Archive.`)) {
+      try {
+        await updateDoc(doc(db, 'multiworld_sessions', id), {
+          isArchived: true,
+          archivedAt: new Date().toISOString()
+        });
+        toast.success(`Session "${name}" moved to archive.`);
+      } catch (err) {
+        toast.error('Failed to archive session.');
+      }
+    }
+  };
+
+  const handleRestoreMultiWorld = async (id: string, name: string) => {
+    try {
+      await updateDoc(doc(db, 'multiworld_sessions', id), {
+        isArchived: false,
+        archivedAt: deleteField()
+      });
+      toast.success(`Session "${name}" restored.`);
+    } catch (err) {
+      toast.error('Failed to restore session.');
+    }
+  };
+
+  const handlePermanentDeleteMultiWorld = async (id: string, name: string) => {
+    if (confirm(`PERMANENT DELETE: Are you sure you want to permanently delete Multi-World Session "${name}"?\n\nThis cannot be undone.`)) {
+      try {
+        await deleteDoc(doc(db, 'multiworld_sessions', id));
+        toast.success(`Session "${name}" permanently deleted.`);
+      } catch (err) {
+        toast.error('Failed to permanently delete session.');
       }
     }
   };
@@ -537,7 +633,7 @@ export const FacilitatorHub: React.FC = () => {
         {/* Right Column: Classes and Multi-World Sessions */}
         <div className="lg:col-span-2 space-y-8">
           {/* Multi-World Sessions Section */}
-          {multiWorldSessions.length > 0 && (
+          {activeMultiWorldSessions.length > 0 && (
             <div>
               <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
                 <Globe className="h-5 w-5 text-purple-600" />
@@ -555,7 +651,7 @@ export const FacilitatorHub: React.FC = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {multiWorldSessions.map((mw) => (
+                    {activeMultiWorldSessions.map((mw) => (
                       <TableRow key={mw.id} className="border-border hover:bg-muted/10 transition-colors">
                         <TableCell className="font-semibold text-foreground">
                           <div className="flex items-center gap-2">
@@ -610,16 +706,13 @@ export const FacilitatorHub: React.FC = () => {
                             </Button>
                             <Button
                               size="sm"
-                              variant="destructive"
-                              onClick={async () => {
-                                if (confirm(`Are you sure you want to delete Multi-World Session "${mw.name}"?`)) {
-                                  await deleteDoc(doc(db, 'multiworld_sessions', mw.id));
-                                  toast.success(`Session "${mw.name}" deleted.`);
-                                }
-                              }}
-                              className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 h-8"
+                              variant="outline"
+                              title="Archive Session"
+                              onClick={() => handleArchiveMultiWorld(mw.id, mw.name)}
+                              className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40 h-8 gap-1 text-xs font-semibold"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Archive className="h-3.5 w-3.5" />
+                              Archive
                             </Button>
                           </div>
                         </TableCell>
@@ -638,7 +731,7 @@ export const FacilitatorHub: React.FC = () => {
               Active Classes
             </h2>
 
-          {visibleClasses.length === 0 ? (
+          {activeClasses.length === 0 ? (
             <Card className="bg-card border-border p-8 text-center text-muted-foreground">
               No active classes found for your account. Create one to get started or enter using a facilitator code.
             </Card>
@@ -655,7 +748,7 @@ export const FacilitatorHub: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleClasses.map((cls) => {
+                  {activeClasses.map((cls) => {
                     const isExpanded = !!expandedClasses[cls.id];
                     return (
                       <React.Fragment key={cls.id}>
@@ -693,11 +786,13 @@ export const FacilitatorHub: React.FC = () => {
                               </Button>
                               <Button
                                 size="sm"
-                                variant="destructive"
-                                onClick={() => handleDeleteClass(cls.id, cls.name)}
-                                className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 h-8"
+                                variant="outline"
+                                title="Archive Class"
+                                onClick={() => handleArchiveClass(cls.id, cls.name)}
+                                className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40 h-8 gap-1 text-xs font-semibold"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Archive className="h-3.5 w-3.5" />
+                                Archive
                               </Button>
                             </div>
                           </TableCell>
@@ -746,6 +841,147 @@ export const FacilitatorHub: React.FC = () => {
             </Card>
           )}
           </div>
+
+          {/* Archived Section (Worlds & Sessions) */}
+          {(archivedClasses.length > 0 || archivedMultiWorldSessions.length > 0) && (
+            <div className="pt-6 border-t border-border/80">
+              <div className="mb-4">
+                <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+                  <Archive className="h-5 w-5 text-amber-600" />
+                  Archived Worlds & Sessions ({archivedClasses.length + archivedMultiWorldSessions.length})
+                </h2>
+                <p className="text-muted-foreground text-xs mt-0.5">
+                  Archived worlds are safely retained with all gameplay data preserved. You can restore them back to Active anytime or permanently delete them.
+                </p>
+              </div>
+
+              {/* Archived Multi-World Sessions */}
+              {archivedMultiWorldSessions.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                    Archived Multi-World Sessions ({archivedMultiWorldSessions.length})
+                  </h3>
+                  <Card className="bg-card border-border overflow-hidden shadow-sm">
+                    <Table>
+                      <TableHeader className="bg-muted/40">
+                        <TableRow className="border-border">
+                          <TableHead className="text-foreground font-semibold">Session Name</TableHead>
+                          <TableHead className="text-foreground font-semibold">Session Code</TableHead>
+                          <TableHead className="text-foreground font-semibold">Date Archived</TableHead>
+                          <TableHead className="text-right text-foreground font-semibold">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {archivedMultiWorldSessions.map((mw) => (
+                          <TableRow key={mw.id} className="border-border hover:bg-muted/10 transition-colors bg-muted/5">
+                            <TableCell className="font-semibold text-foreground">
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
+                                  Archived
+                                </span>
+                                <span>{mw.name}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-mono text-purple-700 dark:text-purple-400 font-bold text-xs">
+                              {mw.sessionCode}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {mw.archivedAt ? new Date(mw.archivedAt).toLocaleDateString() : 'Previously'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex gap-2 justify-end">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRestoreMultiWorld(mw.id, mw.name)}
+                                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 gap-1.5 h-8 text-xs font-semibold"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  Restore
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handlePermanentDeleteMultiWorld(mw.id, mw.name)}
+                                  className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 h-8 gap-1.5 text-xs font-semibold"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete Permanently
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Card>
+                </div>
+              )}
+
+              {/* Archived Classes */}
+              {archivedClasses.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                    Archived Single Worlds / Classes ({archivedClasses.length})
+                  </h3>
+                  <Card className="bg-card border-border overflow-hidden shadow-sm">
+                    <Table>
+                      <TableHeader className="bg-muted/40">
+                        <TableRow className="border-border">
+                          <TableHead className="text-foreground font-semibold">Class Name</TableHead>
+                          <TableHead className="text-foreground font-semibold">Date Archived</TableHead>
+                          <TableHead className="text-foreground font-semibold">Teams</TableHead>
+                          <TableHead className="text-right text-foreground font-semibold">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {archivedClasses.map((cls) => (
+                          <TableRow key={cls.id} className="border-border hover:bg-muted/10 transition-colors bg-muted/5">
+                            <TableCell className="font-semibold text-foreground">
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
+                                  Archived
+                                </span>
+                                <span>{cls.name}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {cls.archivedAt ? new Date(cls.archivedAt).toLocaleDateString() : 'Previously'}
+                            </TableCell>
+                            <TableCell className="text-foreground font-medium text-sm">
+                              {cls.teamRegistry?.length || cls.gameState?.teams?.length || Object.keys(cls.teamCodes || {}).length || 0} Teams
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex gap-2 justify-end">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRestoreClass(cls.id, cls.name)}
+                                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 gap-1.5 h-8 text-xs font-semibold"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  Restore
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handlePermanentDeleteClass(cls.id, cls.name)}
+                                  className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 h-8 gap-1.5 text-xs font-semibold"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete Permanently
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Card>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

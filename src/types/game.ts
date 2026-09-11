@@ -56,6 +56,8 @@ export interface SimulationClass {
   createdByEmail?: string;
   createdByName?: string;
   teamLabelMode?: 'name' | 'code';
+  isArchived?: boolean;
+  archivedAt?: string;
 }
 
 export interface Technology {

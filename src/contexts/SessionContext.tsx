@@ -9,7 +9,7 @@ import {
   onAuthStateChanged 
 } from 'firebase/auth';
 import { db, auth } from '@/lib/firebase';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, deleteField } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, deleteField, updateDoc, getDocs } from 'firebase/firestore';
 import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, BotProfile, BotDifficulty, FacilitatorUser } from '@/types/game';
 import { toast } from 'sonner';
 import { REGIONS, TECHNOLOGIES, getTeamColorName } from '@/data/combinations';
@@ -43,6 +43,9 @@ interface SessionContextType {
   sendFacilitatorPasswordReset: (email: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   createClass: (name: string, teams: Team[]) => Promise<string>;
+  archiveClass: (classId: string) => Promise<void>;
+  restoreClass: (classId: string) => Promise<void>;
+  deleteClassPermanently: (classId: string) => Promise<void>;
   deleteClass: (classId: string) => Promise<void>;
   claimCeoSlot: (name: string, newPin?: string, currentPin?: string) => Promise<boolean>;
   releaseCeoSlot: () => Promise<void>;
@@ -258,7 +261,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     }
 
     // Find class facilitator by code
-    const classFac = classes.find(c => c.facilitatorCode.toUpperCase() === trimmedCode);
+    const classFac = classes.find(c => !c.isArchived && c.facilitatorCode.toUpperCase() === trimmedCode);
     if (classFac) {
       localStorage.setItem('evalu8_role', 'FACILITATOR');
       localStorage.setItem('evalu8_class_id', classFac.id);
@@ -271,6 +274,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
     // Find student team by code
     for (const cls of classes) {
+      if (cls.isArchived) continue;
       for (const [teamId, tCode] of Object.entries(cls.teamCodes || {})) {
         if (tCode.toUpperCase() !== 'BOT' && tCode.toUpperCase() === trimmedCode) {
           localStorage.setItem('evalu8_role', 'STUDENT');
@@ -549,8 +553,38 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     return classId;
   };
 
-  const deleteClass = async (classId: string) => {
+  const archiveClass = async (classId: string) => {
+    await updateDoc(doc(db, 'classes', classId), {
+      isArchived: true,
+      archivedAt: new Date().toISOString()
+    });
+  };
+
+  const restoreClass = async (classId: string) => {
+    await updateDoc(doc(db, 'classes', classId), {
+      isArchived: false,
+      archivedAt: deleteField()
+    });
+  };
+
+  const deleteClassPermanently = async (classId: string) => {
     await deleteDoc(doc(db, 'classes', classId));
+    try {
+      await deleteDoc(doc(db, 'classes', classId, 'state', 'game'));
+      const teamsSnap = await getDocs(collection(db, 'classes', classId, 'teams'));
+      const batch = writeBatch(db);
+      teamsSnap.forEach((tDoc) => {
+        batch.delete(tDoc.ref);
+      });
+      await batch.commit();
+    } catch (err) {
+      console.warn('Permanent delete subcollection cleanup warning:', err);
+    }
+  };
+
+  const deleteClass = async (classId: string) => {
+    // Default to archive for safety
+    await archiveClass(classId);
   };
 
   const claimCeoSlot = async (name: string, newPin?: string, currentPin?: string): Promise<boolean> => {
@@ -996,6 +1030,9 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       sendFacilitatorPasswordReset,
       logout,
       createClass,
+      archiveClass,
+      restoreClass,
+      deleteClassPermanently,
       deleteClass,
       claimCeoSlot,
       releaseCeoSlot,

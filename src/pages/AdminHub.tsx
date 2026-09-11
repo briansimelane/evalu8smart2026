@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSession } from '@/contexts/SessionContext';
-import { Trash2, ShieldAlert, LogOut, LayoutGrid, RefreshCw, UserPlus, Users, KeyRound, Mail, Lock, Plus, ExternalLink, Copy, Check } from 'lucide-react';
+import { Trash2, ShieldAlert, LogOut, LayoutGrid, RefreshCw, UserPlus, Users, KeyRound, Mail, Lock, Plus, ExternalLink, Copy, Check, Archive, RotateCcw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,9 @@ export const AdminHub: React.FC = () => {
     classes, 
     facilitators, 
     currentUserEmail, 
+    archiveClass,
+    restoreClass,
+    deleteClassPermanently,
     deleteClass, 
     logout, 
     migrateLegacyClass, 
@@ -91,10 +94,30 @@ export const AdminHub: React.FC = () => {
     }
   };
 
-  const handleDeleteClass = async (id: string, name: string) => {
-    if (confirm(`ADMIN FORCE: Are you sure you want to permanently delete class "${name}"?`)) {
+  const handleArchiveClass = async (id: string, name: string) => {
+    if (confirm(`Move class "${name}" to archive?`)) {
       try {
-        await deleteClass(id);
+        await archiveClass(id);
+        toast.success(`Class "${name}" archived.`);
+      } catch (err) {
+        toast.error('Failed to archive class.');
+      }
+    }
+  };
+
+  const handleRestoreClass = async (id: string, name: string) => {
+    try {
+      await restoreClass(id);
+      toast.success(`Class "${name}" restored.`);
+    } catch (err) {
+      toast.error('Failed to restore class.');
+    }
+  };
+
+  const handleDeleteClass = async (id: string, name: string) => {
+    if (confirm(`ADMIN FORCE: Are you sure you want to permanently delete class "${name}"? This action cannot be undone.`)) {
+      try {
+        await deleteClassPermanently(id);
         toast.success(`Class "${name}" has been permanently deleted.`);
       } catch (err) {
         toast.error('Failed to delete class.');
@@ -320,6 +343,11 @@ export const AdminHub: React.FC = () => {
                             <TableCell className="font-semibold text-foreground">
                               <div className="flex items-center gap-2">
                                 <span>{cls.name}</span>
+                                {cls.isArchived && (
+                                  <span className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
+                                    Archived
+                                  </span>
+                                )}
                                 {isLegacy && (
                                   <span className="text-[10px] bg-amber-500/10 text-amber-600 border border-amber-500/20 px-1.5 py-0.5 rounded font-mono font-bold">
                                     Legacy
@@ -365,6 +393,28 @@ export const AdminHub: React.FC = () => {
                                   Enter Game
                                 </Button>
 
+                                {cls.isArchived ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleRestoreClass(cls.id, cls.name)}
+                                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 h-8 gap-1 text-xs font-semibold"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    Restore
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleArchiveClass(cls.id, cls.name)}
+                                    className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:text-amber-300 h-8 gap-1 text-xs font-semibold"
+                                  >
+                                    <Archive className="h-3.5 w-3.5" />
+                                    Archive
+                                  </Button>
+                                )}
+
                                 {isLegacy && (
                                   <Button
                                     size="sm"
@@ -380,6 +430,7 @@ export const AdminHub: React.FC = () => {
                                 <Button
                                   size="icon"
                                   variant="destructive"
+                                  title="Admin Permanent Delete"
                                   onClick={() => handleDeleteClass(cls.id, cls.name)}
                                   className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-300 h-8 w-8"
                                 >

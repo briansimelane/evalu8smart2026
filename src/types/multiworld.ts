@@ -20,6 +20,8 @@ export interface MultiWorldSession {
   createdAt: string;
   createdByEmail?: string;
   createdByName?: string;
+  isArchived?: boolean;
+  archivedAt?: string;
 
   /** @deprecated legacy 2-world fields — read for migration only */
   worldAClassId?: string;
