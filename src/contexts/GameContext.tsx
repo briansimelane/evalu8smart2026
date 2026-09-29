@@ -14,6 +14,7 @@ import { removeUndefined } from '@/lib/utils';
 import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech, isSteveBlocking, getLogisticsCostForTeam, getRegionOccupancy, getCompletedOffices, isTeamBuildingOffice, getTechnologyCostForTeam as getTechnologyCostForTeamRule } from '@/lib/rules';
 import { getDefaultRuleAdjustments, isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 import { advanceOnePhase } from '@/lib/phaseEngine';
+import { withMarksSnapshot } from '@/lib/marks/marksSnapshot';
 
 export interface GameContextType {
   gameState: GameState | null;
@@ -762,10 +763,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     mutateGameState(prev => {
       if (!prev) return prev;
 
+      const now = new Date();
+      const snapped = prev.gameEnded ? prev : withMarksSnapshot(prev, prev.currentRound || 1, now);
       return {
-        ...prev,
+        ...snapped,
         gameEnded: true,
-        updatedAt: new Date()
+        updatedAt: now
       };
     });
   };

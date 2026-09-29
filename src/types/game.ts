@@ -58,6 +58,35 @@ export interface SimulationClass {
   teamLabelMode?: 'name' | 'code';
   isArchived?: boolean;
   archivedAt?: string;
+  syndicateMarksConfig?: SyndicateMarksConfig;
+}
+
+/** Captured once per round at round close. Facts only — never marks. */
+export interface RoundMarksSnapshot {
+  offices: number;              // Σ_regions getCompletedOffices(region, teamId)
+  technologies: number;         // distinct completedTechnologies
+  patents: number;              // count of gameState.patents entries held
+  controlledRegions: number;    // regions ranked 'first' in this round
+  wifiCarryOverActive: boolean; // tech_permanent_benefits active for team AND WIFI held, at round close
+  capturedAt: string;           // ISO
+}
+
+export type MarksCriterionKey = 'revenue' | 'controlledRegions' | 'offices' | 'technologies' | 'patents';
+
+export interface SyndicateMarksConfig {
+  /** Fractions 0–1. Workbook B14:B18. */
+  weights: Record<MarksCriterionKey, number>;
+  /** Fraction 0–1, applied negatively. Workbook B19 (−0.1). */
+  lostProductsPenalty: number;
+  /** teamId -> adjustment in percentage points (may be negative). */
+  adjustments: Record<string, { points: number; reason?: string }>;
+  /** Workbook row 4 'Active = No'. */
+  excludedTeamIds: string[];
+  /** Mark (0–100) given to a team exactly at the world average on every criterion, with no lost products. */
+  averageMark?: number; // default 65
+  /** Marks added per +1 weighted standard deviation (and subtracted per −1). */
+  marksPerSigma?: number; // default 10
+  updatedAt?: string;
 }
 
 export interface Technology {
@@ -238,6 +267,8 @@ export interface GameState {
   }>;
   gameEnded?: boolean;
   stateVersion?: number;
+  /** roundNumber (as string key) -> teamId -> snapshot. Written by advanceOnePhase / endGame. */
+  marksSnapshots?: Record<string, Record<string, RoundMarksSnapshot>>;
 }
 
 export const PATENT_POINTS: Record<string, number> = {

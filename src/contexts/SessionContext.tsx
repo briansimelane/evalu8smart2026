@@ -10,7 +10,7 @@ import {
 } from 'firebase/auth';
 import { db, auth } from '@/lib/firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, deleteField, updateDoc, getDocs } from 'firebase/firestore';
-import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, BotProfile, BotDifficulty, FacilitatorUser } from '@/types/game';
+import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, BotProfile, BotDifficulty, FacilitatorUser, SyndicateMarksConfig } from '@/types/game';
 import { toast } from 'sonner';
 import { REGIONS, TECHNOLOGIES, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS } from '@/data/improvements';
@@ -55,6 +55,7 @@ interface SessionContextType {
   selectClass: (classId: string | null) => void;
   selectTeam: (teamId: string | null) => void;
   convertTeamSeat: (classId: string, teamId: string, targetType: 'HUMAN' | 'BOT', profile?: BotProfile, difficulty?: BotDifficulty) => Promise<void>;
+  updateClassMarksConfig: (classId: string, config: SyndicateMarksConfig) => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -941,6 +942,26 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const updateClassMarksConfig = async (classId: string, config: SyndicateMarksConfig) => {
+    // Sanitize config to strip undefined properties before sending to Firestore
+    const cleanConfig = JSON.parse(JSON.stringify(config));
+
+    if (classId && !classId.startsWith('demo-')) {
+      try {
+        await updateDoc(doc(db, 'classes', classId), {
+          syndicateMarksConfig: { ...cleanConfig, updatedAt: new Date().toISOString() },
+        });
+      } catch (err: any) {
+        console.error("Failed to update class marks config in Firestore:", err);
+        throw err;
+      }
+    }
+
+    if (activeClass && activeClass.id === classId) {
+      setActiveClass(prev => prev ? { ...prev, syndicateMarksConfig: cleanConfig } : null);
+    }
+  };
+
   const selectClass = (classId: string | null) => {
     setCurrentClassId(classId);
     if (classId) {
@@ -1041,7 +1062,8 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       migrateLegacyClass,
       selectClass,
       selectTeam,
-      convertTeamSeat
+      convertTeamSeat,
+      updateClassMarksConfig
     }}>
       {children}
     </SessionContext.Provider>

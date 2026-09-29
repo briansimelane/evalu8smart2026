@@ -23,7 +23,8 @@ import { TeamSubmissionStatus } from './dashboard/TeamSubmissionStatus';
 import { CombinationsGuideModal } from './dashboard/CombinationsGuideModal';
 import { DirectivesClaimModal } from './dashboard/DirectivesClaimModal';
 import { TeamPerksBanner } from './dashboard/TeamPerksBanner';
-import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation, Sliders, Map } from 'lucide-react';
+import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation, Sliders, Map, GraduationCap } from 'lucide-react';
+import { SyndicateMarks } from './dashboard/SyndicateMarks';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -75,6 +76,7 @@ export const Dashboard = () => {
   const gameContext = useGame();
   const { gameState, resetGame, advanceRound, updatePhase, calculatePlayOrder, endGame, updateTeamLabelMode } = gameContext;
   const { currentRole, logout, activeClass, selectClass, selectTeam, isDemo, exitDemo } = useSession();
+  const isFacilitatorView = currentRole !== 'STUDENT' && !isDemo;
   
   // Housekeeping for demo mode
   useDemoHost();
@@ -604,23 +606,23 @@ export const Dashboard = () => {
                     value={value}
                     disabled={disabled}
                     title={title}
-                    className={`relative flex-col sm:flex-row gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2 transition-all ${
+                    className={`relative flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-2 md:px-3 sm:py-2 transition-all min-w-0 w-full overflow-hidden ${
                       disabled ? 'opacity-40 cursor-not-allowed' : ''
                     } ${
                       isLive ? 'ring-2 ring-emerald-500/80 border-emerald-500/50 font-bold bg-emerald-500/10 text-emerald-950 dark:text-emerald-100' : ''
                     }`}
                   >
                     {isLive && (
-                      <span className="absolute -top-1 -right-1 flex h-3 w-3 z-10" title="Active Game Phase">
+                      <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3 z-10" title="Active Game Phase">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border border-white dark:border-slate-900"></span>
                       </span>
                     )}
                     {iconNode}
-                    <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap flex items-center gap-1">
-                      {label}
+                    <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate flex items-center gap-1 min-w-0">
+                      <span className="truncate">{label}</span>
                       {isLive && (
-                        <span className="hidden lg:inline-block text-[8px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded-sm leading-none border border-emerald-500/30">
+                        <span className="hidden xl:inline-block text-[8px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded-sm leading-none border border-emerald-500/30 shrink-0">
                           Active
                         </span>
                       )}
@@ -630,7 +632,7 @@ export const Dashboard = () => {
               };
 
               return (
-                <TabsList className="flex sm:grid sm:grid-cols-8 gap-1 h-auto w-full bg-muted text-muted-foreground border border-border shadow-sm p-1 sm:p-1.5 rounded-xl overflow-x-auto scrollbar-none snap-x touch-pan-x">
+                <TabsList className="grid grid-cols-4 sm:grid-cols-8 gap-1 min-h-[44px] h-auto w-full bg-muted text-muted-foreground border border-border shadow-sm p-1 sm:p-1.5 rounded-xl overflow-hidden">
                   {renderPhaseTrigger('planning', 'Planning', <GameIcon type="planning" size="xs" />)}
                   {renderPhaseTrigger('production', 'Production', <GameIcon type="production" size="xs" />)}
                   {renderPhaseTrigger(
@@ -650,39 +652,45 @@ export const Dashboard = () => {
             })()}
 
             {/* Bottom Row - Data Views */}
-            <TabsList className="flex sm:grid sm:grid-cols-6 gap-1 h-auto w-full border border-border p-1 sm:p-1.5 rounded-xl overflow-x-auto scrollbar-none snap-x touch-pan-x">
-              <TabsTrigger value="state" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
-                <LayoutDashboard className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Current State</span>
+            <TabsList className={`grid ${isFacilitatorView ? 'grid-cols-4 sm:grid-cols-7' : 'grid-cols-3 sm:grid-cols-6'} gap-1 min-h-[44px] h-auto w-full border border-border p-1 rounded-xl bg-muted/60 text-muted-foreground shadow-sm`}>
+              <TabsTrigger value="state" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+                <LayoutDashboard className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Current State</span>
               </TabsTrigger>
-              <TabsTrigger value="summary-map" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
+              <TabsTrigger value="summary-map" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
                 <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">
+                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">
                   {currentRole === 'STUDENT' ? 'Summary View' : 'Summary Map'}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="scoreboard" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
+              <TabsTrigger value="scoreboard" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
                 {currentRole === 'STUDENT' ? (
-                  <Map className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <Map className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 ) : (
-                  <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 )}
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">
+                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">
                   {currentRole === 'STUDENT' ? 'World Map' : 'Scoreboard'}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="analytics" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
-                <BarChart3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Analytics</span>
+              <TabsTrigger value="analytics" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+                <BarChart3 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Analytics</span>
               </TabsTrigger>
-              <TabsTrigger value="financials" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
-                <BarChart2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Financials</span>
+              <TabsTrigger value="financials" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+                <BarChart2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Financials</span>
               </TabsTrigger>
-              <TabsTrigger value="report" className="flex-1 shrink-0 flex-col sm:flex-row gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2">
-                <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap">Simulation Report</span>
+              <TabsTrigger value="report" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+                <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Simulation Report</span>
               </TabsTrigger>
+              {isFacilitatorView && (
+                <TabsTrigger value="marks" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+                  <GraduationCap className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                  <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Marks</span>
+                </TabsTrigger>
+              )}
             </TabsList>
           </div>
 
@@ -843,6 +851,12 @@ export const Dashboard = () => {
                     </GameContext.Provider>
                   )}
                 </TabsContent>
+
+                {isFacilitatorView && (
+                  <TabsContent value="marks" className="space-y-4">
+                    <SyndicateMarks />
+                  </TabsContent>
+                )}
               </>
             );
           })()}

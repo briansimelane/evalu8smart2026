@@ -1,6 +1,7 @@
 import { GameState, GamePhase, TeamRoundData } from '@/types/game';
 import { calculatePlanStats } from '@/lib/rules';
 import { COMBINATIONS } from '@/data/combinations';
+import { withMarksSnapshot } from '@/lib/marks/marksSnapshot';
 
 export const PHASE_SEQUENCE: GamePhase[] = [
   'planning',
@@ -77,10 +78,11 @@ export function advanceOnePhase(state: GameState, now: Date = new Date(), option
   const nextState: GameState = JSON.parse(JSON.stringify(state));
 
   if (isGameEnd) {
-    nextState.gameEnded = true;
-    nextState.currentPhase = 'scoring';
-    nextState.updatedAt = now;
-    return nextState;
+    const snapped = withMarksSnapshot(nextState, state.currentRound || 5, now);
+    snapped.gameEnded = true;
+    snapped.currentPhase = 'scoring';
+    snapped.updatedAt = now;
+    return snapped;
   }
 
   // Handle Force advance in Planning: apply $5 facilitator default plan to unsubmitted human teams
@@ -103,6 +105,8 @@ export function advanceOnePhase(state: GameState, now: Date = new Date(), option
 
   // Handle round transition (scoring -> planning)
   if (nextRound > state.currentRound) {
+    // Capture round-close facts BEFORE any transition side effects.
+    nextState.marksSnapshots = withMarksSnapshot(nextState, state.currentRound, now).marksSnapshots;
     nextState.currentRound = nextRound;
     nextState.currentPhase = 'planning';
 
