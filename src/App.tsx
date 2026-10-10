@@ -14,6 +14,7 @@ import { AdminHub } from "./pages/AdminHub";
 import ViewerPage from "./pages/Viewer/ViewerPage";
 import MultiWorldControl from "./pages/MultiWorldControl";
 import CombinedViewerPage from "./pages/Viewer/CombinedViewerPage";
+import ViewerConcepts from "./pages/ViewerConcepts";
 
 import { DemoStateProvider, useDemoState } from "./demo/DemoStateProvider";
 import { DemoSetup } from "./demo/DemoSetup";
@@ -179,6 +180,7 @@ const App = () => (
                   <Route path="/class/:classId" element={<ClassControl />} />
                   <Route path="/dashboard" element={<StudentDashboard />} />
                   <Route path="/viewer/multi/:sessionCode" element={<CombinedViewerPage />} />
+                  <Route path="/viewer-concepts" element={<ViewerConcepts />} />
                   <Route path="/viewer/:classCode" element={<ViewerPage />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
