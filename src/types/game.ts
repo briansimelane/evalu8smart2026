@@ -40,6 +40,9 @@ export interface FacilitatorUser {
   name: string;
   email: string;
   role: 'ADMIN' | 'FACILITATOR';
+  status?: 'ACTIVE' | 'PAUSED';
+  pausedAt?: string;
+  isMaster?: boolean;
   createdAt: string;
   createdByEmail?: string;
   gamesCreatedCount?: number;

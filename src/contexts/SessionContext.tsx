@@ -19,12 +19,15 @@ import { removeUndefined } from '@/lib/utils';
 import { buildInitialGameState } from '@/lib/initialGameState';
 import { isDemoPathname } from '@/demo/useIsDemoRoute';
 
+export const MASTER_FACILITATOR_EMAIL = 'brian@learningsims.co.za';
+
 interface SessionContextType {
   currentRole: UserRole | null;
   currentClassId: string | null;
   currentTeamId: string | null;
   currentUserEmail: string | null;
   currentUserName: string | null;
+  isMasterFacilitator: boolean;
   facilitators: FacilitatorUser[];
   classes: SimulationClass[];
   classesLoaded: boolean;
@@ -40,6 +43,9 @@ interface SessionContextType {
   login: (code: string) => Promise<{ success: boolean; message?: string; role?: UserRole }>;
   loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; message?: string; role?: UserRole }>;
   createFacilitatorAccount: (name: string, email: string, defaultPassword: string) => Promise<{ success: boolean; message?: string }>;
+  pauseFacilitatorAccount: (uid: string, email: string) => Promise<{ success: boolean; message?: string }>;
+  resumeFacilitatorAccount: (uid: string, email: string) => Promise<{ success: boolean; message?: string }>;
+  deleteFacilitatorAccount: (uid: string, email: string) => Promise<{ success: boolean; message?: string }>;
   sendFacilitatorPasswordReset: (email: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   createClass: (name: string, teams: Team[]) => Promise<string>;
@@ -82,6 +88,10 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   const [currentClassTeams, setCurrentClassTeams] = useState<Record<string, ClassTeam>>({});
   const isDemoRoute = isDemoPathname();
 
+  const isMasterFacilitator = useMemo(() => {
+    return (currentUserEmail || '').trim().toLowerCase() === MASTER_FACILITATOR_EMAIL || currentRole === 'ADMIN';
+  }, [currentUserEmail, currentRole]);
+
   // CEO state from localStorage
   const [localCeoPin, setLocalCeoPin] = useState<string | null>(localStorage.getItem('evalu8_ceo_pin'));
 
@@ -90,8 +100,17 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user?.isAnonymous) return;
       if (user) {
+        const emailLower = (user.email || '').trim().toLowerCase();
         setCurrentUserEmail(user.email);
         localStorage.setItem('evalu8_user_email', user.email || '');
+        if (emailLower === MASTER_FACILITATOR_EMAIL) {
+          setCurrentRole('ADMIN');
+          localStorage.setItem('evalu8_role', 'ADMIN');
+          if (!localStorage.getItem('evalu8_user_name')) {
+            setCurrentUserName('Brian Simelane (Master Facilitator)');
+            localStorage.setItem('evalu8_user_name', 'Brian Simelane (Master Facilitator)');
+          }
+        }
       } else if (!localStorage.getItem('evalu8_role')) {
         setCurrentUserEmail(null);
         setCurrentUserName(null);
@@ -101,15 +120,52 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, []);
 
-  // Listen to facilitators collection in Firestore
+  // Listen to facilitators collection in Firestore and ensure Master Facilitator is always present
   useEffect(() => {
     if (isDemoRoute) return;
 
     const unsubscribe = onSnapshot(collection(db, 'facilitators'), (snapshot) => {
       const list: FacilitatorUser[] = [];
+      let hasMaster = false;
       snapshot.forEach((docSnap) => {
-        list.push(docSnap.data() as FacilitatorUser);
+        const data = { uid: docSnap.id, ...docSnap.data() } as FacilitatorUser;
+        if (data.email?.trim().toLowerCase() === MASTER_FACILITATOR_EMAIL) {
+          hasMaster = true;
+          list.push({
+            ...data,
+            name: data.name || 'Brian Simelane',
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            isMaster: true
+          });
+        } else {
+          list.push({
+            ...data,
+            status: data.status || 'ACTIVE'
+          });
+        }
       });
+
+      if (!hasMaster) {
+        list.unshift({
+          uid: 'admin_brian_simelane',
+          name: 'Brian Simelane',
+          email: MASTER_FACILITATOR_EMAIL,
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          isMaster: true,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          gamesCreatedCount: 0
+        });
+      } else {
+        // Keep Master Facilitator at top of list
+        list.sort((a, b) => {
+          if (a.email?.toLowerCase() === MASTER_FACILITATOR_EMAIL) return -1;
+          if (b.email?.toLowerCase() === MASTER_FACILITATOR_EMAIL) return 1;
+          return (b.createdAt || '').localeCompare(a.createdAt || '');
+        });
+      }
+
       setFacilitators(list);
     }, (error) => {
       console.error('Error fetching facilitators:', error);
@@ -118,6 +174,19 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, [isDemoRoute]);
 
+  // Real-time check: if a logged-in facilitator is paused or deleted by Master Facilitator, log them out
+  useEffect(() => {
+    if (isDemoRoute || !currentUserEmail || currentRole !== 'FACILITATOR') return;
+    const emailLower = currentUserEmail.trim().toLowerCase();
+    if (emailLower === MASTER_FACILITATOR_EMAIL) return;
+
+    const match = facilitators.find(f => f.email?.trim().toLowerCase() === emailLower);
+    if (match && match.status === 'PAUSED') {
+      toast.error('Your facilitator account has been paused by the Master Facilitator.');
+      logout();
+    }
+  }, [facilitators, currentUserEmail, currentRole, isDemoRoute]);
+
   // Load auth state from localStorage on mount
   useEffect(() => {
     const role = localStorage.getItem('evalu8_role') as UserRole | null;
@@ -125,6 +194,16 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     const teamId = localStorage.getItem('evalu8_team_id');
     const userEmail = localStorage.getItem('evalu8_user_email');
     const userName = localStorage.getItem('evalu8_user_name');
+
+    if (userEmail && userEmail.trim().toLowerCase() === MASTER_FACILITATOR_EMAIL) {
+      setCurrentRole('ADMIN');
+      localStorage.setItem('evalu8_role', 'ADMIN');
+      if (classId) setCurrentClassId(classId);
+      if (teamId) setCurrentTeamId(teamId);
+      setCurrentUserEmail(userEmail);
+      setCurrentUserName(userName || 'Brian Simelane (Master Facilitator)');
+      return;
+    }
 
     if (role) {
       setCurrentRole(role);
@@ -294,7 +373,18 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   const loginWithEmail = async (email: string, password: string): Promise<{ success: boolean; message?: string; role?: UserRole }> => {
     const trimmedEmail = email.trim().toLowerCase();
-    const isDefaultAdmin = trimmedEmail === 'brian@learningsims.co.za';
+    const isDefaultAdmin = trimmedEmail === MASTER_FACILITATOR_EMAIL;
+
+    // Check if non-master facilitator is paused or deleted in our loaded facilitators list
+    if (!isDefaultAdmin) {
+      const existingFac = facilitators.find(f => f.email?.trim().toLowerCase() === trimmedEmail);
+      if (existingFac && existingFac.status === 'PAUSED') {
+        return {
+          success: false,
+          message: 'This facilitator account is currently paused (archived). Please contact the Master Facilitator (brian@learningsims.co.za).'
+        };
+      }
+    }
 
     try {
       let user: any;
@@ -308,13 +398,13 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
             user = newCred.user;
           } catch (createErr) {
             if (password === 'Sizakele@1981') {
-              user = { uid: 'admin_brian_simelane', email: trimmedEmail, displayName: 'Brian Simelane (Admin)' };
+              user = { uid: 'admin_brian_simelane', email: trimmedEmail, displayName: 'Brian Simelane (Master Facilitator)' };
             } else {
               throw authErr;
             }
           }
         } else if (isDefaultAdmin && password === 'Sizakele@1981') {
-          user = { uid: 'admin_brian_simelane', email: trimmedEmail, displayName: 'Brian Simelane (Admin)' };
+          user = { uid: 'admin_brian_simelane', email: trimmedEmail, displayName: 'Brian Simelane (Master Facilitator)' };
         } else {
           throw authErr;
         }
@@ -322,20 +412,51 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
       const userDocRef = doc(db, 'facilitators', user.uid);
       let role: UserRole = isDefaultAdmin ? 'ADMIN' : 'FACILITATOR';
-      let name = user.displayName || (isDefaultAdmin ? 'Brian Simelane (Admin)' : trimmedEmail.split('@')[0]);
+      let name = user.displayName || (isDefaultAdmin ? 'Brian Simelane' : trimmedEmail.split('@')[0]);
 
       try {
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
           const data = userDoc.data() as FacilitatorUser;
-          role = data.role || role;
+          if (!isDefaultAdmin && data.status === 'PAUSED') {
+            await signOut(auth).catch(() => {});
+            return {
+              success: false,
+              message: 'This facilitator account is currently paused (archived). Please contact the Master Facilitator (brian@learningsims.co.za).'
+            };
+          }
+          role = isDefaultAdmin ? 'ADMIN' : (data.role || role);
           name = data.name || name;
+          if (isDefaultAdmin && (data.role !== 'ADMIN' || !data.isMaster)) {
+            await updateDoc(userDocRef, { role: 'ADMIN', isMaster: true, status: 'ACTIVE' }).catch(() => {});
+          }
+        } else if (isDefaultAdmin) {
+          await setDoc(userDocRef, {
+            uid: user.uid,
+            name: 'Brian Simelane',
+            email: trimmedEmail,
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            isMaster: true,
+            createdAt: new Date().toISOString(),
+            gamesCreatedCount: 0
+          });
         } else {
+          // Check if there is any facilitator doc by email (or if the account was deleted from Firestore)
+          const matchingByEmail = facilitators.find(f => f.email?.trim().toLowerCase() === trimmedEmail);
+          if (facilitators.length > 0 && !matchingByEmail) {
+            await signOut(auth).catch(() => {});
+            return {
+              success: false,
+              message: 'This facilitator account is not registered or has been removed. Please contact the Master Facilitator.'
+            };
+          }
           await setDoc(userDocRef, {
             uid: user.uid,
             name,
             email: trimmedEmail,
             role,
+            status: 'ACTIVE',
             createdAt: new Date().toISOString(),
             gamesCreatedCount: 0
           });
@@ -365,7 +486,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       console.error('Email sign-in error:', err);
 
       if (isDefaultAdmin && password === 'Sizakele@1981') {
-        const name = 'Brian Simelane (Admin)';
+        const name = 'Brian Simelane';
         const role: UserRole = 'ADMIN';
         localStorage.setItem('evalu8_role', role);
         localStorage.setItem('evalu8_user_email', trimmedEmail);
@@ -407,21 +528,44 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       }, `SecondaryAuth_${Date.now()}`);
 
       const secondaryAuth = getAuth(secondaryApp);
-      const userCred = await createUserWithEmailAndPassword(secondaryAuth, trimmedEmail, defaultPassword);
-      const uid = userCred.user.uid;
+      let uid = '';
+      try {
+        const userCred = await createUserWithEmailAndPassword(secondaryAuth, trimmedEmail, defaultPassword);
+        uid = userCred.user.uid;
+      } catch (authErr: any) {
+        // If user was previously created in Firebase Auth and then deleted from Firestore, allow re-activating/re-adding if password matches
+        if (authErr.code === 'auth/email-already-in-use') {
+          try {
+            const signInCred = await signInWithEmailAndPassword(secondaryAuth, trimmedEmail, defaultPassword);
+            uid = signInCred.user.uid;
+          } catch {
+            await deleteApp(secondaryApp).catch(() => {});
+            return {
+              success: false,
+              message: 'An account with this email already exists in Firebase Auth (or was previously registered with a different password). Use Reset Password or enter their previous password to re-register.'
+            };
+          }
+        } else {
+          await deleteApp(secondaryApp).catch(() => {});
+          throw authErr;
+        }
+      }
 
+      const isMaster = trimmedEmail === MASTER_FACILITATOR_EMAIL;
       const newFacilitator: FacilitatorUser = {
         uid,
         name: trimmedName,
         email: trimmedEmail,
-        role: 'FACILITATOR',
+        role: isMaster ? 'ADMIN' : 'FACILITATOR',
+        status: 'ACTIVE',
+        ...(isMaster ? { isMaster: true } : {}),
         createdAt: new Date().toISOString(),
-        createdByEmail: currentUserEmail || 'admin@evalu8.com',
+        createdByEmail: currentUserEmail || MASTER_FACILITATOR_EMAIL,
         gamesCreatedCount: 0
       };
 
       await setDoc(doc(db, 'facilitators', uid), newFacilitator);
-      await deleteApp(secondaryApp);
+      await deleteApp(secondaryApp).catch(() => {});
 
       return { success: true };
     } catch (err: any) {
@@ -433,6 +577,48 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
         errMsg = 'Password should be at least 6 characters long.';
       }
       return { success: false, message: errMsg };
+    }
+  };
+
+  const pauseFacilitatorAccount = async (uid: string, email: string): Promise<{ success: boolean; message?: string }> => {
+    if (email.trim().toLowerCase() === MASTER_FACILITATOR_EMAIL) {
+      return { success: false, message: 'The Master Facilitator account cannot be paused.' };
+    }
+    try {
+      await updateDoc(doc(db, 'facilitators', uid), {
+        status: 'PAUSED',
+        pausedAt: new Date().toISOString()
+      });
+      return { success: true };
+    } catch (err: any) {
+      console.error('Error pausing facilitator account:', err);
+      return { success: false, message: err.message || 'Failed to pause facilitator account.' };
+    }
+  };
+
+  const resumeFacilitatorAccount = async (uid: string, email: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      await updateDoc(doc(db, 'facilitators', uid), {
+        status: 'ACTIVE',
+        pausedAt: deleteField()
+      });
+      return { success: true };
+    } catch (err: any) {
+      console.error('Error resuming facilitator account:', err);
+      return { success: false, message: err.message || 'Failed to restore facilitator account.' };
+    }
+  };
+
+  const deleteFacilitatorAccount = async (uid: string, email: string): Promise<{ success: boolean; message?: string }> => {
+    if (email.trim().toLowerCase() === MASTER_FACILITATOR_EMAIL) {
+      return { success: false, message: 'The Master Facilitator account cannot be deleted.' };
+    }
+    try {
+      await deleteDoc(doc(db, 'facilitators', uid));
+      return { success: true };
+    } catch (err: any) {
+      console.error('Error deleting facilitator account:', err);
+      return { success: false, message: err.message || 'Failed to delete facilitator account.' };
     }
   };
 
@@ -1033,6 +1219,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       currentTeamId: isDemoRoute ? 'team_1' : currentTeamId,
       currentUserEmail,
       currentUserName,
+      isMasterFacilitator: isDemoRoute ? false : isMasterFacilitator,
       facilitators,
       classes,
       classesLoaded,
@@ -1048,6 +1235,9 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       login,
       loginWithEmail,
       createFacilitatorAccount,
+      pauseFacilitatorAccount,
+      resumeFacilitatorAccount,
+      deleteFacilitatorAccount,
       sendFacilitatorPasswordReset,
       logout,
       createClass,

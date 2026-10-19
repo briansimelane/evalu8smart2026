@@ -248,176 +248,233 @@ export const Dashboard = () => {
         </div>
       )}
       <header className="border-b border-border bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/40">
-        <div className="container mx-auto py-3">
-          <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
-            {/* Header Title + Mobile Fly-out Menu Row */}
-            <div className="flex items-center justify-between min-w-0">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h1 className="font-display text-lg sm:text-xl font-bold text-foreground truncate">Smartphone Inc Tracker</h1>
+        <div className="container mx-auto px-4 sm:px-6 py-3">
+          <div className="flex flex-col gap-3">
+            {/* Top Row: Title, Class/Round Info + Quick Navigation / Mobile Menu */}
+            <div className="flex items-start sm:items-center justify-between gap-4 min-w-0">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                  <h1 className="font-display text-lg sm:text-xl font-bold text-foreground whitespace-nowrap">
+                    Smartphone Inc Tracker
+                  </h1>
                   {activeClass?.name && (
-                    <Badge className="bg-primary/10 text-primary border border-primary/20 text-[11px] px-2 py-0.5 font-semibold">
+                    <Badge className="bg-primary/10 text-primary border border-primary/20 text-[11px] px-2.5 py-0.5 font-semibold whitespace-nowrap">
                       {activeClass.name}
                     </Badge>
                   )}
                 </div>
-                <div className="text-[13px] text-muted-foreground flex flex-wrap items-center gap-1.5 mt-0.5">
-                  Round <span data-numeric className={`inline-block font-display transition-all duration-500 ease-out ${isAnimatingRound ? 'scale-[2.5] text-accent font-bold mx-2 -translate-y-1' : 'scale-100 font-semibold text-foreground mx-0'}`}>{gameState.currentRound}</span> of 5 · {gameState.teams.length} teams
-                  <Badge className="ml-1 text-[10px] px-1.5 py-0 capitalize font-semibold bg-accent/10 text-accent border border-accent/25">
-                    {(gameState.currentPhase || 'planning') === 'innovation' ? 'Research Phase' : (gameState.currentPhase || 'planning') === 'expansion' ? 'Logistics Phase' : `${gameState.currentPhase || 'planning'} Phase`}
+                <div className="text-[13px] text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-1">
+                  <span className="whitespace-nowrap">
+                    Round{' '}
+                    <span
+                      data-numeric
+                      className={`inline-block font-display transition-all duration-500 ease-out ${
+                        isAnimatingRound
+                          ? 'scale-[2.5] text-accent font-bold mx-2 -translate-y-1'
+                          : 'scale-100 font-semibold text-foreground mx-0'
+                      }`}
+                    >
+                      {gameState.currentRound}
+                    </span>{' '}
+                    of 5
+                  </span>
+                  <span>·</span>
+                  <span className="whitespace-nowrap">{gameState.teams.length} teams</span>
+                  <Badge className="ml-1 text-[10px] px-2 py-0.5 capitalize font-semibold bg-accent/10 text-accent border border-accent/25 whitespace-nowrap">
+                    {(gameState.currentPhase || 'planning') === 'innovation'
+                      ? 'Research Phase'
+                      : (gameState.currentPhase || 'planning') === 'expansion'
+                      ? 'Logistics Phase'
+                      : `${gameState.currentPhase || 'planning'} Phase`}
                   </Badge>
                 </div>
               </div>
 
-              {/* Mobile Fly-out Menu Trigger (Visible on mobile, hidden on md+) */}
-              <div className="md:hidden flex items-center gap-2">
-                {currentRole === 'STUDENT' ? (
-                  <Button variant="outline" size="sm" onClick={logout} className="border-border hover:bg-muted text-foreground">
-                    <LogOut className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Sheet>
-                    <SheetTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-1.5 border-border bg-card shadow-sm font-semibold text-xs">
-                        <Menu className="h-4 w-4" />
-                        <span>Menu</span>
-                      </Button>
-                    </SheetTrigger>
-                    <SheetContent side="right" className="w-80 bg-card border-border text-foreground p-5 space-y-6">
-                      <SheetHeader className="text-left border-b pb-3">
-                        <SheetTitle className="text-base font-bold flex items-center gap-2">
-                          <SlidersHorizontal className="h-4 w-4 text-primary" />
-                          Game Actions
-                        </SheetTitle>
-                      </SheetHeader>
+              {/* Right Side of Top Row: Navigation & Logout (Desktop/Tablet) + Mobile Menu (Phone) */}
+              <div className="flex items-center gap-2 shrink-0">
+                {currentRole !== 'STUDENT' && (
+                  <div className="hidden md:flex items-center gap-2">
+                    <Button
+                      onClick={handleOpenViewer}
+                      variant="outline"
+                      size="sm"
+                      className="border-border hover:bg-muted text-foreground gap-1.5 font-semibold text-xs h-8 whitespace-nowrap"
+                      title="Open Live Board Projector View"
+                    >
+                      <Presentation className="h-3.5 w-3.5 text-primary" />
+                      <span>Open Viewer</span>
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleReturnToHub}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-1.5 shadow-sm text-xs h-8 whitespace-nowrap"
+                    >
+                      <LayoutDashboard className="h-3.5 w-3.5" />
+                      <span>All Games</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={logout}
+                      title="Logout"
+                      className="border-border hover:bg-muted text-foreground h-8 px-2.5"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
 
-                      <div className="flex flex-col gap-3">
-                        {/* Open Viewer */}
-                        <Button
-                          onClick={handleOpenViewer}
-                          variant="outline"
-                          className="w-full justify-start gap-2 h-10 border-border text-foreground font-semibold"
-                        >
-                          <Presentation className="h-4 w-4 text-primary" />
-                          Open Projector Viewer
+                {/* Mobile Fly-out Menu Trigger (Visible on small screens, hidden on md+) */}
+                <div className="md:hidden flex items-center gap-2">
+                  {currentRole === 'STUDENT' ? (
+                    <Button variant="outline" size="sm" onClick={logout} className="border-border hover:bg-muted text-foreground">
+                      <LogOut className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Sheet>
+                      <SheetTrigger asChild>
+                        <Button variant="outline" size="sm" className="gap-1.5 border-border bg-card shadow-sm font-semibold text-xs">
+                          <Menu className="h-4 w-4" />
+                          <span>Menu</span>
                         </Button>
+                      </SheetTrigger>
+                      <SheetContent side="right" className="w-80 bg-card border-border text-foreground p-5 space-y-6">
+                        <SheetHeader className="text-left border-b pb-3">
+                          <SheetTitle className="text-base font-bold flex items-center gap-2">
+                            <SlidersHorizontal className="h-4 w-4 text-primary" />
+                            Game Actions
+                          </SheetTitle>
+                        </SheetHeader>
 
-                        {/* 1. Advance to Round */}
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              disabled={gameState.currentRound >= 5}
-                              className="w-full justify-start gap-2 h-10 border-border text-foreground font-semibold"
-                            >
-                              <ChevronRight className="h-4 w-4 text-primary" />
-                              Advance to Round {gameState.currentRound + 1}
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent className="bg-card border-border text-foreground">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Advance to Next Round?</AlertDialogTitle>
-                              <AlertDialogDescription className="text-muted-foreground">
-                                Are you sure you want to advance to Round {gameState.currentRound + 1}? Ensure all teams have completed their inputs for the current round.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel className="border-border bg-background hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={advanceRound} className="bg-primary hover:bg-primary/90 text-primary-foreground">Advance</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        <div className="flex flex-col gap-3">
+                          {/* Open Viewer */}
+                          <Button
+                            onClick={handleOpenViewer}
+                            variant="outline"
+                            className="w-full justify-start gap-2 h-10 border-border text-foreground font-semibold"
+                          >
+                            <Presentation className="h-4 w-4 text-primary" />
+                            Open Projector Viewer
+                          </Button>
 
-                         {/* End Game */}
-                        {!gameState.gameEnded && (
+                          {/* 1. Advance to Round */}
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button
-                                variant="destructive"
-                                className="w-full justify-start gap-2 h-10 bg-red-600 hover:bg-red-700 text-white font-semibold"
+                                variant="outline"
+                                disabled={gameState.currentRound >= 5}
+                                className="w-full justify-start gap-2 h-10 border-border text-foreground font-semibold"
                               >
-                                <Trophy className="h-4 w-4" />
-                                End Game
+                                <ChevronRight className="h-4 w-4 text-primary" />
+                                Advance to Round {gameState.currentRound + 1}
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent className="bg-card border-border text-foreground">
                               <AlertDialogHeader>
-                                <AlertDialogTitle>End the Simulation?</AlertDialogTitle>
+                                <AlertDialogTitle>Advance to Next Round?</AlertDialogTitle>
                                 <AlertDialogDescription className="text-muted-foreground">
-                                  Are you sure you want to end the game early? This will calculate final patent points and lock all player actions.
+                                  Are you sure you want to advance to Round {gameState.currentRound + 1}? Ensure all teams have completed their inputs for the current round.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel className="border-border bg-background hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => {
-                                  endGame();
-                                  toast.success("Game Ended — The simulation has been completed. Patent points have been added to the final scores.");
-                                }} className="bg-red-600 hover:bg-red-700 text-white">End Game</AlertDialogAction>
+                                <AlertDialogAction onClick={advanceRound} className="bg-primary hover:bg-primary/90 text-primary-foreground">Advance</AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
-                        )}
 
-                        {/* 2. Reset Game */}
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="outline" className="w-full justify-start gap-2 h-10 border-border hover:bg-destructive/10 text-destructive hover:text-destructive font-semibold">
-                              <RotateCcw className="h-4 w-4" />
-                              Reset Game
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent className="bg-card border-border text-foreground">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Reset Game?</AlertDialogTitle>
-                              <AlertDialogDescription className="text-muted-foreground">
-                                This will delete all game data and return to setup. This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel className="border-border bg-background hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={resetGame} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Reset</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                          {/* End Game */}
+                          {!gameState.gameEnded && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="destructive"
+                                  className="w-full justify-start gap-2 h-10 bg-red-600 hover:bg-red-700 text-white font-semibold"
+                                >
+                                  <Trophy className="h-4 w-4" />
+                                  End Game
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="bg-card border-border text-foreground">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>End the Simulation?</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-muted-foreground">
+                                    Are you sure you want to end the game early? This will calculate final patent points and lock all player actions.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel className="border-border bg-background hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => {
+                                    endGame();
+                                    toast.success("Game Ended — The simulation has been completed. Patent points have been added to the final scores.");
+                                  }} className="bg-red-600 hover:bg-red-700 text-white">End Game</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
 
-                        {/* 3. Settings */}
-                        <div className="pt-1">
-                          <GameSettingsDialog />
+                          {/* 2. Reset Game */}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="outline" className="w-full justify-start gap-2 h-10 border-border hover:bg-destructive/10 text-destructive hover:text-destructive font-semibold">
+                                <RotateCcw className="h-4 w-4" />
+                                Reset Game
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-card border-border text-foreground">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Reset Game?</AlertDialogTitle>
+                                <AlertDialogDescription className="text-muted-foreground">
+                                  This will delete all game data and return to setup. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="border-border bg-background hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={resetGame} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Reset</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+
+                          {/* 3. Settings */}
+                          <div className="pt-1">
+                            <GameSettingsDialog />
+                          </div>
+
+                          {/* 4. All Games */}
+                          <Button
+                            variant="default"
+                            onClick={handleReturnToHub}
+                            className="w-full justify-start gap-2 h-10 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm"
+                          >
+                            <LayoutDashboard className="h-4 w-4" />
+                            All Games
+                          </Button>
+
+                          {/* 5. Log Out */}
+                          <Button variant="outline" onClick={logout} className="w-full justify-start gap-2 h-10 border-border text-muted-foreground hover:text-foreground">
+                            <LogOut className="h-4 w-4" />
+                            Log Out
+                          </Button>
                         </div>
-
-                        {/* 4. All Games */}
-                        <Button
-                          variant="default"
-                          onClick={handleReturnToHub}
-                          className="w-full justify-start gap-2 h-10 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm"
-                        >
-                          <LayoutDashboard className="h-4 w-4" />
-                          All Games
-                        </Button>
-
-                        {/* 5. Log Out */}
-                        <Button variant="outline" onClick={logout} className="w-full justify-start gap-2 h-10 border-border text-muted-foreground hover:text-foreground">
-                          <LogOut className="h-4 w-4" />
-                          Log Out
-                        </Button>
-                      </div>
-                    </SheetContent>
-                  </Sheet>
-                )}
+                      </SheetContent>
+                    </Sheet>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Active Phase Dropdown Row (Positioned below header, above navigation tabs) */}
-            <div className="flex flex-wrap gap-2 items-center justify-between sm:justify-start">
+            {/* Second Row: Facilitator Toolbar / Student Controls (Wraps cleanly across iPad & Desktop) */}
+            <div className="flex flex-wrap gap-2 items-center justify-between pt-2 border-t border-border/60">
               {currentRole !== 'STUDENT' ? (
                 <>
-                  <div className="flex items-center gap-2 w-full md:w-auto">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs text-muted-foreground font-semibold whitespace-nowrap">Active Phase:</span>
                     <Select
                       value={gameState.currentPhase || 'planning'}
                       onValueChange={updatePhase}
                     >
-                      <SelectTrigger className="w-full md:w-[140px] h-9 bg-background border-border text-foreground font-semibold">
+                      <SelectTrigger className="w-[140px] h-8 bg-background border-border text-foreground text-xs font-semibold">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -433,33 +490,35 @@ export const Dashboard = () => {
                         <SelectItem value="scoring">Scoring</SelectItem>
                       </SelectContent>
                     </Select>
+
                     {gameState.teams.some(t => t.isBot) && (
-                      <span className="text-xs text-muted-foreground italic flex items-center gap-1 ml-2">
-                        🤖 Bots active (automated client-side)
+                      <span className="text-xs text-muted-foreground italic flex items-center gap-1 px-1.5">
+                        🤖 Bots active
                       </span>
                     )}
-                    <Button 
+
+                    {/* Mobile-only Open Viewer quick button */}
+                    <Button
                       onClick={handleOpenViewer}
                       variant="outline"
                       size="sm"
-                      className="border-border hover:bg-muted text-foreground gap-1.5 font-semibold text-xs h-9 ml-2"
+                      className="md:hidden border-border hover:bg-muted text-foreground gap-1.5 font-semibold text-xs h-8"
                       title="Open Live Board Projector View"
                     >
                       <Presentation className="h-3.5 w-3.5 text-primary" />
-                      <span>Open Viewer</span>
+                      <span>Viewer</span>
                     </Button>
                   </div>
 
-                  {/* Desktop Action Buttons (Visible on md+) */}
-                  <div className="hidden md:flex items-center gap-2">
-
+                  {/* Action Buttons (Visible on md+, wraps cleanly on iPad) */}
+                  <div className="hidden md:flex flex-wrap items-center gap-2">
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
                           variant="outline"
                           size="sm"
                           disabled={gameState.currentRound >= 5}
-                          className="border-border hover:bg-muted text-foreground"
+                          className="h-8 text-xs font-semibold border-border hover:bg-muted text-foreground whitespace-nowrap"
                         >
                           Advance to Round {gameState.currentRound + 1}
                         </Button>
@@ -484,7 +543,7 @@ export const Dashboard = () => {
                           <Button
                             variant="destructive"
                             size="sm"
-                            className="bg-red-600 hover:bg-red-700 text-white font-semibold gap-1.5 shadow-sm text-xs"
+                            className="h-8 bg-red-600 hover:bg-red-700 text-white font-semibold gap-1.5 shadow-sm text-xs whitespace-nowrap"
                           >
                             <Trophy className="h-3.5 w-3.5" />
                             End Game
@@ -510,8 +569,8 @@ export const Dashboard = () => {
 
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="border-border hover:bg-destructive hover:text-white text-foreground transition-colors">
-                          <RotateCcw className="mr-2 h-4 w-4" />
+                        <Button variant="outline" size="sm" className="h-8 text-xs font-semibold border-border hover:bg-destructive hover:text-white text-foreground transition-colors whitespace-nowrap">
+                          <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
                           Reset Game
                         </Button>
                       </AlertDialogTrigger>
@@ -529,11 +588,11 @@ export const Dashboard = () => {
                       </AlertDialogContent>
                     </AlertDialog>
                     
-                    <CombinationsGuideModal triggerLabel="Combinations Guide" triggerVariant="outline" triggerClassName="text-xs h-8 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 font-bold" />
-                    <DirectivesClaimModal triggerClassName="text-xs h-8 border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 font-bold gap-1" />
+                    <CombinationsGuideModal triggerLabel="Combinations Guide" triggerVariant="outline" triggerClassName="text-xs h-8 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 font-bold whitespace-nowrap" />
+                    <DirectivesClaimModal triggerClassName="text-xs h-8 border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 font-bold gap-1 whitespace-nowrap" />
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="text-xs h-8 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 font-bold gap-1" title="Rules Adjustments">
+                        <Button variant="outline" size="sm" className="text-xs h-8 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 font-bold gap-1 whitespace-nowrap" title="Rules Adjustments">
                           <Sliders className="h-3.5 w-3.5" />
                           Rules
                         </Button>
@@ -550,22 +609,10 @@ export const Dashboard = () => {
                       variant="outline"
                       size="sm"
                       onClick={() => updateTeamLabelMode?.(gameState.teamLabelMode === 'code' ? 'name' : 'code')}
-                      className="text-xs h-8 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 font-bold"
+                      className="text-xs h-8 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 font-bold whitespace-nowrap"
                       title="Toggle team display label between Name and Code (e.g. T1WA / 1A)"
                     >
                       Labels: {gameState.teamLabelMode === 'code' ? 'Code' : 'Name'}
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={handleReturnToHub}
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-1.5 shadow-sm text-xs"
-                    >
-                      <LayoutDashboard className="h-4 w-4" />
-                      All Games
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={logout} className="border-border hover:bg-muted text-foreground">
-                      <LogOut className="h-4 w-4" />
                     </Button>
                   </div>
                 </>
@@ -583,11 +630,11 @@ export const Dashboard = () => {
         </div>
       </header>
 
-      <main className="container mx-auto py-4 sm:py-5 space-y-4">
+      <main className="container mx-auto px-4 sm:px-6 py-4 sm:py-5 space-y-4">
         {!isDemo && <CeoClaimBar />}
         <TeamPerksBanner />
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-          <div className="max-w-5xl mx-auto space-y-2">
+          <div className="max-w-6xl mx-auto space-y-2">
             {/* Top Row - Game Phases */}
             {(() => {
               const currentGamePhase = (gameState.currentPhase || 'planning').toLowerCase();
@@ -606,7 +653,7 @@ export const Dashboard = () => {
                     value={value}
                     disabled={disabled}
                     title={title}
-                    className={`relative flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 px-1 py-1.5 sm:px-2 md:px-3 sm:py-2 transition-all min-w-0 w-full overflow-hidden ${
+                    className={`relative flex-col lg:flex-row items-center justify-center gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 transition-all min-w-0 w-full overflow-hidden ${
                       disabled ? 'opacity-40 cursor-not-allowed' : ''
                     } ${
                       isLive ? 'ring-2 ring-emerald-500/80 border-emerald-500/50 font-bold bg-emerald-500/10 text-emerald-950 dark:text-emerald-100' : ''
@@ -619,8 +666,8 @@ export const Dashboard = () => {
                       </span>
                     )}
                     {iconNode}
-                    <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate flex items-center gap-1 min-w-0">
-                      <span className="truncate">{label}</span>
+                    <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap flex items-center gap-1 min-w-0">
+                      <span>{label}</span>
                       {isLive && (
                         <span className="hidden xl:inline-block text-[8px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded-sm leading-none border border-emerald-500/30 shrink-0">
                           Active
@@ -653,42 +700,42 @@ export const Dashboard = () => {
 
             {/* Bottom Row - Data Views */}
             <TabsList className={`grid ${isFacilitatorView ? 'grid-cols-4 sm:grid-cols-7' : 'grid-cols-3 sm:grid-cols-6'} gap-1 min-h-[44px] h-auto w-full border border-border p-1 rounded-xl bg-muted/60 text-muted-foreground shadow-sm`}>
-              <TabsTrigger value="state" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+              <TabsTrigger value="state" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                 <LayoutDashboard className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Current State</span>
+                <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">Current State</span>
               </TabsTrigger>
-              <TabsTrigger value="summary-map" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+              <TabsTrigger value="summary-map" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                 <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">
+                <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">
                   {currentRole === 'STUDENT' ? 'Summary View' : 'Summary Map'}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="scoreboard" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+              <TabsTrigger value="scoreboard" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                 {currentRole === 'STUDENT' ? (
                   <Map className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 ) : (
                   <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 )}
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">
+                <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">
                   {currentRole === 'STUDENT' ? 'World Map' : 'Scoreboard'}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="analytics" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+              <TabsTrigger value="analytics" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                 <BarChart3 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Analytics</span>
+                <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">Analytics</span>
               </TabsTrigger>
-              <TabsTrigger value="financials" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+              <TabsTrigger value="financials" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                 <BarChart2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Financials</span>
+                <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">Financials</span>
               </TabsTrigger>
-              <TabsTrigger value="report" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+              <TabsTrigger value="report" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                 <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Simulation Report</span>
+                <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">Simulation Report</span>
               </TabsTrigger>
               {isFacilitatorView && (
-                <TabsTrigger value="marks" className="flex-col sm:flex-row gap-1 sm:gap-1.5 px-1.5 py-1.5 sm:px-2.5 sm:py-2 text-center items-center justify-center min-h-[36px]">
+                <TabsTrigger value="marks" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                   <GraduationCap className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                  <span className="text-[10px] sm:text-xs leading-none whitespace-nowrap truncate">Marks</span>
+                  <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">Marks</span>
                 </TabsTrigger>
               )}
             </TabsList>

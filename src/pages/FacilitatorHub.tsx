@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw, Globe, Sparkles, Archive, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw, Globe, Sparkles, Archive, RotateCcw, ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -239,6 +239,7 @@ export const FacilitatorHub: React.FC = () => {
     classes, 
     currentRole, 
     currentUserEmail, 
+    isMasterFacilitator,
     createClass, 
     archiveClass,
     restoreClass,
@@ -254,7 +255,7 @@ export const FacilitatorHub: React.FC = () => {
   } = useSession();
 
   const visibleClasses = useMemo(() => {
-    if (currentRole === 'ADMIN') return classes;
+    if (currentRole === 'ADMIN' || isMasterFacilitator) return classes;
 
     return classes.filter(cls => {
       // Created by this facilitator (matching email)
@@ -271,7 +272,7 @@ export const FacilitatorHub: React.FC = () => {
       }
       return false;
     });
-  }, [classes, currentRole, currentUserEmail, currentClassId]);
+  }, [classes, currentRole, isMasterFacilitator, currentUserEmail, currentClassId]);
 
   const activeClasses = useMemo(() => {
     return visibleClasses.filter(c => !c.isArchived);
@@ -305,12 +306,12 @@ export const FacilitatorHub: React.FC = () => {
   }, []);
 
   const visibleMultiWorldSessions = useMemo(() => {
-    if (currentRole === 'ADMIN') return multiWorldSessions;
+    if (currentRole === 'ADMIN' || isMasterFacilitator) return multiWorldSessions;
     return multiWorldSessions.filter(mw => {
       if (currentUserEmail && mw.createdByEmail?.toLowerCase() === currentUserEmail.toLowerCase()) return true;
       return false;
     });
-  }, [multiWorldSessions, currentRole, currentUserEmail]);
+  }, [multiWorldSessions, currentRole, isMasterFacilitator, currentUserEmail]);
 
   const activeMultiWorldSessions = useMemo(() => {
     return visibleMultiWorldSessions.filter(mw => !mw.isArchived);
@@ -457,9 +458,23 @@ export const FacilitatorHub: React.FC = () => {
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
             Facilitator Dashboard
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">Manage game sessions, teams, and view access codes</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            {isMasterFacilitator
+              ? `Master Facilitator View (${currentUserEmail}) — Viewing all facilitator games`
+              : `Manage your game sessions, teams, and view access codes (${currentUserEmail || 'Facilitator'})`}
+          </p>
         </div>
         <div className="flex items-center gap-3">
+          {isMasterFacilitator && (
+            <Button
+              variant="outline"
+              onClick={() => navigate('/admin')}
+              className="gap-2 border-red-200 text-red-600 hover:bg-red-50 font-semibold"
+            >
+              <ShieldAlert className="h-4 w-4" />
+              Master Control Room
+            </Button>
+          )}
           <Button
             onClick={() => setIsMultiWorldModalOpen(true)}
             className="gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow-sm"
