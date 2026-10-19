@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSession } from '@/contexts/SessionContext';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw, Globe, Sparkles, Archive, RotateCcw, ShieldAlert } from 'lucide-react';
+import { Plus, Trash2, ExternalLink, Copy, Check, LogOut, Users, Settings, Eye, Bot, RefreshCw, Globe, Sparkles, Archive, RotateCcw, ShieldAlert, KeyRound, UserMinus } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { Team, SimulationClass, ClassTeam, BotProfile, BotDifficulty } from '@/types/game';
 import { collection, onSnapshot, deleteDoc, doc, updateDoc, deleteField } from 'firebase/firestore';
@@ -155,73 +156,104 @@ export const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, h
                   <span className="text-muted-foreground text-xs italic">Vacant</span>
                 )}
               </TableCell>
-              <TableCell className="text-right">
-                <div className="flex gap-1.5 justify-end items-center">
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      selectClass(cls.id);
-                      selectTeam(team.id);
-                      navigate(`/class/${cls.id}`);
-                    }}
-                    className="h-7 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold gap-1 shadow-sm"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    View/Edit Team
-                  </Button>
+              <TableCell className="text-right whitespace-nowrap">
+                <div className="flex gap-1.5 justify-end items-center flex-nowrap">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        onClick={() => {
+                          selectClass(cls.id);
+                          selectTeam(team.id);
+                          navigate(`/class/${cls.id}`);
+                        }}
+                        aria-label={`View/Edit ${team.name}`}
+                        className="h-8 w-8 shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs font-semibold">View / Edit {team.name}</p>
+                    </TooltipContent>
+                  </Tooltip>
 
                   {/* Convert Seat Button */}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      if (isBot) {
-                        if (confirm(`Are you sure you want to convert ${team.name} to a Human team?`)) {
-                          await convertTeamSeat(cls.id, teamId, 'HUMAN');
-                        }
-                      } else {
-                        const prof = prompt("Enter bot profile (BALANCED, RESEARCHER, EXPANDER, PRICE_FIGHTER):", "BALANCED");
-                        if (prof !== null) {
-                          const diff = prompt("Enter bot difficulty (EASY, MEDIUM, HARD):", "MEDIUM");
-                          if (diff !== null) {
-                            await convertTeamSeat(cls.id, teamId, 'BOT', prof.toUpperCase() as BotProfile, diff.toUpperCase() as BotDifficulty);
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={async () => {
+                          if (isBot) {
+                            if (confirm(`Are you sure you want to convert ${team.name} to a Human team?`)) {
+                              await convertTeamSeat(cls.id, teamId, 'HUMAN');
+                            }
+                          } else {
+                            const prof = prompt("Enter bot profile (BALANCED, RESEARCHER, EXPANDER, PRICE_FIGHTER):", "BALANCED");
+                            if (prof !== null) {
+                              const diff = prompt("Enter bot difficulty (EASY, MEDIUM, HARD):", "MEDIUM");
+                              if (diff !== null) {
+                                await convertTeamSeat(cls.id, teamId, 'BOT', prof.toUpperCase() as BotProfile, diff.toUpperCase() as BotDifficulty);
+                              }
+                            }
                           }
-                        }
-                      }
-                    }}
-                    className="h-7 px-2 border-border text-foreground hover:bg-muted text-xs flex items-center gap-1"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    {isBot ? 'Make Human' : 'Make Bot'}
-                  </Button>
+                        }}
+                        aria-label={isBot ? 'Convert to Human Team' : 'Convert to Bot Team'}
+                        className="h-8 w-8 shrink-0 border-border text-foreground hover:bg-muted"
+                      >
+                        <Bot className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs font-semibold">{isBot ? 'Convert Seat to Human Team' : 'Convert Seat to Automated Bot'}</p>
+                    </TooltipContent>
+                  </Tooltip>
 
                   {!isBot && hasCeo && (
                     <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const newPin = prompt(`Enter new CEO PIN code for ${team.name}:`, effectiveCeoPin || '');
-                          if (newPin !== null && newPin.trim().length > 0) {
-                            facilitatorChangeCeoPin(cls.id, team.id, newPin.trim());
-                          }
-                        }}
-                        className="h-7 px-2 border-border text-foreground hover:bg-muted text-xs"
-                      >
-                        Change PIN
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => {
-                          if (confirm(`Are you sure you want to release the CEO seat for ${team.name}?`)) {
-                            facilitatorReleaseCeoSlot(cls.id, team.id);
-                          }
-                        }}
-                        className="h-7 px-2 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 text-xs"
-                      >
-                        Release CEO
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => {
+                              const newPin = prompt(`Enter new CEO PIN code for ${team.name}:`, effectiveCeoPin || '');
+                              if (newPin !== null && newPin.trim().length > 0) {
+                                facilitatorChangeCeoPin(cls.id, team.id, newPin.trim());
+                              }
+                            }}
+                            aria-label="Change CEO PIN"
+                            className="h-8 w-8 shrink-0 border-border text-foreground hover:bg-muted"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs font-semibold">Change CEO PIN ({effectiveCeoPin || 'N/A'})</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to release the CEO seat for ${team.name}?`)) {
+                                facilitatorReleaseCeoSlot(cls.id, team.id);
+                              }
+                            }}
+                            aria-label="Release CEO Seat"
+                            className="h-8 w-8 shrink-0 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700"
+                          >
+                            <UserMinus className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs font-semibold">Release CEO Seat ({effectiveCeoName})</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </>
                   )}
                 </div>
@@ -700,35 +732,57 @@ export const FacilitatorHub: React.FC = () => {
                         <TableCell className="text-muted-foreground text-sm">
                           {new Date(mw.createdAt).toLocaleDateString()}
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex gap-2 justify-end">
-                            <Button
-                              size="sm"
-                              onClick={() => navigate(`/facilitator/multiworld/${mw.id}`)}
-                              className="bg-purple-600 hover:bg-purple-700 text-white gap-1.5 h-8 text-xs font-semibold"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                              Multi-World Control
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => navigate(`/viewer/multi/${mw.sessionCode}`)}
-                              className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:text-purple-300 gap-1.5 h-8 text-xs font-semibold"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                              Combined Viewer
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="Archive Session"
-                              onClick={() => handleArchiveMultiWorld(mw.id, mw.name)}
-                              className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40 h-8 gap-1 text-xs font-semibold"
-                            >
-                              <Archive className="h-3.5 w-3.5" />
-                              Archive
-                            </Button>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <div className="flex gap-1.5 justify-end items-center flex-nowrap">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  onClick={() => navigate(`/facilitator/multiworld/${mw.id}`)}
+                                  aria-label="Multi-World Control"
+                                  className="bg-purple-600 hover:bg-purple-700 text-white h-8 w-8 shrink-0"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs font-semibold">Open Multi-World Control</p>
+                              </TooltipContent>
+                            </Tooltip>
+
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  onClick={() => navigate(`/viewer/multi/${mw.sessionCode}`)}
+                                  aria-label="Combined Viewer"
+                                  className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:text-purple-300 h-8 w-8 shrink-0"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs font-semibold">Open Combined Viewer</p>
+                              </TooltipContent>
+                            </Tooltip>
+
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  aria-label="Archive Session"
+                                  onClick={() => handleArchiveMultiWorld(mw.id, mw.name)}
+                                  className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40 h-8 w-8 shrink-0"
+                                >
+                                  <Archive className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs font-semibold">Archive Multi-World Session</p>
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -769,46 +823,60 @@ export const FacilitatorHub: React.FC = () => {
                       <React.Fragment key={cls.id}>
                         <TableRow className="border-border hover:bg-muted/10 transition-colors">
                           <TableCell className="font-semibold text-foreground">{cls.name}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm">
+                          <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                             {new Date(cls.createdAt).toLocaleDateString()}
                           </TableCell>
-                          <TableCell className="text-foreground font-medium text-sm">
+                          <TableCell className="text-foreground font-medium text-sm whitespace-nowrap">
                             {cls.teamRegistry?.length || cls.gameState?.teams?.length || Object.keys(cls.teamCodes || {}).length || 0} Teams
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="whitespace-nowrap">
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
                               onClick={() => toggleExpandClass(cls.id)}
-                              className="h-8 border-border text-foreground hover:bg-muted font-semibold text-xs"
+                              className="h-8 border-border text-foreground hover:bg-muted font-semibold text-xs whitespace-nowrap"
                             >
                               {isExpanded ? 'Hide Codes' : 'Show Codes'}
                             </Button>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex gap-2 justify-end">
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  selectClass(cls.id);
-                                  navigate(`/class/${cls.id}`);
-                                }}
-                                className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 h-8 text-xs font-semibold"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                Control Panel
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                title="Archive Class"
-                                onClick={() => handleArchiveClass(cls.id, cls.name)}
-                                className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40 h-8 gap-1 text-xs font-semibold"
-                              >
-                                <Archive className="h-3.5 w-3.5" />
-                                Archive
-                              </Button>
+                          <TableCell className="text-right whitespace-nowrap">
+                            <div className="flex gap-1.5 justify-end items-center flex-nowrap">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    onClick={() => {
+                                      selectClass(cls.id);
+                                      navigate(`/class/${cls.id}`);
+                                    }}
+                                    aria-label="Open Control Panel"
+                                    className="bg-blue-600 hover:bg-blue-700 text-white h-8 w-8 shrink-0"
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs font-semibold">Open Game Control Panel</p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    aria-label="Archive Class"
+                                    onClick={() => handleArchiveClass(cls.id, cls.name)}
+                                    className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40 h-8 w-8 shrink-0"
+                                  >
+                                    <Archive className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs font-semibold">Archive Class</p>
+                                </TooltipContent>
+                              </Tooltip>
                             </div>
                           </TableCell>
                         </TableRow>

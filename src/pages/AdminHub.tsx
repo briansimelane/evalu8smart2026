@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { ClassTeamCodesTable } from './FacilitatorHub';
@@ -286,37 +287,37 @@ export const AdminHub: React.FC = () => {
         <TableRow className={`border-border hover:bg-muted/10 ${isPaused ? 'bg-amber-500/5 opacity-80' : ''}`}>
           <TableCell className="font-semibold text-foreground">
             <div className="flex items-center gap-2 flex-wrap">
-              <span>{fac.name}</span>
+              <span className="whitespace-nowrap">{fac.name}</span>
               {isMaster && (
-                <Badge className="bg-amber-500 hover:bg-amber-600 text-white gap-1 text-[10px] px-2 py-0.5">
+                <Badge className="bg-amber-500 hover:bg-amber-600 text-white gap-1 text-[10px] px-2 py-0.5 whitespace-nowrap">
                   <Crown className="h-3 w-3" />
                   Master Facilitator
                 </Badge>
               )}
               {isPaused ? (
-                <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-300 bg-amber-500/10 text-[10px]">
+                <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-300 bg-amber-500/10 text-[10px] whitespace-nowrap">
                   Paused / Archived
                 </Badge>
               ) : (
-                <Badge variant="outline" className="border-emerald-400 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 text-[10px]">
+                <Badge variant="outline" className="border-emerald-400 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 text-[10px] whitespace-nowrap">
                   Active
                 </Badge>
               )}
             </div>
           </TableCell>
-          <TableCell className="font-mono text-sm text-primary">
+          <TableCell className="font-mono text-sm text-primary whitespace-nowrap">
             {fac.email}
           </TableCell>
-          <TableCell className="text-xs text-muted-foreground">
+          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
             {isMaster ? 'Permanent Master' : (fac.createdAt ? new Date(fac.createdAt).toLocaleDateString() : 'N/A')}
           </TableCell>
-          <TableCell>
+          <TableCell className="whitespace-nowrap">
             <Button
               type="button"
               variant="secondary"
               size="sm"
               onClick={() => toggleExpandFacilitator(rowKey)}
-              className="h-7 text-xs font-bold gap-1.5"
+              className="h-7 text-xs font-bold gap-1.5 whitespace-nowrap"
             >
               <span>{totalGamesCount} {totalGamesCount === 1 ? 'game' : 'games'}</span>
               {totalGamesCount > 0 && (
@@ -324,69 +325,102 @@ export const AdminHub: React.FC = () => {
               )}
             </Button>
           </TableCell>
-          <TableCell className="text-right">
-            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+          <TableCell className="text-right whitespace-nowrap">
+            <div className="flex items-center justify-end gap-1.5 flex-nowrap">
               {totalGamesCount > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => toggleExpandFacilitator(rowKey)}
-                  className="text-xs gap-1 h-8"
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                  {isFacExpanded ? 'Hide Games' : 'View Games'}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => toggleExpandFacilitator(rowKey)}
+                      aria-label={isFacExpanded ? 'Hide Games' : 'View Games'}
+                      className="h-8 w-8 shrink-0 border-border text-foreground hover:bg-muted"
+                    >
+                      <Eye className="h-4 w-4 text-primary" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs font-semibold">{isFacExpanded ? 'Hide Created Games' : `View Created Games (${totalGamesCount})`}</p>
+                  </TooltipContent>
+                </Tooltip>
               )}
 
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleResetPassword(fac.email)}
-                disabled={isResetting || isRowLoading}
-                className="text-xs gap-1.5 h-8"
-              >
-                <KeyRound className="h-3.5 w-3.5" />
-                {isResetting ? 'Sending...' : 'Reset Password'}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={() => handleResetPassword(fac.email)}
+                    disabled={isResetting || isRowLoading}
+                    aria-label="Reset Password"
+                    className="h-8 w-8 shrink-0 border-border text-foreground hover:bg-muted"
+                  >
+                    <KeyRound className={`h-4 w-4 ${isResetting ? 'animate-spin text-primary' : ''}`} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs font-semibold">{isResetting ? 'Sending Password Reset...' : `Send Password Reset Email (${fac.email})`}</p>
+                </TooltipContent>
+              </Tooltip>
 
               {!isMaster && (
                 <>
                   {isPaused ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleResumeFacilitator(fac.uid, fac.name, fac.email)}
-                      disabled={isRowLoading}
-                      className="text-xs gap-1.5 h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300"
-                    >
-                      <PlayCircle className="h-3.5 w-3.5" />
-                      Resume
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => handleResumeFacilitator(fac.uid, fac.name, fac.email)}
+                          disabled={isRowLoading}
+                          aria-label="Resume Facilitator"
+                          className="h-8 w-8 shrink-0 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300"
+                        >
+                          <PlayCircle className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs font-semibold">Resume (Restore) Facilitator Account</p>
+                      </TooltipContent>
+                    </Tooltip>
                   ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handlePauseFacilitator(fac.uid, fac.name, fac.email)}
-                      disabled={isRowLoading}
-                      title="Pause (Archive) Facilitator"
-                      className="text-xs gap-1.5 h-8 border-amber-300 text-amber-700 hover:bg-amber-50 dark:text-amber-300"
-                    >
-                      <PauseCircle className="h-3.5 w-3.5" />
-                      Pause
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => handlePauseFacilitator(fac.uid, fac.name, fac.email)}
+                          disabled={isRowLoading}
+                          aria-label="Pause (Archive) Facilitator"
+                          className="h-8 w-8 shrink-0 border-amber-300 text-amber-700 hover:bg-amber-50 dark:text-amber-300"
+                        >
+                          <PauseCircle className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs font-semibold">Pause (Archive) Facilitator Account</p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
 
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => handleDeleteFacilitator(fac.uid, fac.name, fac.email)}
-                    disabled={isRowLoading}
-                    title="Delete Facilitator Account"
-                    className="text-xs gap-1 h-8 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-300"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        onClick={() => handleDeleteFacilitator(fac.uid, fac.name, fac.email)}
+                        disabled={isRowLoading}
+                        aria-label="Delete Facilitator Account"
+                        className="h-8 w-8 shrink-0 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-300"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs font-semibold">Delete Facilitator Account</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </>
               )}
             </div>
@@ -638,7 +672,7 @@ export const AdminHub: React.FC = () => {
                 Active Facilitator Accounts ({activeFacilitators.length})
               </CardTitle>
               <CardDescription>
-                Active facilitators authorized to sign in and run their own simulation games. Click on a facilitator's game count or "View Games" to inspect and enter any of their games.
+                Active facilitators authorized to sign in and run their own simulation games. Click on a facilitator's game count or the eye icon to inspect and enter any of their games.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -740,65 +774,103 @@ export const AdminHub: React.FC = () => {
                           <TableCell className="text-xs text-muted-foreground font-medium">
                             {mw.createdByEmail || 'Facilitator'}
                           </TableCell>
-                          <TableCell className="font-mono text-purple-700 dark:text-purple-400 font-bold">
+                          <TableCell className="font-mono text-purple-700 dark:text-purple-400 font-bold whitespace-nowrap">
                             {mw.sessionCode}
                           </TableCell>
-                          <TableCell className="text-xs">
+                          <TableCell className="text-xs whitespace-nowrap">
                             {norm.worlds.length} Worlds ({totalTeams} Teams)
                           </TableCell>
-                          <TableCell className="text-muted-foreground text-xs">
+                          <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
                             {new Date(mw.createdAt).toLocaleDateString()}
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex gap-2 justify-end">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => navigate(`/facilitator/multiworld/${mw.id}`)}
-                                className="h-8 gap-1 text-xs font-semibold"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                Enter Multi-World
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => navigate(`/viewer/multi/${mw.sessionCode}`)}
-                                className="h-8 gap-1 text-xs font-semibold border-purple-200 text-purple-700"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                                Viewer
-                              </Button>
+                          <TableCell className="text-right whitespace-nowrap">
+                            <div className="flex gap-1.5 justify-end items-center flex-nowrap">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    onClick={() => navigate(`/facilitator/multiworld/${mw.id}`)}
+                                    aria-label="Enter Multi-World Control"
+                                    className="h-8 w-8 shrink-0 border-border text-foreground hover:bg-muted"
+                                  >
+                                    <ExternalLink className="h-4 w-4 text-purple-600" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs font-semibold">Enter Multi-World Control</p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    onClick={() => navigate(`/viewer/multi/${mw.sessionCode}`)}
+                                    aria-label="Open Combined Viewer"
+                                    className="h-8 w-8 shrink-0 border-purple-200 text-purple-700 hover:bg-purple-50"
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs font-semibold">Open Combined Projector Viewer</p>
+                                </TooltipContent>
+                              </Tooltip>
+
                               {mw.isArchived ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleRestoreMultiWorld(mw.id, mw.name)}
-                                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 h-8 gap-1 text-xs font-semibold"
-                                >
-                                  <RotateCcw className="h-3.5 w-3.5" />
-                                  Restore
-                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => handleRestoreMultiWorld(mw.id, mw.name)}
+                                      aria-label="Restore Session"
+                                      className="h-8 w-8 shrink-0 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                    >
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs font-semibold">Restore Session</p>
+                                  </TooltipContent>
+                                </Tooltip>
                               ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleArchiveMultiWorld(mw.id, mw.name)}
-                                  className="border-amber-200 text-amber-700 hover:bg-amber-50 h-8 gap-1 text-xs font-semibold"
-                                >
-                                  <Archive className="h-3.5 w-3.5" />
-                                  Archive
-                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => handleArchiveMultiWorld(mw.id, mw.name)}
+                                      aria-label="Archive Session"
+                                      className="h-8 w-8 shrink-0 border-amber-200 text-amber-700 hover:bg-amber-50"
+                                    >
+                                      <Archive className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs font-semibold">Archive Session</p>
+                                  </TooltipContent>
+                                </Tooltip>
                               )}
-                              <Button
-                                size="icon"
-                                variant="destructive"
-                                title="Admin Permanent Delete"
-                                onClick={() => handlePermanentDeleteMultiWorld(mw.id, mw.name)}
-                                className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 h-8 w-8"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="destructive"
+                                    aria-label="Admin Permanent Delete"
+                                    onClick={() => handlePermanentDeleteMultiWorld(mw.id, mw.name)}
+                                    className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 h-8 w-8 shrink-0"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs font-semibold">Permanently Delete Session</p>
+                                </TooltipContent>
+                              </Tooltip>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -862,84 +934,119 @@ export const AdminHub: React.FC = () => {
                             <TableCell className="text-xs text-muted-foreground font-medium">
                               {cls.createdByEmail || 'System / Facilitator'}
                             </TableCell>
-                            <TableCell className="font-mono text-emerald-700 dark:text-emerald-400 font-bold tracking-wider">
-                              <div className="flex items-center gap-1.5">
+                            <TableCell className="font-mono text-emerald-700 dark:text-emerald-400 font-bold tracking-wider whitespace-nowrap">
+                              <div className="flex items-center gap-1.5 flex-nowrap">
                                 <span>{cls.facilitatorCode}</span>
                                 <Button
                                   type="button"
                                   variant="outline"
                                   size="sm"
                                   onClick={() => toggleExpandClass(cls.id)}
-                                  className="h-6 px-2 text-[10px] font-semibold border-border"
+                                  className="h-6 px-2 text-[10px] font-semibold border-border whitespace-nowrap"
                                 >
                                   {isExpanded ? 'Hide Codes' : 'Show Codes'}
                                 </Button>
                               </div>
                             </TableCell>
-                            <TableCell className="text-foreground text-sm">
+                            <TableCell className="text-foreground text-sm whitespace-nowrap">
                               {teamCount} teams
                             </TableCell>
-                            <TableCell className="text-muted-foreground text-xs">
+                            <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
                               {new Date(cls.createdAt).toLocaleDateString()}
                             </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex gap-2 justify-end">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    selectClass(cls.id);
-                                    navigate(`/class/${cls.id}`);
-                                  }}
-                                  className="h-8 gap-1 text-xs font-semibold"
-                                >
-                                  <ExternalLink className="h-3.5 w-3.5" />
-                                  Enter Game
-                                </Button>
+                            <TableCell className="text-right whitespace-nowrap">
+                              <div className="flex gap-1.5 justify-end items-center flex-nowrap">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => {
+                                        selectClass(cls.id);
+                                        navigate(`/class/${cls.id}`);
+                                      }}
+                                      aria-label="Enter Game"
+                                      className="h-8 w-8 shrink-0 border-border text-foreground hover:bg-muted"
+                                    >
+                                      <ExternalLink className="h-4 w-4 text-primary" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs font-semibold">Enter Game Control Panel</p>
+                                  </TooltipContent>
+                                </Tooltip>
 
                                 {cls.isArchived ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleRestoreClass(cls.id, cls.name)}
-                                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 h-8 gap-1 text-xs font-semibold"
-                                  >
-                                    <RotateCcw className="h-3.5 w-3.5" />
-                                    Restore
-                                  </Button>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="outline"
+                                        onClick={() => handleRestoreClass(cls.id, cls.name)}
+                                        aria-label="Restore Game"
+                                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 h-8 w-8 shrink-0"
+                                      >
+                                        <RotateCcw className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs font-semibold">Restore Game from Archive</p>
+                                    </TooltipContent>
+                                  </Tooltip>
                                 ) : (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleArchiveClass(cls.id, cls.name)}
-                                    className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:text-amber-300 h-8 gap-1 text-xs font-semibold"
-                                  >
-                                    <Archive className="h-3.5 w-3.5" />
-                                    Archive
-                                  </Button>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="outline"
+                                        onClick={() => handleArchiveClass(cls.id, cls.name)}
+                                        aria-label="Archive Game"
+                                        className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:text-amber-300 h-8 w-8 shrink-0"
+                                      >
+                                        <Archive className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs font-semibold">Archive Game</p>
+                                    </TooltipContent>
+                                  </Tooltip>
                                 )}
 
                                 {isLegacy && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => migrateLegacyClass(cls.id)}
-                                    className="border-amber-300 text-amber-700 hover:bg-amber-50 h-8 gap-1 text-xs"
-                                  >
-                                    <RefreshCw className="h-3.5 w-3.5" />
-                                    Migrate
-                                  </Button>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="outline"
+                                        onClick={() => migrateLegacyClass(cls.id)}
+                                        aria-label="Migrate Legacy Class"
+                                        className="border-amber-300 text-amber-700 hover:bg-amber-50 h-8 w-8 shrink-0"
+                                      >
+                                        <RefreshCw className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs font-semibold">Migrate Legacy Class</p>
+                                    </TooltipContent>
+                                  </Tooltip>
                                 )}
 
-                                <Button
-                                  size="icon"
-                                  variant="destructive"
-                                  title="Admin Permanent Delete"
-                                  onClick={() => handleDeleteClass(cls.id, cls.name)}
-                                  className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-300 h-8 w-8"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="destructive"
+                                      aria-label="Admin Permanent Delete"
+                                      onClick={() => handleDeleteClass(cls.id, cls.name)}
+                                      className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 dark:bg-red-950 dark:border-red-800 dark:text-red-300 h-8 w-8 shrink-0"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs font-semibold">Permanently Delete Game</p>
+                                  </TooltipContent>
+                                </Tooltip>
                               </div>
                             </TableCell>
                           </TableRow>
