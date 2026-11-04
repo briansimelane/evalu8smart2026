@@ -1,6 +1,127 @@
 rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model & Security Architecture (Schema V1 + V2)
+// ===============================================================
+//
+// Collection: demo_games/{demoId}
+//   - ownerUid: string (required, matches auth.uid)
+//   - expiresAt: timestamp (required, <= request.time + 8 days)
+//
+// Collection: joinCodes/{code}
+//   - classId: string (required, target class ID)
+//   - kind: string ('team' | 'viewer')
+//   - teamId: string (optional, present when kind == 'team')
+//
+// Collection: classes/{c}
+//   - schemaVersion: int (1 for legacy, 2 for v2)
+//   - ownerUid: string (v2 facilitator UID)
+//   - name, createdAt, teams, isArchived, etc.
+//
+// Subcollection: classes/{c}/teams/{teamId} (Legacy v1 only)
+// Subcollection: classes/{c}/secrets/{secretId}
+//   - doc 'codes': { viewerCode: string, teamCodes: map<teamId, code> }
+// Subcollection: classes/{c}/members/{uid}
+//   - uid: string, role: 'team' | 'viewer', teamId?: string, code: string, joinedAt: string
+// Subcollection: classes/{c}/seats/{team}
+//   - ceoUid: string, ceoName: string, pinHash: string, pinHashProof?: string, updatedAt: string
+// Subcollection: classes/{c}/state/{docId}
+//   - 'game' (Legacy v1 only)
+//   - 'control', 'world' (V2: readable by owner/members, writable by owner)
+// Subcollection: classes/{c}/rounds/{roundId}
+//   - roundNumber: int, teamData: map<teamId, TeamRoundData>
+// Subcollection: classes/{c}/plans/{planId}
+//   - round: int, teamId: string, combination: int, position: int, price: int, ...
+// Subcollection: classes/{c}/actions/{actionId}
+//   - round: int, phase: string, teamId: string, payload: map, total: int, submittedAt: string
+//
+// Collection: multiworld_sessions/{sessionId}
+//   - schemaVersion: int (1 or 2), ownerUid: string
+//
+// Collection: facilitators/{uid}
+//   - uid: string, name: string, email: string, role: 'FACILITATOR' | 'ADMIN', status: string
+//
+// Document: evalu8smart_sessions/default_game
+//   - Standalone non-class fallback session document
+// ===============================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Must match MASTER_FACILITATOR_EMAIL in src/contexts/SessionContext.tsx
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.get('email', '') == 'brian@learningsims.co.za';
+    }
+
+    function classDoc(c) {
+      return get(/databases/$(database)/documents/classes/$(c));
+    }
+
+    function isOwner(c) {
+      return isSignedIn()
+        && (isAdmin() || classDoc(c).data.get('ownerUid', '') == request.auth.uid);
+    }
+
+    function isOwnerOrCreatingOwner(c) {
+      return isSignedIn()
+        && (
+          isAdmin()
+          || (exists(/databases/$(database)/documents/classes/$(c)) && classDoc(c).data.get('ownerUid', '') == request.auth.uid)
+          || getAfter(/databases/$(database)/documents/classes/$(c)).data.get('ownerUid', '') == request.auth.uid
+        );
+    }
+
+    function isLegacyClass(c) {
+      return exists(/databases/$(database)/documents/classes/$(c))
+        && classDoc(c).data.get('schemaVersion', 0) == 1;
+    }
+
+    function isMember(c) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/classes/$(c)/members/$(request.auth.uid));
+    }
+
+    function memberData(c) {
+      return get(/databases/$(database)/documents/classes/$(c)/members/$(request.auth.uid)).data;
+    }
+
+    function myTeam(c) {
+      return memberData(c).get('teamId', '');
+    }
+
+    function isCeo(c, t) {
+      return isMember(c)
+        && memberData(c).get('role', '') == 'team'
+        && myTeam(c) == t
+        && exists(/databases/$(database)/documents/classes/$(c)/seats/$(t))
+        && get(/databases/$(database)/documents/classes/$(c)/seats/$(t)).data.get('ceoUid', '') == request.auth.uid;
+    }
+
+    function ctl(c) {
+      return get(/databases/$(database)/documents/classes/$(c)/state/control).data;
+    }
+
+    function codesData(c) {
+      return get(/databases/$(database)/documents/classes/$(c)/secrets/codes).data;
+    }
+
+    function roundTeamData(c, r, t) {
+      return get(/databases/$(database)/documents/classes/$(c)/rounds/$(string(r))).data.teamData[t];
+    }
+
+    // ===============================================================
+    // Demo Games (unchanged)
+    // ===============================================================
+
     match /demo_games/{demoId} {
       allow read: if request.auth != null
         && resource.data.ownerUid == request.auth.uid;
@@ -14,18 +135,250 @@ service cloud.firestore {
         && resource.data.ownerUid == request.auth.uid;
     }
 
-    match /classes/{classId} {
-      allow read, write: if true;
-      match /state/{doc} { allow read, write: if true; }
-      match /teams/{teamId} { allow read, write: if true; }
+    // ===============================================================
+    // Join Codes Lookup
+    // ===============================================================
+
+    match /joinCodes/{code} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create, update: if isSignedIn()
+        && request.resource.data.classId is string
+        && isOwnerOrCreatingOwner(request.resource.data.classId);
+      allow delete: if isSignedIn()
+        && (isAdmin() || (resource.data.classId is string && isOwner(resource.data.classId)));
     }
+
+    // ===============================================================
+    // Classes & Subcollections
+    // ===============================================================
+
+    match /classes/{c} {
+      // Legacy (schemaVersion == 1)
+      allow get: if resource.data.get('schemaVersion', 0) == 1;
+      allow create: if request.resource.data.get('schemaVersion', 0) == 1;
+      allow update, delete: if resource.data.get('schemaVersion', 0) == 1;
+
+      // V2 (schemaVersion == 2) & Query-Planner Compatible List
+      allow get: if resource.data.get('schemaVersion', 0) == 2
+        && (isAdmin() || (isSignedIn() && resource.data.get('ownerUid', '') == request.auth.uid) || isMember(c));
+      allow list: if resource.data.schemaVersion == 1
+        || (isSignedIn() && (isAdmin() || resource.data.ownerUid == request.auth.uid));
+      allow create: if isSignedIn()
+        && request.resource.data.get('schemaVersion', 0) == 2
+        && (isAdmin() || request.resource.data.get('ownerUid', '') == request.auth.uid);
+      allow update, delete: if resource.data.get('schemaVersion', 0) == 2
+        && (isAdmin() || (isSignedIn() && resource.data.get('ownerUid', '') == request.auth.uid));
+
+      // Legacy teams subcollection
+      match /teams/{teamId} {
+        allow read, write: if isLegacyClass(c);
+      }
+
+      // Secrets subcollection (join codes map)
+      match /secrets/{secretId} {
+        allow read: if secretId == 'codes' && isOwner(c);
+        allow write: if secretId == 'codes' && isOwnerOrCreatingOwner(c);
+      }
+
+      // Class members (students & viewers)
+      match /members/{uid} {
+        allow read: if (isSignedIn() && request.auth.uid == uid) || isOwner(c);
+        allow create, update: if isOwnerOrCreatingOwner(c)
+          || (
+            isSignedIn()
+            && request.auth.uid == uid
+            && request.resource.data.uid == uid
+            && request.resource.data.code is string
+            && (
+              (
+                request.resource.data.role == 'team'
+                && request.resource.data.teamId is string
+                && codesData(c).teamCodes[request.resource.data.teamId] == request.resource.data.code
+              )
+              || (
+                request.resource.data.role == 'viewer'
+                && codesData(c).viewerCode == request.resource.data.code
+              )
+            )
+          );
+        allow delete: if isOwner(c);
+      }
+
+      // CEO Seats per team
+      match /seats/{team} {
+        allow read: if isOwner(c)
+          || (isMember(c) && myTeam(c) == team);
+        allow create: if isOwnerOrCreatingOwner(c)
+          || (
+            isMember(c)
+            && myTeam(c) == team
+            && request.resource.data.ceoUid == request.auth.uid
+            && request.resource.data.pinHash is string
+            && request.resource.data.ceoName is string
+          );
+        allow update: if isOwner(c)
+          || (
+            isMember(c)
+            && myTeam(c) == team
+            && request.resource.data.ceoUid == request.auth.uid
+            && (
+              resource.data.get('pinHash', '') == ''
+              || request.resource.data.get('pinHashProof', '') == resource.data.pinHash
+            )
+          );
+        allow delete: if isOwner(c)
+          || (isSignedIn() && resource.data.get('ceoUid', '') == request.auth.uid);
+      }
+
+      // Class state documents ('game' for v1, 'control' and 'world' for v2)
+      match /state/{docId} {
+        allow read, write: if docId == 'game' && isLegacyClass(c);
+        allow read: if docId in ['control', 'world'] && (isOwner(c) || isMember(c));
+        allow write: if docId in ['control', 'world'] && isOwnerOrCreatingOwner(c);
+      }
+
+      // Per-round public state
+      match /rounds/{roundId} {
+        allow read: if isOwner(c) || isMember(c);
+        allow write: if isOwnerOrCreatingOwner(c);
+      }
+
+      // Sealed round plans (hidden from other teams during planning phase)
+      match /plans/{planId} {
+        allow read: if isOwner(c)
+          || (
+            isMember(c)
+            && (
+              (resource != null && myTeam(c) == resource.data.teamId)
+              || (resource == null && planId == string(ctl(c).currentRound) + '_' + myTeam(c))
+              || ctl(c).currentRound > int(planId.split('_')[0])
+              || (ctl(c).currentRound == int(planId.split('_')[0]) && ctl(c).currentPhase != 'planning')
+            )
+          );
+        allow create, update: if isOwner(c)
+          || (
+            request.resource.data.round is int
+            && request.resource.data.teamId is string
+            && planId == string(request.resource.data.round) + '_' + request.resource.data.teamId
+            && isCeo(c, request.resource.data.teamId)
+            && ctl(c).currentPhase == 'planning'
+            && ctl(c).currentRound == request.resource.data.round
+          );
+        allow delete: if isOwner(c);
+      }
+
+      // Turn-enforced phase action submissions (+ wildcard conversions)
+      match /actions/{actionId} {
+        allow read: if isOwner(c)
+          || (
+            isMember(c)
+            && (
+              (resource != null && myTeam(c) == resource.data.teamId)
+              || (resource == null && actionId.matches('^[0-9]+_[a-z]+_' + myTeam(c) + '$'))
+            )
+          );
+        allow create: if isOwner(c)
+          || (
+            request.resource.data.keys().hasOnly(['round', 'phase', 'teamId', 'payload', 'total', 'submittedAt'])
+            && request.resource.data.round is int
+            && request.resource.data.phase is string
+            && request.resource.data.teamId is string
+            && request.resource.data.payload is map
+            && request.resource.data.total is int
+            && request.resource.data.total >= 0
+            && actionId == string(request.resource.data.round) + '_' + request.resource.data.phase + '_' + request.resource.data.teamId
+            && isCeo(c, request.resource.data.teamId)
+            && ctl(c).currentRound == request.resource.data.round
+            && (
+              (
+                request.resource.data.phase == 'wildcard'
+                && request.resource.data.total <= 10
+              )
+              || (
+                ctl(c).currentPhase == request.resource.data.phase
+                && ctl(c).turn.round == request.resource.data.round
+                && ctl(c).turn.phase == request.resource.data.phase
+                && ctl(c).turn.index >= 0
+                && ctl(c).turn.index < ctl(c).turn.order.size()
+                && ctl(c).turn.order[ctl(c).turn.index] == request.resource.data.teamId
+                && (
+                  (request.resource.data.phase == 'innovation' && request.resource.data.total <= roundTeamData(c, request.resource.data.round, request.resource.data.teamId).researchIcons)
+                  || (request.resource.data.phase == 'expansion' && request.resource.data.total <= roundTeamData(c, request.resource.data.round, request.resource.data.teamId).logisticsIcons)
+                  || (request.resource.data.phase == 'sales' && request.resource.data.total <= roundTeamData(c, request.resource.data.round, request.resource.data.teamId).productsProduced)
+                  || (request.resource.data.phase == 'improvement' && request.resource.data.total <= roundTeamData(c, request.resource.data.round, request.resource.data.teamId).improvementCards)
+                )
+              )
+            )
+          );
+        allow update: if isOwner(c)
+          || (
+            request.resource.data.keys().hasOnly(['round', 'phase', 'teamId', 'payload', 'total', 'submittedAt'])
+            && request.resource.data.round is int
+            && request.resource.data.phase == 'wildcard'
+            && request.resource.data.teamId is string
+            && request.resource.data.payload is map
+            && request.resource.data.total is int
+            && request.resource.data.total >= 0
+            && request.resource.data.total <= 10
+            && actionId == string(request.resource.data.round) + '_wildcard_' + request.resource.data.teamId
+            && isCeo(c, request.resource.data.teamId)
+            && ctl(c).currentRound == request.resource.data.round
+          );
+        allow delete: if isOwner(c);
+      }
+    }
+
+    // ===============================================================
+    // Multi-World Sessions
+    // ===============================================================
 
     match /multiworld_sessions/{sessionId} {
-      allow read, write: if true;
+      allow read: if resource.data.get('schemaVersion', 0) == 1 || isSignedIn();
+      allow create: if request.resource.data.get('schemaVersion', 0) == 1
+        || (isSignedIn() && (isAdmin() || request.resource.data.get('ownerUid', '') == request.auth.uid));
+      allow update, delete: if resource.data.get('schemaVersion', 0) == 1
+        || (isSignedIn() && (isAdmin() || resource.data.get('ownerUid', '') == request.auth.uid));
     }
 
+    // ===============================================================
+    // Facilitators Directory
+    // ===============================================================
+
+    match /facilitators/{uid} {
+      allow get: if (isSignedIn() && request.auth.uid == uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == uid
+          && request.resource.data.uid == uid
+          && request.resource.data.role == 'FACILITATOR'
+        );
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.role == 'FACILITATOR'
+        );
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Standalone Fallback Session
+    // ===============================================================
+
+    match /evalu8smart_sessions/default_game {
+      allow read, write: if isSignedIn() || isAdmin();
+    }
+
+    // ===============================================================
+    // Default Deny All Other Paths
+    // ===============================================================
+
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

@@ -10,9 +10,11 @@ import { ShieldAlert, Dices, Zap, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
+import { useGameTheme, regionLabel } from '@/lib/gameTheme';
 
 export const SteveControlModal: React.FC = () => {
   const { gameState, getRuleAdjustments, moveSteve } = useGame();
+  const theme = useGameTheme();
   const [selectedRegion, setSelectedRegion] = useState<string>('Canada');
 
   const isSteveEnabled = isRuleActiveForTeam(gameState?.ruleAdjustments, 'steve_event_blocker');
@@ -32,7 +34,7 @@ export const SteveControlModal: React.FC = () => {
       return;
     }
     moveSteve(targetRegion);
-    toast.warning(`Steve has moved to block region: ${targetRegion}!`, {
+    toast.warning(`Steve has moved to block region: ${regionLabel(theme, targetRegion)}!`, {
       description: 'No team can expand into or sell products in this region until Steve is cleared.',
     });
   };
@@ -89,7 +91,7 @@ export const SteveControlModal: React.FC = () => {
               <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
                 {steveData.activeRegion ? (
                   <span className="text-red-600 dark:text-red-400 flex items-center gap-1.5 font-extrabold">
-                    <ShieldAlert className="h-4 w-4" /> {steveData.activeRegion}
+                    <ShieldAlert className="h-4 w-4" /> {regionLabel(theme, steveData.activeRegion)}
                   </span>
                 ) : (
                   <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">No Region Blocked (Off Board)</span>
@@ -130,7 +132,7 @@ export const SteveControlModal: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
                   {REGIONS.map(r => (
-                    <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>
+                    <SelectItem key={r} value={r} className="text-xs">{regionLabel(theme, r)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

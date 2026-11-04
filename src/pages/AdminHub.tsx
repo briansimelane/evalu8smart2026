@@ -449,9 +449,14 @@ export const AdminHub: React.FC = () => {
                     {facMultiWorlds.map((mw) => (
                       <div key={mw.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3 rounded-lg border border-purple-200 dark:border-purple-800/60 shadow-sm">
                         <div className="space-y-0.5">
-                          <div className="flex items-center gap-2 font-semibold text-sm">
+                          <div className="flex items-center gap-2 font-semibold text-sm flex-wrap">
                             <Globe className="h-4 w-4 text-purple-600" />
                             <span>{mw.name}</span>
+                            {mw.themeId === 'evalu8' && (
+                              <Badge variant="outline" className="text-[10px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-700">
+                                Evalu8 Inc
+                              </Badge>
+                            )}
                             <Badge variant="outline" className="text-[10px] border-purple-300 text-purple-700">
                               Multi-World ({mw.sessionCode})
                             </Badge>
@@ -490,12 +495,18 @@ export const AdminHub: React.FC = () => {
                     {facClasses.map((cls) => {
                       const teamCount = cls.teamRegistry?.length || cls.gameState?.teams?.length || Object.keys(cls.teamCodes || {}).length || 0;
                       const isClsExpanded = !!expandedClasses[cls.id];
+                      const isEvalu8 = (cls.themeId ?? cls.gameState?.themeId) === 'evalu8';
                       return (
                         <div key={cls.id} className="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3">
                             <div className="space-y-0.5">
-                              <div className="flex items-center gap-2 font-semibold text-sm">
+                              <div className="flex items-center gap-2 font-semibold text-sm flex-wrap">
                                 <span>{cls.name}</span>
+                                {isEvalu8 && (
+                                  <Badge variant="outline" className="text-[10px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-700">
+                                    Evalu8 Inc
+                                  </Badge>
+                                )}
                                 <span className="font-mono text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-200">
                                   {cls.facilitatorCode}
                                 </span>
@@ -762,8 +773,13 @@ export const AdminHub: React.FC = () => {
                       return (
                         <TableRow key={mw.id} className="border-border hover:bg-muted/10 transition-colors">
                           <TableCell className="font-semibold text-foreground">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span>{mw.name}</span>
+                              {mw.themeId === 'evalu8' && (
+                                <span className="text-[10px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700 px-1.5 py-0.5 rounded font-bold">
+                                  Evalu8 Inc
+                                </span>
+                              )}
                               {mw.isArchived && (
                                 <span className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
                                   Archived
@@ -912,13 +928,19 @@ export const AdminHub: React.FC = () => {
                       const teamCount = cls.teamRegistry?.length || cls.gameState?.teams?.length || Object.keys(cls.teamCodes || {}).length || 0;
                       const isLegacy = !!cls.gameState;
                       const isExpanded = !!expandedClasses[cls.id];
+                      const isEvalu8 = (cls.themeId ?? cls.gameState?.themeId) === 'evalu8';
 
                       return (
                         <React.Fragment key={cls.id}>
                           <TableRow className="border-border hover:bg-muted/10 transition-colors">
                             <TableCell className="font-semibold text-foreground">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span>{cls.name}</span>
+                                {isEvalu8 && (
+                                  <span className="text-[10px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700 px-1.5 py-0.5 rounded font-bold">
+                                    Evalu8 Inc
+                                  </span>
+                                )}
                                 {cls.isArchived && (
                                   <span className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
                                     Archived

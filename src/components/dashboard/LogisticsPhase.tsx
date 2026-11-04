@@ -6,7 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, Wifi, Gamepad2, Battery, Radio, Signal, AlertTriangle, UserCheck } from 'lucide-react';
+import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, AlertTriangle, UserCheck } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { GameIcon } from './GameIcon';
 import { SteveIcon } from './SteveIcon';
@@ -17,24 +27,17 @@ import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
 import { isSteveBlocking as isSteveBlockingRule, getLogisticsCostForTeam, getRegionOccupancy, getCompletedOffices } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
-
-const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  'GPS': MapPin,
-  'Wifi': Wifi,
-  'Gaming': Gamepad2,
-  'Battery': Battery,
-  'NFC': Radio,
-  '4G': Signal,
-};
+import { useGameTheme, regionLabel, techIcon, techLabel } from '@/lib/gameTheme';
 
 export const LogisticsPhase = () => {
-  const { gameState, allocateLogistics, finishLogisticsTurn, getTeamLogisticsProgress, canExpandToRegion, isRegionFull, calculatePlayOrder } = useGame();
+  const { gameState, actionsMap, allocateLogistics, submitLogisticsTurn, skipTurn, finishLogisticsTurn, getTeamLogisticsProgress, canExpandToRegion, isRegionFull, calculatePlayOrder } = useGame();
+  const theme = useGameTheme();
   const { currentRole, currentTeamId, isReadOnly, selectTeam } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
-  const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'expansion');
   const { toast } = useToast();
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [allocations, setAllocations] = useState<Record<string, number>>({});
+  const [showPartialConfirm, setShowPartialConfirm] = useState(false);
 
   useEffect(() => {
     if (currentRole === 'STUDENT' && currentTeamId) {
@@ -60,6 +63,29 @@ export const LogisticsPhase = () => {
     const icons = currentRoundData?.teamData[team.id]?.logisticsIcons || 0;
     return icons > 0;
   });
+
+  const isV2Turn =
+    gameState.schemaVersion === 2 &&
+    gameState.turn &&
+    gameState.turn.round === currentRound &&
+    gameState.turn.phase === 'expansion';
+
+  const activeTurnTeam = useMemo(() => {
+    if (isV2Turn && gameState.turn) {
+      const turnTeamId = gameState.turn.order[gameState.turn.index];
+      return turnTeamId ? gameState.teams.find(t => t.id === turnTeamId) : undefined;
+    }
+    return playOrder.find(t => {
+      const icons = currentRoundData?.teamData[t.id]?.logisticsIcons || 0;
+      const spent = (gameState.logisticsAllocatedByRound || {})[currentRound]?.[t.id] || 0;
+      return icons > 0 && spent < icons;
+    });
+  }, [isV2Turn, gameState.turn, gameState.teams, playOrder, currentRoundData, gameState.logisticsAllocatedByRound, currentRound]);
+
+  const isMyTurn = currentRole !== 'STUDENT' || (!!currentTeamId && currentTeamId === activeTurnTeam?.id);
+  const myActionStatus = currentTeamId ? actionsMap?.[`${currentRound}_expansion_${currentTeamId}`] : undefined;
+  const isWaitingForReferee = Boolean(myActionStatus && !myActionStatus.status);
+  const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && (activePhase !== 'expansion' || !isMyTurn || isWaitingForReferee));
 
   // Get logistics icons available for selected team
   const teamLogisticsIcons = useMemo(() => {
@@ -91,12 +117,15 @@ export const LogisticsPhase = () => {
 
   // Check if all teams with logistics icons have fully allocated
   const allTeamsAllocated = useMemo(() => {
+    if (isV2Turn && gameState.turn) {
+      return gameState.turn.index >= gameState.turn.order.length;
+    }
     return playOrder.every(team => {
       const icons = currentRoundData?.teamData[team.id]?.logisticsIcons || 0;
       const spent = (gameState.logisticsAllocatedByRound || {})[currentRound]?.[team.id] || 0;
       return spent >= icons;
     });
-  }, [playOrder, currentRoundData, gameState, currentRound]);
+  }, [isV2Turn, gameState.turn, playOrder, currentRoundData, gameState, currentRound]);
 
   // Get regions team can expand to
   const availableRegions = useMemo(() => {
@@ -138,6 +167,32 @@ export const LogisticsPhase = () => {
     }));
   };
 
+  const executeConfirmAllocations = useCallback(() => {
+    if (!selectedTeam) return;
+
+    if (totalAllocated > availableThisTeam) {
+      toast({
+        title: "Insufficient Icons",
+        description: `You only have ${availableThisTeam} logistics icons remaining.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    submitLogisticsTurn(selectedTeam, allocations);
+
+    toast({
+      title: totalAllocated > 0 ? "Allocation Confirmed" : "Logistics Turn Ended",
+      description:
+        totalAllocated > 0
+          ? `${totalAllocated} logistics ${totalAllocated === 1 ? 'icon' : 'icons'} allocated successfully.`
+          : `Ended logistics turn without allocating icons.`,
+    });
+
+    setAllocations({});
+    setShowPartialConfirm(false);
+  }, [selectedTeam, allocations, totalAllocated, availableThisTeam, submitLogisticsTurn, toast]);
+
   const handleConfirmAllocations = useCallback(() => {
     if (!selectedTeam) return;
 
@@ -150,39 +205,41 @@ export const LogisticsPhase = () => {
       return;
     }
 
-    Object.entries(allocations).forEach(([regionName, points]) => {
-      if (points > 0) {
-        allocateLogistics(selectedTeam, regionName, points);
-      }
-    });
+    if (iconsRemaining > 0) {
+      setShowPartialConfirm(true);
+      return;
+    }
 
-    toast({
-      title: "Allocation Confirmed",
-      description: `${totalAllocated} logistics icons allocated successfully.`,
-    });
-
-    setAllocations({});
-  }, [selectedTeam, allocations, totalAllocated, availableThisTeam, allocateLogistics, toast]);
+    executeConfirmAllocations();
+  }, [selectedTeam, totalAllocated, availableThisTeam, iconsRemaining, executeConfirmAllocations, toast]);
 
   const handleClear = () => {
     setAllocations({});
   };
 
   const handleEndTurn = () => {
-    const targetTeamId = selectedTeam || playOrder.find(t => {
-      const icons = currentRoundData?.teamData[t.id]?.logisticsIcons || 0;
-      const spent = (gameState?.logisticsAllocatedByRound || {})[currentRound]?.[t.id] || 0;
-      return icons > 0 && spent < icons;
-    })?.id;
+    const targetTeamId = selectedTeam || activeTurnTeam?.id;
 
     if (!targetTeamId) return;
 
-    if (totalAllocated > 0 && availableThisTeam >= totalAllocated) {
-      Object.entries(allocations).forEach(([regionName, points]) => {
-        if (points > 0) {
-          allocateLogistics(targetTeamId, regionName, points);
-        }
+    if (gameState.schemaVersion === 2) {
+      if (totalAllocated > 0 && availableThisTeam >= totalAllocated) {
+        submitLogisticsTurn(targetTeamId, allocations);
+      } else if (currentRole === 'STUDENT') {
+        submitLogisticsTurn(targetTeamId, {});
+      } else {
+        skipTurn();
+      }
+      setAllocations({});
+      toast({
+        title: "Turn Ended",
+        description: `Ended logistics turn for ${gameState.teams.find(t => t.id === targetTeamId)?.name || 'Team'}.`,
       });
+      return;
+    }
+
+    if (totalAllocated > 0 && availableThisTeam >= totalAllocated) {
+      submitLogisticsTurn(targetTeamId, allocations);
     }
 
     const targetTeamObj = gameState?.teams.find(t => t.id === targetTeamId);
@@ -301,13 +358,30 @@ export const LogisticsPhase = () => {
       </div>
 
       {/* Play Order & Team Logistics Icons Overview */}
+      {isWaitingForReferee && (
+        <Alert className="border-primary/40 bg-primary/10">
+          <AlertDescription className="text-xs font-medium">
+            Submitted — waiting for facilitator to confirm your logistics allocation...
+          </AlertDescription>
+        </Alert>
+      )}
+      {myActionStatus?.status === 'rejected' && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="text-xs">
+            <strong>Action Rejected:</strong> {myActionStatus.error || 'Invalid logistics allocation. Please adjust and resubmit.'}
+          </AlertDescription>
+        </Alert>
+      )}
+      {currentRole === 'STUDENT' && allTeamsHavePlans && !isMyTurn && activeTurnTeam && (
+        <Alert className="border-warning/50 bg-warning/10">
+          <AlertTriangle className="h-4 w-4 text-warning animate-pulse" />
+          <AlertDescription className="text-amber-800 dark:text-amber-200 text-xs">
+            <strong>Waiting for {activeTurnTeam.name}...</strong> Please wait for your team's turn to allocate logistics icons.
+          </AlertDescription>
+        </Alert>
+      )}
       {(() => {
-        const activeTurnTeam = playOrder.find(t => {
-          const icons = currentRoundData?.teamData[t.id]?.logisticsIcons || 0;
-          const spent = (gameState.logisticsAllocatedByRound || {})[currentRound]?.[t.id] || 0;
-          return icons > 0 && spent < icons;
-        });
-
         return (
           <div className="space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -438,7 +512,7 @@ export const LogisticsPhase = () => {
                 regionsWithPresence.map(region => (
                   <Badge key={region} variant="default" className="gap-1">
                     <CheckCircle className="h-3 w-3" />
-                    {region}
+                    {regionLabel(theme, region)}
                   </Badge>
                 ))
               ) : (
@@ -524,7 +598,7 @@ export const LogisticsPhase = () => {
                           <div className="flex items-start justify-between">
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <h4 className="font-semibold">{region.name}</h4>
+                                <h4 className="font-semibold">{regionLabel(theme, region.name)}</h4>
                                 {isSteveBlocking && (
                                   <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-xs font-bold gap-1 [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
                                     <SteveIcon size={14} />
@@ -643,7 +717,7 @@ export const LogisticsPhase = () => {
                                 variant={hasPresenceInConnected ? "default" : "outline"}
                                 className="text-xs"
                               >
-                                {connectedRegion}
+                                {regionLabel(theme, connectedRegion)}
                               </Badge>
                             );
                           })}
@@ -654,19 +728,22 @@ export const LogisticsPhase = () => {
                       {isSteveBlocking ? (
                         <div className="p-2.5 rounded-lg bg-red-950/20 border border-red-500/40 flex items-center gap-2 text-xs text-red-700 dark:text-red-300 font-bold pt-2 mt-2">
                           <SteveIcon size={16} />
-                          <span>Steve is blocking expansion into {region.name}! (5 Wildcard Tokens required to clear Steve)</span>
+                          <span>Steve is blocking expansion into {regionLabel(theme, region.name)}! (5 Wildcard Tokens required to clear Steve)</span>
                         </div>
                       ) : canAllocate ? (
                         <div className="flex items-center gap-2 pt-2">
                           <label className="text-sm font-medium">Allocate:</label>
                           <Input
                             type="number"
+                            inputMode="numeric"
                             min="0"
-                            max={iconsRemaining}
+                            max={availableThisTeam}
                             value={allocations[region.name] || ''}
                             onChange={(e) => handleAllocateChange(region.name, e.target.value)}
-                            className="w-20 font-mono text-sm font-bold"
-                            disabled={isReadOnlyMode}
+                            onWheel={(e) => (e.target as HTMLElement).blur()}
+                            placeholder="0"
+                            className="w-20 font-mono text-sm font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            disabled={isReadOnlyMode || availableThisTeam <= 0}
                           />
                           <span className="text-xs text-muted-foreground font-medium">
                             icons (need <strong className="text-foreground">{neededForNextOffice}</strong> more {status === 'present' ? `for Office #${myCompleted + 1}` : 'to complete'})
@@ -690,7 +767,7 @@ export const LogisticsPhase = () => {
                               {regionCustomerData.customers
                               .sort((a, b) => a.position - b.position)
                               .map(customer => {
-                                const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
+                                const TechIcon = customer.technology ? techIcon(theme, customer.technology) : null;
 
                                 return (
                                   <div
@@ -698,7 +775,7 @@ export const LogisticsPhase = () => {
                                     className="relative flex flex-col items-center gap-0.5"
                                     title={customer.type === 'price' 
                                       ? `Price Customer - Max ${customer.price}` 
-                                      : `Value Customer - Requires ${customer.technology}`}
+                                      : `Value Customer - Requires ${customer.technology ? techLabel(theme, customer.technology) : ''}`}
                                   >
                                     <div className={`w-9 h-9 flex items-center justify-center rounded-md opacity-50 ${
                                       customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'
@@ -723,34 +800,116 @@ export const LogisticsPhase = () => {
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-2 pt-4 sticky bottom-0 z-30 bg-card/95 backdrop-blur p-3 -mx-6 -mb-6 border-t border-border shadow-2xl sm:static sm:p-0 sm:m-0 sm:shadow-none sm:border-0 sm:bg-transparent">
-            <Button
-              onClick={handleConfirmAllocations}
-              disabled={totalAllocated === 0 || totalAllocated > availableThisTeam || isReadOnlyMode}
-              className="flex-1"
-            >
-              Confirm Allocation ({totalAllocated} icons)
-            </Button>
-            {currentRole !== 'STUDENT' && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleEndTurn}
-                className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
-              >
-                <UserCheck className="h-4 w-4" />
-                End Team Turn
-              </Button>
-            )}
-            <Button
-              onClick={handleClear}
-              variant="outline"
-              disabled={totalAllocated === 0 || isReadOnlyMode}
-            >
-              Clear
-            </Button>
-          </div>
+          {/* Action Buttons or Submitted Status */}
+          {(() => {
+            const isLogisticsSubmitted = Boolean(
+              (teamLogisticsIcons > 0 && iconsSpentThisRound >= teamLogisticsIcons) ||
+                (currentRole === 'STUDENT' && myActionStatus?.status === 'applied')
+            );
+            const selectedTeamName = gameState.teams.find(t => t.id === selectedTeam)?.name || 'Team';
+
+            if (isWaitingForReferee) {
+              return null; // Top alert already displays "Submitted — waiting for facilitator..."
+            }
+
+            if (isLogisticsSubmitted) {
+              return (
+                <Alert className="border-success/40 bg-success/10 text-emerald-900 dark:text-emerald-100 flex items-center gap-2.5 shadow-xs">
+                  <CheckCircle className="h-4 w-4 text-success shrink-0" />
+                  <AlertDescription className="font-semibold text-sm">
+                    Logistics allocation submitted for <strong>{selectedTeamName}</strong> in Round {currentRound}.
+                  </AlertDescription>
+                </Alert>
+              );
+            }
+
+            if (isReadOnlyMode && totalAllocated === 0) {
+              return null;
+            }
+
+            return (
+              <>
+                {iconsRemaining > 0 && totalAllocated > 0 && !isReadOnlyMode && (
+                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200 font-medium">
+                    <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                    <span>
+                      You still have <strong>{iconsRemaining}</strong> unallocated logistics {iconsRemaining === 1 ? 'icon' : 'icons'}. Allocate all {availableThisTeam} icons before confirming, or click below if you wish to forfeit the remaining {iconsRemaining === 1 ? 'icon' : 'icons'}.
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2 pt-4 sticky bottom-0 z-30 bg-card/95 backdrop-blur p-3 -mx-6 -mb-6 border-t border-border shadow-2xl sm:static sm:p-0 sm:m-0 sm:shadow-none sm:border-0 sm:bg-transparent">
+                  <Button
+                    onClick={handleConfirmAllocations}
+                    disabled={availableThisTeam <= 0 || totalAllocated > availableThisTeam || isReadOnlyMode}
+                    variant={iconsRemaining > 0 ? 'outline' : 'default'}
+                    className={`flex-1 ${
+                      iconsRemaining > 0 && totalAllocated > 0
+                        ? 'border-amber-500/60 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-100 font-semibold'
+                        : ''
+                    }`}
+                  >
+                    {iconsRemaining === 0
+                      ? `Confirm Allocation (${totalAllocated} ${totalAllocated === 1 ? 'icon' : 'icons'})`
+                      : totalAllocated > 0
+                      ? `Confirm Partial Allocation (${totalAllocated}/${availableThisTeam} icons)...`
+                      : `End Turn Without Allocating (0/${availableThisTeam} icons)...`}
+                  </Button>
+                  {currentRole !== 'STUDENT' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleEndTurn}
+                      className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
+                    >
+                      <UserCheck className="h-4 w-4" />
+                      End Team Turn
+                    </Button>
+                  )}
+                  <Button
+                    onClick={handleClear}
+                    variant="outline"
+                    disabled={totalAllocated === 0 || isReadOnlyMode}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
+
+          <AlertDialog open={showPartialConfirm} onOpenChange={setShowPartialConfirm}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-5 w-5" />
+                  Unallocated Logistics Icons Remaining
+                </AlertDialogTitle>
+                <AlertDialogDescription className="space-y-2 pt-1">
+                  <span className="block">
+                    <strong>{gameState.teams.find(t => t.id === selectedTeam)?.name || 'Your team'}</strong> still has{' '}
+                    <strong className="text-foreground">
+                      {iconsRemaining} unallocated logistics {iconsRemaining === 1 ? 'icon' : 'icons'}
+                    </strong>{' '}
+                    (allocated {totalAllocated} of {availableThisTeam}).
+                  </span>
+                  <span className="block">
+                    Confirming now will end your logistics turn immediately and forfeit the remaining{' '}
+                    {iconsRemaining} {iconsRemaining === 1 ? 'icon' : 'icons'} for Round {currentRound}.
+                  </span>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Go Back & Allocate All Icons</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={executeConfirmAllocations}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+                >
+                  Confirm & Forfeit {iconsRemaining} {iconsRemaining === 1 ? 'Icon' : 'Icons'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       )}
 
@@ -803,7 +962,7 @@ export const LogisticsPhase = () => {
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <h4 className="font-semibold">{region.name}</h4>
+                          <h4 className="font-semibold">{regionLabel(theme, region.name)}</h4>
                           {isSteveBlocking && (
                             <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-[10px] flex items-center gap-1 font-bold [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
                               <SteveIcon size={12} /> BLOCKED
@@ -883,7 +1042,7 @@ export const LogisticsPhase = () => {
                                variant="outline"
                                className="text-xs"
                              >
-                               {connectedRegion}
+                               {regionLabel(theme, connectedRegion)}
                              </Badge>
                            ))}
                          </div>
@@ -901,7 +1060,7 @@ export const LogisticsPhase = () => {
                               {regionCustomerData.customers
                               .sort((a, b) => a.position - b.position)
                               .map(customer => {
-                                const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
+                                const TechIcon = customer.technology ? techIcon(theme, customer.technology) : null;
 
                                 return (
                                   <div
@@ -909,7 +1068,7 @@ export const LogisticsPhase = () => {
                                     className="relative flex flex-col items-center gap-0.5"
                                     title={customer.type === 'price' 
                                       ? `Price Customer - Max ${customer.price}` 
-                                      : `Value Customer - Requires ${customer.technology}`}
+                                      : `Value Customer - Requires ${customer.technology ? techLabel(theme, customer.technology) : ''}`}
                                   >
                                     <div className={`w-9 h-9 flex items-center justify-center rounded-md opacity-50 ${
                                       customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'

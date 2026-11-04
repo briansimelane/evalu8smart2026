@@ -8,9 +8,11 @@ import { TECHNOLOGIES } from '@/data/combinations';
 import { toast } from 'sonner';
 import { Award, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useGameTheme, techLabel } from '@/lib/gameTheme';
 
 export const PatentTracker = () => {
   const { gameState, updatePatent } = useGame();
+  const theme = useGameTheme();
   const [selectedTech, setSelectedTech] = useState('');
   const [selectedTeam, setSelectedTeam] = useState('');
 
@@ -51,7 +53,7 @@ export const PatentTracker = () => {
                 <SelectContent>
                   {TECHNOLOGIES.filter(tech => !gameState.patents[tech]).map(tech => (
                     <SelectItem key={tech} value={tech}>
-                      {tech}
+                      {techLabel(theme, tech)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -115,7 +117,7 @@ export const PatentTracker = () => {
                       ) : (
                         <div className="h-4 w-4" />
                       )}
-                      <span className="font-semibold">{tech}</span>
+                      <span className="font-semibold">{techLabel(theme, tech)}</span>
                     </div>
                     {team ? (
                       <Badge style={{ backgroundColor: team.color, color: 'white' }}>

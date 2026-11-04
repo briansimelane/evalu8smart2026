@@ -3,6 +3,7 @@ import { Combination } from '@/data/combinations';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
+import type { GameThemeId } from '@/lib/gameTheme';
 
 export type BotProfile = 'BALANCED' | 'RESEARCHER' | 'EXPANDER' | 'PRICE_FIGHTER';
 export type BotDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
@@ -12,6 +13,7 @@ export interface Team {
   name: string;
   color: string;
   ceoName?: string;
+  /** @deprecated Legacy v1 only. Never written in schemaVersion 2. */
   ceoPin?: string;
   status?: string;
   isBot?: boolean;
@@ -20,13 +22,14 @@ export interface Team {
   teamNumber?: number;
 }
 
-export type UserRole = 'ADMIN' | 'FACILITATOR' | 'STUDENT';
+export type UserRole = 'ADMIN' | 'FACILITATOR' | 'STUDENT' | 'VIEWER';
 
 export interface ClassTeam {
   id: string;
   name: string;
   color: string;
   ceoName?: string;
+  /** @deprecated Legacy v1 only. Never written in schemaVersion 2. */
   ceoPin?: string;
   updatedAt?: any;
   isBot?: boolean;
@@ -51,17 +54,144 @@ export interface FacilitatorUser {
 export interface SimulationClass {
   id: string;
   name: string;
+  schemaVersion?: 1 | 2;
+  ownerUid?: string;
+  ownerEmail?: string;
   facilitatorCode: string;
-  teamCodes: Record<string, string>; // teamId -> accessCode
+  viewerCode?: string;
+  teamCodes: Record<string, string>; // teamId -> accessCode (populated from secrets/codes for owner in v2)
   teamRegistry: ClassTeam[];
+  teams?: ClassTeam[]; // v2 public team list (no codes or PINs)
   gameState?: GameState | null; // Optional for backward compatibility with unmigrated classes
   createdAt: string;
   createdByEmail?: string;
   createdByName?: string;
   teamLabelMode?: 'name' | 'code';
+  themeId?: GameThemeId;
   isArchived?: boolean;
   archivedAt?: string;
   syndicateMarksConfig?: SyndicateMarksConfig;
+}
+
+export interface JoinCodeDoc {
+  classId: string;
+  kind: 'team' | 'facilitator' | 'viewer' | 'multiworld';
+  teamId?: string;
+}
+
+export interface ClassSecretsDoc {
+  facilitatorCode?: string;
+  viewerCode: string;
+  teamCodes: Record<string, string>;
+}
+
+export interface ClassMemberDoc {
+  uid: string;
+  role: 'team' | 'viewer' | 'cofacilitator';
+  teamId?: string;
+  code?: string;
+  joinedAt: string;
+}
+
+export interface ClassSeatDoc {
+  ceoUid: string;
+  ceoName: string;
+  pinHash: string;
+  pinHashProof?: string;
+  updatedAt: any;
+}
+
+export interface TurnState {
+  round: number;
+  phase: string;
+  order: string[];
+  index: number;
+}
+
+export interface ClassControlState {
+  gameId?: string;
+  themeId?: GameThemeId;
+  currentRound: number;
+  currentPhase: GamePhase;
+  gameEnded: boolean;
+  stateVersion: number;
+  turn?: TurnState;
+  ruleAdjustments?: RuleAdjustmentsState;
+  combinationsData?: Combination[];
+  botConfig?: {
+    enabled: boolean;
+    seed: number;
+  };
+  botThinking?: Record<string, boolean>;
+  teamLabelMode?: 'name' | 'code';
+  refereeHeartbeatAt?: string;
+  planSubmittedByRound?: Record<number, Record<string, boolean>>;
+  createdAt?: string;
+  updatedAt: string;
+}
+
+export interface ClassWorldState {
+  technologies: Record<string, Technology>;
+  regions: Region[];
+  patents: Record<string, string>;
+  regionLogistics: Record<string, RegionLogistics>;
+  teamResearchProgress: Record<string, TeamResearchProgress>;
+  teamLogisticsProgress: Record<string, TeamLogisticsProgress>;
+  improvementCards: ImprovementCard[];
+  improvementPoolByRound: Record<number, number[]>;
+  researchAllocatedByRound: Record<number, Record<string, number>>;
+  logisticsAllocatedByRound: Record<number, Record<string, number>>;
+  advancedState?: AdvancedRulesState;
+  marksSnapshots?: Record<string, Record<string, RoundMarksSnapshot>>;
+  botActionsLog?: Array<{
+    round: number;
+    phase: string;
+    teamId: string;
+    summary: string;
+    at: string;
+  }>;
+  stateVersion?: number;
+  updatedAt?: string;
+}
+
+export interface TeamPlanDoc {
+  round: number;
+  teamId: string;
+  combination: number;
+  position: number;
+  price: number;
+  productsProduced: number;
+  improvementCards: number;
+  researchIcons: number;
+  logisticsIcons: number;
+  cardUsages?: Record<number, 'use' | 'product' | 'none'>;
+  improvementCardUsage?: 'use' | 'product' | 'none';
+  improvementCardId?: number;
+  submittedAt: string;
+}
+
+export interface TeamActionDoc {
+  round: number;
+  phase: string;
+  teamId: string;
+  payload: {
+    allocations?: Record<string, number>;
+    cardId?: number;
+    customersSold?: string[];
+    nfcSalesUnits?: number;
+    wildcardConversions?: {
+      product?: number;
+      research?: number;
+      logistics?: number;
+      improvement?: number;
+    };
+    steveContribution?: number;
+  };
+  total: number;
+  submittedAt: string;
+  status?: 'applied' | 'rejected';
+  resolvedAt?: string;
+  error?: string;
 }
 
 /** Captured once per round at round close. Facts only — never marks. */
@@ -127,7 +257,6 @@ export interface ImprovementCard {
 export interface RoundData {
   roundNumber: number;
   teamData: Record<string, TeamRoundData>;
-  soldCustomers?: Set<string>; // Track which customers have been sold to in this round
 }
 
 export interface TeamRoundData {
@@ -236,6 +365,7 @@ export interface AdvancedRulesState {
 
 export interface GameState {
   gameId: string;
+  themeId?: GameThemeId;
   teams: Team[];
   currentRound: number;
   rounds: RoundData[];
@@ -270,6 +400,10 @@ export interface GameState {
   }>;
   gameEnded?: boolean;
   stateVersion?: number;
+  schemaVersion?: 1 | 2;
+  turn?: TurnState;
+  refereeHeartbeatAt?: string;
+  planSubmittedByRound?: Record<number, Record<string, boolean>>;
   /** roundNumber (as string key) -> teamId -> snapshot. Written by advanceOnePhase / endGame. */
   marksSnapshots?: Record<string, Record<string, RoundMarksSnapshot>>;
 }

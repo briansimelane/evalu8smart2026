@@ -16,8 +16,12 @@ import { RulesAdjustmentPanel } from '@/components/dashboard/RulesAdjustmentPane
 import { ActionMatrix } from '@/components/multiworld/ActionMatrix';
 import { CombinedLeaderboard } from '@/components/multiworld/CombinedLeaderboard';
 import { mutateWorldState } from '@/lib/multiworld/worldWrite';
-import { advanceOnePhase, getBlockingTeams, PHASE_LABELS, PHASE_SEQUENCE } from '@/lib/phaseEngine';
+import { advanceOnePhase, getBlockingTeams, getNextPhase, PHASE_LABELS, PHASE_SEQUENCE } from '@/lib/phaseEngine';
+import { calculatePlayOrderForState, normalizePhaseName } from '@/lib/turnOrder';
 import { getTeamDisplayLabel } from '@/lib/multiworld/teamLabel';
+import { useApplyGameThemeAttribute } from '@/lib/gameTheme';
+import { useReferee } from '@/hooks/useReferee';
+import { revealPlanningAndAdvanceV2 } from '@/lib/referee/refereeEngine';
 import { cn } from '@/lib/utils';
 import {
   Globe,
@@ -31,6 +35,8 @@ import {
   Bot,
   ShieldAlert,
   ArrowLeft,
+  ArrowRight,
+  Clock,
   Eye,
   Sliders,
   Table as TableIcon,
@@ -59,6 +65,17 @@ function getPhaseAbsoluteStep(gameState: GameState | null): number {
   return (round - 1) * 8 + phaseIdx;
 }
 
+const ChildWorldReferee: React.FC<{ world: WorldSubState }> = ({ world }) => {
+  const isV2 = world.gameState?.schemaVersion === 2;
+  useReferee({
+    classId: world.classId || null,
+    enabled: Boolean(isV2),
+    teams: world.gameState?.teams || [],
+    themeId: world.gameState?.themeId,
+  });
+  return null;
+};
+
 export const MultiWorldControl: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -75,6 +92,9 @@ export const MultiWorldControl: React.FC = () => {
     updateAdvanceMode,
     updateTeamLabelMode
   } = useMultiWorldSession(sessionId || '');
+
+  const activeThemeId = worlds.find(w => w.gameState?.themeId)?.gameState?.themeId ?? session?.themeId;
+  useApplyGameThemeAttribute(activeThemeId);
 
   // Automatically execute bot turns for all worlds in this session
   useMultiWorldBotRunners(worlds);
@@ -167,9 +187,18 @@ export const MultiWorldControl: React.FC = () => {
         targetWorlds.map(async (w) => {
           if (!w.classId) return { key: w.key, success: false, reason: 'Missing classId' };
           try {
-            await mutateWorldState(w.classId, (freshState) => {
-              return advanceOnePhase(freshState, new Date(), { force });
-            });
+            if (
+              w.gameState?.schemaVersion === 2 &&
+              (w.gameState.currentPhase || 'planning').toLowerCase() === 'planning'
+            ) {
+              await revealPlanningAndAdvanceV2(w.classId, w.gameState.teams, w.gameState.themeId, {
+                force,
+              });
+            } else {
+              await mutateWorldState(w.classId, (freshState) => {
+                return advanceOnePhase(freshState, new Date(), { force });
+              });
+            }
             return { key: w.key, success: true };
           } catch (err: any) {
             return { key: w.key, success: false, reason: err.message || 'Advance failed' };
@@ -218,9 +247,22 @@ export const MultiWorldControl: React.FC = () => {
   const handleAdvanceSingleWorld = async (classId: string, worldLabel: string, force: boolean = false) => {
     setIsAdvancing(true);
     try {
-      await mutateWorldState(classId, (freshState) => {
-        return advanceOnePhase(freshState, new Date(), { force });
-      });
+      const targetWorld = worlds.find((w) => w.classId === classId);
+      if (
+        targetWorld?.gameState?.schemaVersion === 2 &&
+        (targetWorld.gameState.currentPhase || 'planning').toLowerCase() === 'planning'
+      ) {
+        await revealPlanningAndAdvanceV2(
+          classId,
+          targetWorld.gameState.teams,
+          targetWorld.gameState.themeId,
+          { force }
+        );
+      } else {
+        await mutateWorldState(classId, (freshState) => {
+          return advanceOnePhase(freshState, new Date(), { force });
+        });
+      }
       toast.success(`Advanced ${worldLabel}!`);
     } catch (err: any) {
       console.error(`Error advancing ${worldLabel}:`, err);
@@ -232,6 +274,9 @@ export const MultiWorldControl: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 md:p-8 font-sans">
+      {worlds.map((w) => (
+        <ChildWorldReferee key={w.classId || w.key} world={w} />
+      ))}
       {/* Top Navigation */}
       <div className="flex flex-col md:flex-row md:items-center justify-between pb-6 mb-6 border-b border-border gap-4">
         <div className="flex items-center gap-4">
@@ -518,6 +563,17 @@ interface WorldCardProps {
   badgeColor: 'purple' | 'blue';
 }
 
+const SHORT_PHASE_LABELS: Record<string, string> = {
+  planning: '1. Plan',
+  production: '2. Prod',
+  improvement: '3. Impr',
+  innovation: '4. Res',
+  expansion: '5. Log',
+  sales: '6. Sales',
+  control: '7. Ctrl',
+  scoring: '8. Score',
+};
+
 const WorldCard: React.FC<WorldCardProps> = ({
   worldKey,
   label,
@@ -540,9 +596,108 @@ const WorldCard: React.FC<WorldCardProps> = ({
     );
   }
 
-  const currentRound = gameState.currentRound;
-  const currentPhase = gameState.currentPhase;
+  const currentRound = gameState.currentRound || 1;
+  const currentPhase = gameState.currentPhase || 'planning';
+  const normPhase = normalizePhaseName(currentPhase);
   const teams = gameState.teams || [];
+  const currentRoundData = gameState.rounds?.find(r => r.roundNumber === currentRound);
+
+  // Compute next phase info
+  const { nextPhase, nextRound, isGameEnd } = getNextPhase(gameState);
+  const nextPhaseLabel = isGameEnd
+    ? 'Game Complete'
+    : nextRound > currentRound
+    ? `Round ${nextRound} — ${PHASE_LABELS[nextPhase]}`
+    : PHASE_LABELS[nextPhase];
+
+  // Compute turn order & active turn
+  const playOrder = calculatePlayOrderForState(gameState, currentRound);
+  const v2Turn =
+    gameState.schemaVersion === 2 &&
+    gameState.turn &&
+    gameState.turn.round === currentRound &&
+    normalizePhaseName(gameState.turn.phase) === normPhase
+      ? gameState.turn
+      : null;
+
+  // Determine sorted order for display
+  const orderedTeams = React.useMemo(() => {
+    if (v2Turn) {
+      const map = new Map(teams.map((t) => [t.id, t]));
+      const list: Team[] = [];
+      v2Turn.order.forEach((tid) => {
+        const found = map.get(tid);
+        if (found) {
+          list.push(found);
+          map.delete(tid);
+        }
+      });
+      map.forEach((t) => list.push(t));
+      return list;
+    }
+    const map = new Map(teams.map((t) => [t.id, t]));
+    const list: Team[] = [];
+    playOrder.forEach((t) => {
+      const found = map.get(t.id);
+      if (found) {
+        list.push(found);
+        map.delete(t.id);
+      }
+    });
+    map.forEach((t) => list.push(t));
+    return list;
+  }, [teams, v2Turn, playOrder]);
+
+  const getTeamStatus = (team: Team, idx: number) => {
+    const tData = currentRoundData?.teamData?.[team.id];
+    let isSubmitted = false;
+    let isActiveTurn = false;
+    let hasAllowance = true;
+
+    if (normPhase === 'planning') {
+      isSubmitted = Boolean(
+        (tData && tData.price !== undefined && tData.price !== null && tData.price > 0) ||
+        gameState.planSubmittedByRound?.[currentRound]?.[team.id]
+      );
+    } else if (['improvement', 'innovation', 'expansion', 'sales'].includes(normPhase)) {
+      if (v2Turn) {
+        const orderIdx = v2Turn.order.indexOf(team.id);
+        if (orderIdx === -1) {
+          hasAllowance = false;
+          isSubmitted = true;
+        } else if (orderIdx < v2Turn.index) {
+          isSubmitted = true;
+        } else if (orderIdx === v2Turn.index) {
+          isActiveTurn = true;
+        }
+      } else {
+        if (normPhase === 'improvement') {
+          hasAllowance = currentRound < 5 && (tData?.improvementCards || 0) > 0;
+          isSubmitted = !hasAllowance || (gameState.improvementCards || []).some(
+            c => (c.availableForTeam === team.id || c.usedBy === team.id) && c.allocatedInRound === currentRound
+          );
+        } else if (normPhase === 'innovation') {
+          const icons = tData?.researchIcons || 0;
+          hasAllowance = icons > 0;
+          const spent = (gameState.researchAllocatedByRound || {})[currentRound]?.[team.id] || 0;
+          isSubmitted = !hasAllowance || spent >= icons;
+        } else if (normPhase === 'expansion') {
+          const icons = tData?.logisticsIcons || 0;
+          hasAllowance = icons > 0;
+          const spent = (gameState.logisticsAllocatedByRound || {})[currentRound]?.[team.id] || 0;
+          isSubmitted = !hasAllowance || spent >= icons;
+        } else if (normPhase === 'sales') {
+          const produced = tData?.productsProduced || 0;
+          hasAllowance = produced > 0;
+          isSubmitted = !hasAllowance || Boolean(tData?.customersSold);
+        }
+      }
+    } else {
+      isSubmitted = true;
+    }
+
+    return { isSubmitted, isActiveTurn, hasAllowance };
+  };
 
   return (
     <Card className="bg-card border-border shadow-sm flex flex-col">
@@ -571,36 +726,86 @@ const WorldCard: React.FC<WorldCardProps> = ({
 
       <CardContent className="p-5 flex-1 space-y-5">
         {/* Phase & Round Status */}
-        <div className="flex items-center justify-between p-3.5 rounded-lg bg-muted/40 border border-border">
-          <div>
-            <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Current Status</div>
-            <div className="text-base font-bold text-foreground mt-0.5">
-              Round {currentRound} — <span className="text-purple-700 dark:text-purple-400 font-extrabold">{PHASE_LABELS[currentPhase] || currentPhase}</span>
+        <div className="space-y-3 p-3.5 rounded-lg bg-muted/40 border border-border">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider flex items-center gap-1.5 flex-wrap">
+                <span>Phase Progression</span>
+                <ArrowRight className="h-3 w-3 text-muted-foreground/60" />
+                <span className="text-purple-700 dark:text-purple-300 font-semibold lowercase">
+                  moving to {isGameEnd ? 'game end' : nextRound > currentRound ? `round ${nextRound} ${PHASE_LABELS[nextPhase]}` : PHASE_LABELS[nextPhase]}
+                </span>
+              </div>
+              <div className="text-base font-extrabold text-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                <span>Round {currentRound} — <span className="text-purple-700 dark:text-purple-400">{PHASE_LABELS[currentPhase] || currentPhase}</span></span>
+                <Badge variant="outline" className="text-[10px] font-bold bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20">
+                  Next: {nextPhase ? (SHORT_PHASE_LABELS[nextPhase] || nextPhase) : 'End'}
+                </Badge>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={onAdvance}
-              disabled={isAdvancing}
-              className="bg-background hover:bg-muted text-foreground border border-border gap-1.5 text-xs font-semibold shadow-xs"
-            >
-              <Play className="h-3.5 w-3.5 text-purple-600" />
-              Advance
-            </Button>
-            {!readiness.isReady && (
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 size="sm"
-                variant="outline"
-                onClick={onForceAdvance}
+                onClick={onAdvance}
                 disabled={isAdvancing}
-                className="border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-bold gap-1"
-                title="Force advance and apply $5 default plan to unsubmitted human teams"
+                className="bg-background hover:bg-muted text-foreground border border-border gap-1.5 text-xs font-semibold shadow-xs"
               >
-                <Zap className="h-3.5 w-3.5 text-amber-500" />
-                Force
+                <Play className="h-3.5 w-3.5 text-purple-600" />
+                Advance
               </Button>
-            )}
+              {!readiness.isReady && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onForceAdvance}
+                  disabled={isAdvancing}
+                  className="border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-bold gap-1"
+                  title="Force advance and apply $5 default plan to unsubmitted human teams"
+                >
+                  <Zap className="h-3.5 w-3.5 text-amber-500" />
+                  Force
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* 8-Phase Stepper Sequence */}
+          <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 pt-1 border-t border-border/50">
+            {PHASE_SEQUENCE.map((phaseKey, pIdx) => {
+              const isCurrent = normPhase === phaseKey;
+              const isNext = !isGameEnd && nextPhase === phaseKey;
+              const isPast = pIdx < PHASE_SEQUENCE.indexOf(normPhase as any);
+              const isSkipped = currentRound >= 5 && phaseKey === 'improvement';
+
+              return (
+                <div
+                  key={phaseKey}
+                  className={cn(
+                    "px-1 py-1 rounded text-center text-[10px] transition-all flex flex-col items-center justify-center min-h-[34px]",
+                    isCurrent
+                      ? "bg-purple-600 text-white font-extrabold shadow-xs ring-2 ring-purple-600/30"
+                      : isNext
+                      ? "bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 font-bold"
+                      : isPast
+                      ? "bg-muted/70 text-muted-foreground line-through opacity-60"
+                      : isSkipped
+                      ? "opacity-30 line-through text-muted-foreground"
+                      : "bg-background/60 text-muted-foreground border border-transparent"
+                  )}
+                  title={`${PHASE_LABELS[phaseKey] || phaseKey}${isCurrent ? ' (Active)' : isNext ? ' (Moving here next)' : ''}`}
+                >
+                  <span className="truncate w-full leading-tight font-medium">
+                    {SHORT_PHASE_LABELS[phaseKey] || phaseKey}
+                  </span>
+                  {isCurrent && (
+                    <span className="text-[8px] uppercase tracking-wider font-black text-purple-100">Live</span>
+                  )}
+                  {isNext && (
+                    <span className="text-[8px] uppercase tracking-wider font-bold text-purple-600 dark:text-purple-400">Next</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -612,23 +817,47 @@ const WorldCard: React.FC<WorldCardProps> = ({
           </div>
         )}
 
-        {/* Team Roster & Scores */}
+        {/* Team Roster & Turn Order */}
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Team Roster ({teams.length})
+          <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <span>Team Turn Order & Submissions ({teams.length})</span>
+            {normPhase === 'planning' ? (
+              <span className="text-[10px] text-muted-foreground font-normal lowercase italic">concurrent planning</span>
+            ) : v2Turn ? (
+              <span className="text-[10px] text-purple-700 dark:text-purple-300 font-semibold">turn-based sequence</span>
+            ) : null}
           </div>
           <div className="space-y-1.5">
-            {teams.map((team, tIdx) => {
+            {orderedTeams.map((team, tIdx) => {
               const scoreData = calculateTeamTotalScore(team.id, currentRound, gameState);
               const displayLabel = getTeamDisplayLabel(team, worldKey, labelMode);
               const isBot = team.isBot || (team as any).accessCode === 'BOT' || team.name?.toLowerCase().includes('bot');
+              const { isSubmitted, isActiveTurn, hasAllowance } = getTeamStatus(team, tIdx);
 
               return (
                 <div
                   key={team.id}
-                  className="flex items-center justify-between p-2.5 rounded-lg bg-background border border-border text-xs shadow-xs"
+                  className={cn(
+                    "flex items-center justify-between p-2.5 rounded-lg border text-xs shadow-xs transition-all",
+                    isActiveTurn
+                      ? "bg-amber-500/10 border-amber-500/60 ring-1 ring-amber-500/40"
+                      : "bg-background border-border"
+                  )}
                 >
                   <div className="flex items-center gap-2">
+                    {/* Turn Order Badge */}
+                    <span
+                      className={cn(
+                        "w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[10px] shrink-0 border",
+                        isActiveTurn
+                          ? "bg-amber-500 text-white border-amber-600"
+                          : "bg-muted text-muted-foreground border-border"
+                      )}
+                      title={`Turn Order #${tIdx + 1}`}
+                    >
+                      #{tIdx + 1}
+                    </span>
+
                     <span className="w-3.5 h-3.5 rounded-full shrink-0 border border-border" style={{ backgroundColor: team.color }} />
                     <span className="font-bold text-foreground">{displayLabel}</span>
                     {isBot ? (
@@ -642,9 +871,30 @@ const WorldCard: React.FC<WorldCardProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <span className="text-muted-foreground text-[11px]">Score: </span>
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    {/* Submission / Turn Status */}
+                    {isActiveTurn ? (
+                      <Badge className="bg-amber-500 text-white border-amber-600 font-bold text-[10px] py-0.5 px-2 flex items-center gap-1 animate-pulse">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                        Active Turn
+                      </Badge>
+                    ) : isSubmitted ? (
+                      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-semibold text-[10px] py-0.5 px-1.5 sm:px-2 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                        Submitted
+                      </Badge>
+                    ) : !hasAllowance ? (
+                      <Badge variant="outline" className="text-muted-foreground text-[10px] py-0 px-1.5 opacity-60">
+                        0 Allowance
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-amber-400/40 text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-950/20 text-[10px] py-0.5 px-1.5 sm:px-2 flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-amber-500 shrink-0" />
+                        {normPhase === 'planning' ? 'Planning...' : 'Waiting'}
+                      </Badge>
+                    )}
+
+                    <div className="text-right pl-2 border-l border-border/60">
                       <span className="font-bold text-amber-600 text-xs">{scoreData.totalScore} pts</span>
                     </div>
                   </div>

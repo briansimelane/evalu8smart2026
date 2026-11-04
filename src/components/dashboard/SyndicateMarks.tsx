@@ -32,11 +32,13 @@ import {
   Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useGameTheme, techLabel } from '@/lib/gameTheme';
 
 export const SyndicateMarks: React.FC = () => {
   const gameContext = useGame();
   const { gameState } = gameContext;
   const { activeClass, updateClassMarksConfig } = useSession();
+  const theme = useGameTheme(gameState ?? activeClass);
 
   // Config resolution
   const savedConfig = activeClass?.syndicateMarksConfig;
@@ -252,7 +254,7 @@ export const SyndicateMarks: React.FC = () => {
     try {
       const { generateTeamMarksPdf } = await import('@/lib/marks/marksPdf');
       const className = activeClass?.name || gameState?.gameId || 'Class World';
-      await generateTeamMarksPdf(team, worldResult, className);
+      await generateTeamMarksPdf(team, worldResult, className, theme);
       toast.success(`PDF exported for ${team.teamName}`);
     } catch (err: any) {
       console.error('Error generating team PDF:', err);
@@ -268,7 +270,7 @@ export const SyndicateMarks: React.FC = () => {
       const className = activeClass?.name || gameState?.gameId || 'Class World';
       await exportAllTeamPdfs(worldResult, className, (curr, total) => {
         setExportProgress(`Generating ${curr} of ${total}...`);
-      });
+      }, theme);
       toast.success('All team PDFs exported!');
     } catch (err: any) {
       console.error('Error batch exporting PDFs:', err);
@@ -883,7 +885,7 @@ export const SyndicateMarks: React.FC = () => {
           </CollapsibleTrigger>
           <CollapsibleContent className="p-4 pt-0 border-t border-border">
             <p className="text-xs text-muted-foreground leading-relaxed pt-3">
-              Each criterion is totalled across rounds. For each criterion we calculate the world average and standard deviation across the teams in this world, and express each team's total as a number of standard deviations above or below the average (z). The weighted z-scores are combined using the criterion weights. The mark is the average mark plus the marks-per-standard-deviation multiplied by the combined z-score. Lost products are a penalty only: the team with the most lost products loses the full penalty, others lose a share in proportion to their losses. Wifi carry-over removes lost products only in rounds where the Permanent Tech Benefits rule was on. Class adjustments are added last and the mark is limited to 0–100%.
+              Each criterion is totalled across rounds. For each criterion we calculate the world average and standard deviation across the teams in this world, and express each team's total as a number of standard deviations above or below the average (z). The weighted z-scores are combined using the criterion weights. The mark is the average mark plus the marks-per-standard-deviation multiplied by the combined z-score. Lost products are a penalty only: the team with the most lost products loses the full penalty, others lose a share in proportion to their losses. {techLabel(theme, 'Wifi')} carry-over removes lost products only in rounds where the Permanent Tech Benefits rule was on. Class adjustments are added last and the mark is limited to 0–100%.
             </p>
           </CollapsibleContent>
         </Collapsible>

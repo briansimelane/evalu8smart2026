@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/contexts/SessionContext';
+import { ensureSignedIn } from '@/demo/demoAuth';
 import { KeyRound, ArrowRight, Mail, Lock, UserCheck, Shield } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -37,6 +38,8 @@ export const Login: React.FC = () => {
           navigate('/admin');
         } else if (result.role === 'FACILITATOR') {
           navigate('/facilitator/classes');
+        } else if (result.role === 'VIEWER') {
+          navigate(`/viewer/${code.trim().toUpperCase()}`);
         } else {
           navigate('/dashboard');
         }
@@ -139,9 +142,17 @@ export const Login: React.FC = () => {
                       className="pl-10 py-3 bg-background border-border text-foreground rounded-lg focus:ring-ring focus:border-ring uppercase tracking-widest font-mono text-center placeholder:normal-case placeholder:tracking-normal placeholder:font-sans"
                       placeholder="e.g. TM-GREEN-1234"
                       value={code}
+                      onFocus={() => {
+                        ensureSignedIn().catch(() => {});
+                      }}
                       onChange={(e) => {
-                        setCode(e.target.value);
+                        const val = e.target.value;
+                        setCode(val);
                         setStudentError('');
+                        if (val.length > 0) {
+                          // Pre-warm Firebase Auth while the user is typing/pasting their access code
+                          ensureSignedIn().catch(() => {});
+                        }
                       }}
                     />
                   </div>

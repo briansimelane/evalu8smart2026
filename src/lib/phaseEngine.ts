@@ -2,6 +2,7 @@ import { GameState, GamePhase, TeamRoundData } from '@/types/game';
 import { calculatePlanStats } from '@/lib/rules';
 import { COMBINATIONS } from '@/data/combinations';
 import { withMarksSnapshot } from '@/lib/marks/marksSnapshot';
+import { computeTurnOrder } from '@/lib/turnOrder';
 
 export const PHASE_SEQUENCE: GamePhase[] = [
   'planning',
@@ -165,6 +166,7 @@ export function advanceOnePhase(state: GameState, now: Date = new Date(), option
     }
   }
 
+  nextState.turn = computeTurnOrder(nextState, nextState.currentPhase);
   nextState.updatedAt = now;
   return nextState;
 }
@@ -184,7 +186,11 @@ export function getBlockingTeams(state: GameState): { teamId: string; name: stri
     const tData = roundData?.teamData[team.id];
 
     if (phase === 'planning') {
-      if (!tData || tData.price === undefined || tData.price === null || tData.price === 0) {
+      const hasPlan = Boolean(
+        (tData && tData.price !== undefined && tData.price !== null && tData.price > 0) ||
+        state.planSubmittedByRound?.[round]?.[team.id]
+      );
+      if (!hasPlan) {
         blocking.push({ teamId: team.id, name: team.name, reason: 'Plan not submitted' });
       }
     } else if (phase === 'improvement') {

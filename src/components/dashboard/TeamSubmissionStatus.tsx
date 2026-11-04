@@ -33,7 +33,10 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
   const teamsStatus = teamsList.map(team => {
     const liveTeamDoc = currentClassTeams[team.id];
     const ceoName = liveTeamDoc?.ceoName || team.ceoName || null;
-    const hasSubmitted = !!submittedTeamDataMap[team.id];
+    const hasSubmitted = Boolean(
+      submittedTeamDataMap[team.id] ||
+      gameState.planSubmittedByRound?.[activeRoundNumber]?.[team.id]
+    );
 
     return {
       ...team,
@@ -46,9 +49,10 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
   const submittedCount = teamsStatus.filter(t => t.hasSubmitted).length;
   const progressPercent = totalTeams > 0 ? Math.round((submittedCount / totalTeams) * 100) : 0;
   const allSubmitted = submittedCount === totalTeams && totalTeams > 0;
+  const isPlanningPhase = activePhase.toLowerCase() === 'planning';
 
-  // Once all teams have submitted, hide this submission status box completely
-  if (allSubmitted) return null;
+  // Once all teams have submitted and the facilitator has advanced past planning, hide this submission status box
+  if (allSubmitted && !isPlanningPhase) return null;
 
   if (isCompact) {
     const prevRound = activeRoundNumber - 1;
@@ -58,14 +62,20 @@ export const TeamSubmissionStatus: React.FC<TeamSubmissionStatusProps> = ({ tabN
           <Clock className="h-4 w-4 text-warning dark:text-warning flex-shrink-0 animate-pulse" />
           <span>
             {prevRound > 0 ? (
-              <>Showing <strong>Round {prevRound}</strong> results while Round {activeRoundNumber} decisions are being submitted.</>
+              <>
+                Showing <strong>Round {prevRound}</strong> results while Round {activeRoundNumber}{' '}
+                {allSubmitted ? 'waits for the facilitator to advance to Production.' : 'decisions are being submitted.'}
+              </>
             ) : (
-              <>Round {activeRoundNumber} results will unlock once all teams submit plans.</>
+              <>
+                Round {activeRoundNumber} results will unlock once{' '}
+                {allSubmitted ? 'the facilitator advances to Production.' : 'all teams submit plans.'}
+              </>
             )}
           </span>
         </div>
         <Badge variant="outline" className="bg-warning/20 text-warning dark:text-warning border-warning/40 text-[10px] font-bold">
-          Submissions Pending ({submittedCount}/{totalTeams})
+          {allSubmitted ? 'Awaiting Production Phase' : `Submissions Pending (${submittedCount}/${totalTeams})`}
         </Badge>
       </div>
     );

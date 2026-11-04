@@ -9,15 +9,19 @@ import {
   onAuthStateChanged 
 } from 'firebase/auth';
 import { db, auth } from '@/lib/firebase';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, deleteField, updateDoc, getDocs } from 'firebase/firestore';
-import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, BotProfile, BotDifficulty, FacilitatorUser, SyndicateMarksConfig } from '@/types/game';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, getDoc, writeBatch, runTransaction, serverTimestamp, deleteField, updateDoc, getDocs, query, where } from 'firebase/firestore';
+import { SimulationClass, ClassTeam, UserRole, Team, GameState, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, BotProfile, BotDifficulty, FacilitatorUser, SyndicateMarksConfig, ClassSeatDoc, ClassSecretsDoc, JoinCodeDoc } from '@/types/game';
 import { toast } from 'sonner';
 import { REGIONS, TECHNOLOGIES, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS } from '@/data/improvements';
 import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
 import { removeUndefined } from '@/lib/utils';
 import { buildInitialGameState } from '@/lib/initialGameState';
+import { DEFAULT_GAME_THEME_ID, GameThemeId } from '@/lib/gameTheme';
 import { isDemoPathname } from '@/demo/useIsDemoRoute';
+import { ensureSignedIn } from '@/demo/demoAuth';
+import { generateJoinCode, hashCeoPin } from '@/lib/security';
+import { splitGameState } from '@/lib/v2State';
 
 export const MASTER_FACILITATOR_EMAIL = 'brian@learningsims.co.za';
 
@@ -27,6 +31,8 @@ interface SessionContextType {
   currentTeamId: string | null;
   currentUserEmail: string | null;
   currentUserName: string | null;
+  authUid: string | null;
+  isAuthReady: boolean;
   isMasterFacilitator: boolean;
   facilitators: FacilitatorUser[];
   classes: SimulationClass[];
@@ -48,7 +54,7 @@ interface SessionContextType {
   deleteFacilitatorAccount: (uid: string, email: string) => Promise<{ success: boolean; message?: string }>;
   sendFacilitatorPasswordReset: (email: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
-  createClass: (name: string, teams: Team[]) => Promise<string>;
+  createClass: (name: string, teams: Team[], themeId?: GameThemeId) => Promise<string>;
   archiveClass: (classId: string) => Promise<void>;
   restoreClass: (classId: string) => Promise<void>;
   deleteClassPermanently: (classId: string) => Promise<void>;
@@ -64,7 +70,9 @@ interface SessionContextType {
   updateClassMarksConfig: (classId: string, config: SyndicateMarksConfig) => Promise<void>;
 }
 
-const SessionContext = createContext<SessionContextType | undefined>(undefined);
+const SessionContext: React.Context<SessionContextType | undefined> =
+  (globalThis as any).__EVALU8_SESSION_CONTEXT__ ||
+  ((globalThis as any).__EVALU8_SESSION_CONTEXT__ = createContext<SessionContextType | undefined>(undefined));
 
 export const useSession = () => {
   const context = useContext(SessionContext);
@@ -75,54 +83,154 @@ export const useSession = () => {
 };
 
 export const SessionProvider = ({ children }: { children: ReactNode }) => {
-  const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
-  const [currentClassId, setCurrentClassId] = useState<string | null>(null);
-  const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
+  const [currentRole, setCurrentRole] = useState<UserRole | null>(() => {
+    const savedEmail = localStorage.getItem('evalu8_user_email');
+    if (savedEmail && savedEmail.trim().toLowerCase() === MASTER_FACILITATOR_EMAIL) {
+      return 'ADMIN';
+    }
+    return (localStorage.getItem('evalu8_role') as UserRole | null) || null;
+  });
+  const [currentClassId, setCurrentClassId] = useState<string | null>(
+    () => localStorage.getItem('evalu8_class_id') || null
+  );
+  const [currentTeamId, setCurrentTeamId] = useState<string | null>(
+    () => localStorage.getItem('evalu8_team_id') || null
+  );
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(localStorage.getItem('evalu8_user_email'));
   const [currentUserName, setCurrentUserName] = useState<string | null>(localStorage.getItem('evalu8_user_name'));
+  const [authUid, setAuthUid] = useState<string | null>(
+    auth.currentUser?.uid || localStorage.getItem('evalu8_anon_fallback_uid') || null
+  );
+  const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
   const [facilitators, setFacilitators] = useState<FacilitatorUser[]>([]);
-  const [classes, setClasses] = useState<SimulationClass[]>([]);
+  const [rawClasses, setRawClasses] = useState<SimulationClass[]>([]);
+  const [classSecretsMap, setClassSecretsMap] = useState<Record<string, ClassSecretsDoc>>({});
   const [classesLoaded, setClassesLoaded] = useState(false);
   const [classesLoadError, setClassesLoadError] = useState<any>(null);
-  const [activeClass, setActiveClass] = useState<SimulationClass | null>(null);
+  const [activeClass, setActiveClass] = useState<SimulationClass | null>(() => {
+    try {
+      const cached = localStorage.getItem('evalu8_active_class_cache');
+      const savedClassId = localStorage.getItem('evalu8_class_id');
+      if (cached && savedClassId) {
+        const parsed = JSON.parse(cached) as SimulationClass;
+        if (parsed && parsed.id === savedClassId) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return null;
+  });
   const [currentClassTeams, setCurrentClassTeams] = useState<Record<string, ClassTeam>>({});
+  const [currentClassSeats, setCurrentClassSeats] = useState<Record<string, ClassSeatDoc>>({});
   const isDemoRoute = isDemoPathname();
 
   const isMasterFacilitator = useMemo(() => {
     return (currentUserEmail || '').trim().toLowerCase() === MASTER_FACILITATOR_EMAIL || currentRole === 'ADMIN';
   }, [currentUserEmail, currentRole]);
 
-  // CEO state from localStorage
+  // Enrich v2 classes in memory with their secrets/codes for facilitator/admin views
+  const classes = useMemo(() => {
+    return rawClasses.map((cls) => {
+      if (cls.schemaVersion === 2 && classSecretsMap[cls.id]) {
+        const secrets = classSecretsMap[cls.id];
+        return {
+          ...cls,
+          viewerCode: secrets.viewerCode,
+          facilitatorCode: secrets.viewerCode || cls.facilitatorCode || '',
+          teamCodes: secrets.teamCodes || cls.teamCodes || {},
+        };
+      }
+      return cls;
+    });
+  }, [rawClasses, classSecretsMap]);
+
+  // CEO state from localStorage (used for legacy schemaVersion: 1 classes only)
   const [localCeoPin, setLocalCeoPin] = useState<string | null>(localStorage.getItem('evalu8_ceo_pin'));
 
   // Listen to Firebase Auth state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user?.isAnonymous) return;
+    const ensureMemberDocIfNeeded = async (
+      uid: string,
+      classId: string | null,
+      role: UserRole | null,
+      teamId: string | null,
+      joinCode: string | null
+    ) => {
+      if (!uid || !classId || !joinCode || (role !== 'STUDENT' && role !== 'VIEWER')) return;
+      const targetRole = role === 'STUDENT' ? 'team' : 'viewer';
+      const syncKey = `${uid}:${classId}:${targetRole}:${teamId || ''}:${joinCode}`;
+      if (sessionStorage.getItem('evalu8_member_synced_key') === syncKey) {
+        return;
+      }
+      try {
+        const memberRef = doc(db, 'classes', classId, 'members', uid);
+        await setDoc(
+          memberRef,
+          removeUndefined({
+            uid,
+            role: targetRole,
+            teamId: targetRole === 'team' ? teamId || undefined : undefined,
+            code: joinCode,
+            joinedAt: new Date().toISOString(),
+          })
+        );
+        sessionStorage.setItem('evalu8_member_synced_key', syncKey);
+      } catch {}
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const savedRole = localStorage.getItem('evalu8_role') as UserRole | null;
+      const savedClassId = localStorage.getItem('evalu8_class_id');
+      const savedTeamId = localStorage.getItem('evalu8_team_id');
+      const savedJoinCode = localStorage.getItem('evalu8_join_code');
+      const isGuestEmail = Boolean(user?.email?.endsWith('@session.evalu8smart.local'));
+
+      if (!user && (savedRole === 'STUDENT' || savedRole === 'VIEWER')) {
+        try {
+          const uid = await ensureSignedIn();
+          setAuthUid(uid);
+          await ensureMemberDocIfNeeded(uid, savedClassId, savedRole, savedTeamId, savedJoinCode);
+        } catch {}
+        setIsAuthReady(true);
+        return;
+      }
+
+      const resolvedUid = user?.uid || localStorage.getItem('evalu8_anon_fallback_uid') || null;
+      setAuthUid(resolvedUid);
+
+      if (user?.isAnonymous || isGuestEmail) {
+        await ensureMemberDocIfNeeded(user!.uid, savedClassId, savedRole, savedTeamId, savedJoinCode);
+        setIsAuthReady(true);
+        return;
+      }
+
       if (user) {
         const emailLower = (user.email || '').trim().toLowerCase();
-        setCurrentUserEmail(user.email);
-        localStorage.setItem('evalu8_user_email', user.email || '');
-        if (emailLower === MASTER_FACILITATOR_EMAIL) {
-          setCurrentRole('ADMIN');
-          localStorage.setItem('evalu8_role', 'ADMIN');
-          if (!localStorage.getItem('evalu8_user_name')) {
-            setCurrentUserName('Brian Simelane (Master Facilitator)');
-            localStorage.setItem('evalu8_user_name', 'Brian Simelane (Master Facilitator)');
+        if (savedRole !== 'STUDENT' && savedRole !== 'VIEWER') {
+          setCurrentUserEmail(user.email);
+          localStorage.setItem('evalu8_user_email', user.email || '');
+          if (emailLower === MASTER_FACILITATOR_EMAIL) {
+            setCurrentRole('ADMIN');
+            localStorage.setItem('evalu8_role', 'ADMIN');
+            if (!localStorage.getItem('evalu8_user_name')) {
+              setCurrentUserName('Brian Simelane (Master Facilitator)');
+              localStorage.setItem('evalu8_user_name', 'Brian Simelane (Master Facilitator)');
+            }
           }
         }
       } else if (!localStorage.getItem('evalu8_role')) {
         setCurrentUserEmail(null);
         setCurrentUserName(null);
       }
+      setIsAuthReady(true);
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Listen to facilitators collection in Firestore and ensure Master Facilitator is always present
+  // Listen to facilitators collection in Firestore when signed in as staff
   useEffect(() => {
-    if (isDemoRoute) return;
+    if (isDemoRoute || !authUid || (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN')) return;
 
     const unsubscribe = onSnapshot(collection(db, 'facilitators'), (snapshot) => {
       const list: FacilitatorUser[] = [];
@@ -172,7 +280,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, [isDemoRoute]);
+  }, [isDemoRoute, authUid, currentRole]);
 
   // Real-time check: if a logged-in facilitator is paused or deleted by Master Facilitator, log them out
   useEffect(() => {
@@ -211,37 +319,196 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       if (teamId) setCurrentTeamId(teamId);
       if (userEmail) setCurrentUserEmail(userEmail);
       if (userName) setCurrentUserName(userName);
+      if (role === 'STUDENT' || role === 'VIEWER') {
+        ensureSignedIn()
+          .then((uid) => setAuthUid(uid))
+          .catch(() => {});
+      }
     }
   }, []);
 
-  // Listen to classes identity collection in Firestore
+  // Listen to classes identity collection in Firestore ONLY for facilitators/admin
   useEffect(() => {
     if (isDemoRoute) {
       setClassesLoaded(true);
       return;
     }
 
-    const unsubscribe = onSnapshot(collection(db, 'classes'), (snapshot) => {
-      const classList: SimulationClass[] = [];
-      snapshot.forEach((docSnap) => {
-        classList.push({ id: docSnap.id, ...docSnap.data() } as SimulationClass);
-      });
-      setClasses(classList);
+    if (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') {
       setClassesLoaded(true);
-    }, (error) => {
-      console.error('Error fetching classes:', error);
-      setClassesLoadError(error);
-      setClassesLoaded(true);
-    });
-
-    return () => unsubscribe();
-  }, [isDemoRoute]);
-
-  // Listen to active class teams subcollection in Firestore
-  useEffect(() => {
-    if (isDemoRoute || !currentClassId) {
-      setCurrentClassTeams({});
       return;
+    }
+
+    if (!authUid) {
+      return;
+    }
+
+    if (isMasterFacilitator) {
+      const unsubscribe = onSnapshot(collection(db, 'classes'), (snapshot) => {
+        const classList: SimulationClass[] = [];
+        snapshot.forEach((docSnap) => {
+          classList.push({ id: docSnap.id, ...docSnap.data() } as SimulationClass);
+        });
+        setRawClasses(classList);
+        setClassesLoaded(true);
+      }, (error) => {
+        console.error('Error fetching classes:', error);
+        setClassesLoadError(error);
+        setClassesLoaded(true);
+      });
+      return () => unsubscribe();
+    }
+
+    // Standard facilitator: subscribe to owned v2 classes + legacy v1 classes
+    let ownedMap: Record<string, SimulationClass> = {};
+    let legacyMap: Record<string, SimulationClass> = {};
+
+    const syncMerged = () => {
+      const merged = { ...legacyMap, ...ownedMap };
+      setRawClasses(Object.values(merged));
+      setClassesLoaded(true);
+    };
+
+    const unsubOwned = onSnapshot(
+      query(collection(db, 'classes'), where('ownerUid', '==', authUid)),
+      (snapshot) => {
+        ownedMap = {};
+        snapshot.forEach((docSnap) => {
+          ownedMap[docSnap.id] = { id: docSnap.id, ...docSnap.data() } as SimulationClass;
+        });
+        syncMerged();
+      },
+      (error) => {
+        console.error('Error fetching owned classes:', error);
+        setClassesLoadError(error);
+        setClassesLoaded(true);
+      }
+    );
+
+    const unsubLegacy = onSnapshot(
+      query(collection(db, 'classes'), where('schemaVersion', '==', 1)),
+      (snapshot) => {
+        legacyMap = {};
+        snapshot.forEach((docSnap) => {
+          legacyMap[docSnap.id] = { id: docSnap.id, ...docSnap.data() } as SimulationClass;
+        });
+        syncMerged();
+      },
+      (error) => {
+        console.warn('Error fetching legacy classes:', error);
+        syncMerged();
+      }
+    );
+
+    return () => {
+      unsubOwned();
+      unsubLegacy();
+    };
+  }, [isDemoRoute, currentRole, authUid, isMasterFacilitator]);
+
+  // Subscribe to secrets/codes for v2 classes when logged in as facilitator/admin
+  useEffect(() => {
+    if (isDemoRoute || (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') || !authUid) {
+      setClassSecretsMap({});
+      return;
+    }
+
+    const v2ClassIds = rawClasses.filter(c => c.schemaVersion === 2).map(c => c.id);
+    if (v2ClassIds.length === 0) return;
+
+    const unsubs = v2ClassIds.map((clsId) =>
+      onSnapshot(
+        doc(db, 'classes', clsId, 'secrets', 'codes'),
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data() as ClassSecretsDoc;
+            setClassSecretsMap(prev => ({ ...prev, [clsId]: data }));
+          }
+        },
+        () => {}
+      )
+    );
+
+    return () => {
+      unsubs.forEach(u => u());
+    };
+  }, [isDemoRoute, currentRole, authUid, rawClasses.map(c => `${c.id}:${c.schemaVersion}`).join(',')]);
+
+  // Listen to active class seats (v2) or teams (v1) subcollection in Firestore
+  useEffect(() => {
+    if (isDemoRoute || !currentClassId || !isAuthReady) {
+      if (!currentClassId || isDemoRoute) {
+        setCurrentClassTeams({});
+        setCurrentClassSeats({});
+      }
+      return;
+    }
+
+    if (activeClass?.schemaVersion === 2) {
+      if (currentRole === 'VIEWER') {
+        const teamsMap: Record<string, ClassTeam> = {};
+        (activeClass.teamRegistry || []).forEach((regTeam) => {
+          teamsMap[regTeam.id] = { ...regTeam, ceoName: '', ceoPin: '' };
+        });
+        setCurrentClassTeams(teamsMap);
+        return;
+      }
+
+      if (currentRole === 'STUDENT') {
+        if (!currentTeamId) return;
+        const unsubscribeMySeat = onSnapshot(
+          doc(db, 'classes', currentClassId, 'seats', currentTeamId),
+          (docSnap) => {
+            const seat = docSnap.exists() ? (docSnap.data() as ClassSeatDoc) : undefined;
+            setCurrentClassSeats((prev) => {
+              const next = { ...prev };
+              if (seat) {
+                next[currentTeamId] = seat;
+              } else {
+                delete next[currentTeamId];
+              }
+              return next;
+            });
+            const teamsMap: Record<string, ClassTeam> = {};
+            (activeClass.teamRegistry || []).forEach((regTeam) => {
+              const s = regTeam.id === currentTeamId ? seat : undefined;
+              teamsMap[regTeam.id] = {
+                ...regTeam,
+                ceoName: s?.ceoName || '',
+                ceoPin: s ? 'HASHED' : '',
+              };
+            });
+            setCurrentClassTeams(teamsMap);
+          },
+          (error) => {
+            console.warn('Error fetching student team seat doc:', error);
+          }
+        );
+        return () => unsubscribeMySeat();
+      }
+
+      const unsubscribeSeats = onSnapshot(collection(db, 'classes', currentClassId, 'seats'), (snapshot) => {
+        const seatsMap: Record<string, ClassSeatDoc> = {};
+        snapshot.forEach((docSnap) => {
+          seatsMap[docSnap.id] = docSnap.data() as ClassSeatDoc;
+        });
+        setCurrentClassSeats(seatsMap);
+
+        const teamsMap: Record<string, ClassTeam> = {};
+        (activeClass.teamRegistry || []).forEach((regTeam) => {
+          const seat = seatsMap[regTeam.id];
+          teamsMap[regTeam.id] = {
+            ...regTeam,
+            ceoName: seat?.ceoName || '',
+            ceoPin: seat ? 'HASHED' : '',
+          };
+        });
+        setCurrentClassTeams(teamsMap);
+      }, (error) => {
+        console.error('Error fetching class seats subcollection:', error);
+      });
+
+      return () => unsubscribeSeats();
     }
 
     const unsubscribe = onSnapshot(collection(db, 'classes', currentClassId, 'teams'), (snapshot) => {
@@ -255,54 +522,94 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, [currentClassId, isDemoRoute]);
+  }, [
+    currentClassId,
+    currentRole,
+    currentTeamId,
+    isDemoRoute,
+    isAuthReady,
+    authUid,
+    activeClass?.schemaVersion,
+    (activeClass?.teamRegistry || []).map((t) => `${t.id}:${t.name}`).join(','),
+  ]);
 
   // Sync active class details directly from document listener + classes array when currentClassId is set
   useEffect(() => {
     if (isDemoRoute || !currentClassId) {
-      if (!isDemoRoute) setActiveClass(null);
+      if (!isDemoRoute) {
+        setActiveClass(null);
+        localStorage.removeItem('evalu8_active_class_cache');
+      }
       return;
     }
 
     const foundInList = classes.find(c => c && c.id === currentClassId);
     if (foundInList) {
       setActiveClass(foundInList);
+      try {
+        localStorage.setItem('evalu8_active_class_cache', JSON.stringify(foundInList));
+      } catch {}
     }
+
+    if (!isAuthReady) return;
 
     const unsubscribe = onSnapshot(doc(db, 'classes', currentClassId), (docSnap) => {
       if (docSnap.exists()) {
-        const clsData = { id: docSnap.id, ...docSnap.data() } as SimulationClass;
+        const clsData = { ...docSnap.data(), id: docSnap.id } as SimulationClass;
+        const secrets = classSecretsMap[currentClassId];
+        if (clsData.schemaVersion === 2 && secrets) {
+          clsData.viewerCode = secrets.viewerCode;
+          clsData.facilitatorCode = secrets.viewerCode || clsData.facilitatorCode || '';
+          clsData.teamCodes = secrets.teamCodes || clsData.teamCodes || {};
+        }
         setActiveClass(clsData);
+        try {
+          localStorage.setItem('evalu8_active_class_cache', JSON.stringify(clsData));
+        } catch {}
       }
     }, (err) => {
       console.warn("Direct active class listener warning:", err);
     });
 
     return () => unsubscribe();
-  }, [currentClassId, classes, isDemoRoute]);
+  }, [currentClassId, classes, classSecretsMap, isDemoRoute, isAuthReady, authUid]);
 
   // Derived state: CEO and Read-Only control
+  const isV2Active = activeClass?.schemaVersion === 2;
+  const currentSeatDoc = currentTeamId ? currentClassSeats[currentTeamId] : null;
   const currentTeamDoc = currentTeamId ? currentClassTeams[currentTeamId] : null;
   const activeTeam = currentTeamDoc || (activeClass?.gameState?.teams || []).find(t => t?.id === currentTeamId);
 
-  const isCeo = currentRole === 'STUDENT' && !!activeTeam?.ceoPin && localCeoPin === activeTeam.ceoPin;
-  const isReadOnly = currentRole === 'STUDENT' && !isCeo;
-  const ceoName = activeTeam?.ceoName || null;
+  const isCeo = isV2Active
+    ? (currentRole === 'STUDENT' && !!currentSeatDoc && !!authUid && currentSeatDoc.ceoUid === authUid)
+    : (currentRole === 'STUDENT' && !!activeTeam?.ceoPin && localCeoPin === activeTeam.ceoPin);
+  const isReadOnly = (currentRole === 'STUDENT' && !isCeo) || currentRole === 'VIEWER';
+  const ceoName = isV2Active
+    ? (currentSeatDoc?.ceoName || null)
+    : (activeTeam?.ceoName || null);
 
-  // Track the CEO PIN that was successfully verified against DB
+  // Track the CEO PIN that was successfully verified against DB (v1 only) or CEO UID (v2)
   const lastVerifiedCeoPinRef = useRef<string | null>(null);
+  const wasV2CeoRef = useRef<boolean>(false);
 
-  // Keep lastVerifiedCeoPinRef in sync when activeTeam matches localCeoPin
   useEffect(() => {
+    if (isV2Active) {
+      if (isCeo) {
+        wasV2CeoRef.current = true;
+      } else if (wasV2CeoRef.current && currentRole === 'STUDENT') {
+        wasV2CeoRef.current = false;
+        toast.info("Your CEO seat was released or transferred.");
+      }
+      return;
+    }
     if (currentRole === 'STUDENT' && localCeoPin && activeTeam?.ceoPin === localCeoPin) {
       lastVerifiedCeoPinRef.current = localCeoPin;
     }
-  }, [currentRole, localCeoPin, activeTeam?.ceoPin]);
+  }, [isV2Active, isCeo, currentRole, localCeoPin, activeTeam?.ceoPin]);
 
-  // Real-time CEO revocation alert for sitting CEO
+  // Real-time CEO revocation alert for sitting CEO (v1 classes)
   useEffect(() => {
-    if (currentRole === 'STUDENT' && localCeoPin) {
-      // Only revoke if this PIN was previously verified against DB, but now DB CEO PIN changed/cleared
+    if (!isV2Active && currentRole === 'STUDENT' && localCeoPin) {
       if (lastVerifiedCeoPinRef.current === localCeoPin && currentTeamDoc && currentTeamDoc.ceoPin !== localCeoPin) {
         toast.info("Your CEO access was changed by the facilitator.");
         localStorage.removeItem('evalu8_ceo_pin');
@@ -311,60 +618,130 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
         setLocalCeoPin(null);
       }
     }
-  }, [currentRole, localCeoPin, currentTeamDoc]);
+  }, [isV2Active, currentRole, localCeoPin, currentTeamDoc]);
 
   const login = async (code: string): Promise<{ success: boolean; message?: string; role?: UserRole }> => {
-    if (!classesLoaded) {
-      return { success: false, message: 'Still connecting — please try again in a moment.' };
-    }
-
     const trimmedCode = code.trim().toUpperCase();
-
-    if (trimmedCode === 'ADMIN-MASTER') {
-      localStorage.setItem('evalu8_role', 'ADMIN');
-      localStorage.removeItem('evalu8_class_id');
-      localStorage.removeItem('evalu8_team_id');
-      setCurrentRole('ADMIN');
-      setCurrentClassId(null);
-      setCurrentTeamId(null);
-      return { success: true, role: 'ADMIN' };
+    if (!trimmedCode) {
+      return { success: false, message: 'Please enter an access code.' };
     }
 
-    if (trimmedCode === 'FACILITATOR') {
-      localStorage.setItem('evalu8_role', 'FACILITATOR');
-      localStorage.removeItem('evalu8_class_id');
-      localStorage.removeItem('evalu8_team_id');
-      setCurrentRole('FACILITATOR');
-      setCurrentClassId(null);
-      setCurrentTeamId(null);
-      return { success: true, role: 'FACILITATOR' };
-    }
+    try {
+      const uid = await ensureSignedIn();
+      setAuthUid(uid);
 
-    // Find class facilitator by code
-    const classFac = classes.find(c => !c.isArchived && c.facilitatorCode.toUpperCase() === trimmedCode);
-    if (classFac) {
-      localStorage.setItem('evalu8_role', 'FACILITATOR');
-      localStorage.setItem('evalu8_class_id', classFac.id);
-      localStorage.removeItem('evalu8_team_id');
-      setCurrentRole('FACILITATOR');
-      setCurrentClassId(classFac.id);
-      setCurrentTeamId(null);
-      return { success: true, role: 'FACILITATOR' };
-    }
+      // 1. Check joinCodes/{trimmedCode} (schemaVersion: 2 classes)
+      const joinSnap = await getDoc(doc(db, 'joinCodes', trimmedCode));
+      if (joinSnap.exists()) {
+        const joinData = joinSnap.data() as JoinCodeDoc;
+        const { classId, kind, teamId } = joinData;
 
-    // Find student team by code
-    for (const cls of classes) {
-      if (cls.isArchived) continue;
-      for (const [teamId, tCode] of Object.entries(cls.teamCodes || {})) {
-        if (tCode.toUpperCase() !== 'BOT' && tCode.toUpperCase() === trimmedCode) {
+        // Create/update membership document first (authorized by joinCodes proof in firestore.rules)
+        const syncKey = `${uid}:${classId}:${kind}:${teamId || ''}:${trimmedCode}`;
+        if (sessionStorage.getItem('evalu8_member_synced_key') !== syncKey) {
+          try {
+            const memberRef = doc(db, 'classes', classId, 'members', uid);
+            await setDoc(
+              memberRef,
+              removeUndefined({
+                uid,
+                role: kind,
+                teamId: kind === 'team' ? teamId : undefined,
+                code: trimmedCode,
+                joinedAt: new Date().toISOString(),
+              })
+            );
+            sessionStorage.setItem('evalu8_member_synced_key', syncKey);
+          } catch (memberErr) {
+            console.warn('Could not write class membership doc (continuing login):', memberErr);
+          }
+        }
+
+        const classSnap = await getDoc(doc(db, 'classes', classId));
+        if (!classSnap.exists() || classSnap.data()?.isArchived) {
+          return { success: false, message: 'This class session is no longer active.' };
+        }
+        const loadedClass = { ...classSnap.data(), id: classSnap.id } as SimulationClass;
+        try {
+          localStorage.setItem('evalu8_active_class_cache', JSON.stringify(loadedClass));
+        } catch {}
+
+        if (kind === 'team' && teamId) {
           localStorage.setItem('evalu8_role', 'STUDENT');
-          localStorage.setItem('evalu8_class_id', cls.id);
+          localStorage.setItem('evalu8_class_id', classId);
           localStorage.setItem('evalu8_team_id', teamId);
+          localStorage.setItem('evalu8_join_code', trimmedCode);
+          setActiveClass(loadedClass);
           setCurrentRole('STUDENT');
-          setCurrentClassId(cls.id);
+          setCurrentClassId(classId);
           setCurrentTeamId(teamId);
+          setIsAuthReady(true);
           return { success: true, role: 'STUDENT' };
         }
+
+        if (kind === 'viewer') {
+          localStorage.setItem('evalu8_role', 'VIEWER');
+          localStorage.setItem('evalu8_class_id', classId);
+          localStorage.setItem('evalu8_viewer_code', trimmedCode);
+          localStorage.setItem('evalu8_join_code', trimmedCode);
+          localStorage.removeItem('evalu8_team_id');
+          setActiveClass(loadedClass);
+          setCurrentRole('VIEWER');
+          setCurrentClassId(classId);
+          setCurrentTeamId(null);
+          setIsAuthReady(true);
+          return { success: true, role: 'VIEWER' };
+        }
+      }
+
+      // 2. Fallback for legacy schemaVersion: 1 classes (or unindexed classes)
+      const legacySnap = await getDocs(collection(db, 'classes')).catch(() =>
+        getDocs(query(collection(db, 'classes'), where('schemaVersion', '==', 1)))
+      );
+      const legacyClasses: SimulationClass[] = [];
+      legacySnap.forEach((d) => {
+        legacyClasses.push({ id: d.id, ...d.data() } as SimulationClass);
+      });
+
+      // Check legacy viewer / facilitatorCode (grants read-only VIEWER role on code entry)
+      const classViewer = legacyClasses.find(
+        c => !c.isArchived && (c.facilitatorCode?.toUpperCase() === trimmedCode || c.viewerCode?.toUpperCase() === trimmedCode)
+      );
+      if (classViewer) {
+        localStorage.setItem('evalu8_role', 'VIEWER');
+        localStorage.setItem('evalu8_class_id', classViewer.id);
+        localStorage.setItem('evalu8_viewer_code', trimmedCode);
+        localStorage.removeItem('evalu8_team_id');
+        setActiveClass(classViewer);
+        setCurrentRole('VIEWER');
+        setCurrentClassId(classViewer.id);
+        setCurrentTeamId(null);
+        return { success: true, role: 'VIEWER' };
+      }
+
+      // Check legacy student team code
+      for (const cls of legacyClasses) {
+        if (cls.isArchived) continue;
+        for (const [teamId, tCode] of Object.entries(cls.teamCodes || {})) {
+          if (tCode.toUpperCase() !== 'BOT' && tCode.toUpperCase() === trimmedCode) {
+            localStorage.setItem('evalu8_role', 'STUDENT');
+            localStorage.setItem('evalu8_class_id', cls.id);
+            localStorage.setItem('evalu8_team_id', teamId);
+            setActiveClass(cls);
+            setCurrentRole('STUDENT');
+            setCurrentClassId(cls.id);
+            setCurrentTeamId(teamId);
+            return { success: true, role: 'STUDENT' };
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('Error during code login:', err);
+      if (err?.code === 'permission-denied') {
+        return {
+          success: false,
+          message: 'Permission denied by Firestore rules. Ensure Anonymous Auth is enabled in Firebase Console.',
+        };
       }
     }
 
@@ -637,6 +1014,8 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('evalu8_role');
     localStorage.removeItem('evalu8_class_id');
     localStorage.removeItem('evalu8_team_id');
+    localStorage.removeItem('evalu8_join_code');
+    localStorage.removeItem('evalu8_active_class_cache');
     localStorage.removeItem('evalu8_ceo_name');
     localStorage.removeItem('evalu8_ceo_pin');
     localStorage.removeItem('evalu8_user_email');
@@ -644,25 +1023,18 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     setCurrentRole(null);
     setCurrentClassId(null);
     setCurrentTeamId(null);
+    setActiveClass(null);
     setCurrentUserEmail(null);
     setCurrentUserName(null);
     lastVerifiedCeoPinRef.current = null;
     setLocalCeoPin(null);
   };
 
-  const createClass = async (name: string, teams: Team[]): Promise<string> => {
+  const createClass = async (name: string, teams: Team[], themeId: GameThemeId = DEFAULT_GAME_THEME_ID): Promise<string> => {
     const classId = `cls_${Date.now()}`;
-    const rand4 = () => Math.floor(1000 + Math.random() * 9000).toString();
-    const randAlpha4 = () => {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-      let result = '';
-      for (let i = 0; i < 4; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return result;
-    };
-
-    const facilitatorCode = `FAC-${rand4()}`;
+    const ownerUid = auth.currentUser?.uid || authUid || '';
+    const ownerEmail = (auth.currentUser?.email || currentUserEmail || MASTER_FACILITATOR_EMAIL).trim();
+    const viewerCode = generateJoinCode(8);
     const teamCodes: Record<string, string> = {};
     const teamRegistry: ClassTeam[] = [];
 
@@ -673,14 +1045,12 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       if (isBot) {
         teamCodes[canonicalId] = 'BOT';
       } else {
-        teamCodes[canonicalId] = `TM${idx + 1}-${randAlpha4()}`;
+        teamCodes[canonicalId] = generateJoinCode(8);
       }
       const regTeam: ClassTeam = {
         id: canonicalId,
         name: team.name,
         color: team.color,
-        ceoName: '',
-        ceoPin: '',
         isBot: isBot,
         ...(isBot ? {
           botProfile: team.botProfile || 'BALANCED',
@@ -699,42 +1069,54 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       };
     });
 
-    const initialGameState = buildInitialGameState(canonicalTeams);
+    const initialGameState = buildInitialGameState(canonicalTeams, themeId);
+    const { control, world, rounds } = splitGameState(initialGameState);
 
     const batch = writeBatch(db);
 
-    // 1. Identity Document: classes/{classId}
+    // 1. Identity Document: classes/{classId} (NO teamCodes, facilitatorCode, or ceoPin on v2 class doc)
     const classDocRef = doc(db, 'classes', classId);
     batch.set(classDocRef, removeUndefined({
       id: classId,
       name,
-      facilitatorCode,
-      teamCodes,
+      themeId,
+      schemaVersion: 2,
+      ownerUid,
+      ownerEmail,
       teamRegistry,
       createdAt: new Date().toISOString(),
-      createdByEmail: currentUserEmail || 'admin@evalu8.com',
+      createdByEmail: ownerEmail,
       createdByName: currentUserName || 'Facilitator'
     }));
 
-    // 2. Game State Document: classes/{classId}/state/game
-    const stateDocRef = doc(db, 'classes', classId, 'state', 'game');
-    batch.set(stateDocRef, removeUndefined({ gameState: initialGameState }));
+    // 2. Facilitator-only Secrets Document: classes/{classId}/secrets/codes
+    const secretsDocRef = doc(db, 'classes', classId, 'secrets', 'codes');
+    batch.set(secretsDocRef, removeUndefined({
+      viewerCode,
+      teamCodes,
+    }));
 
-    // 3. Per-Team CEO Subcollection Documents: classes/{classId}/teams/{teamId}
-    canonicalTeams.forEach((team) => {
-      const teamDocRef = doc(db, 'classes', classId, 'teams', team.id);
-      batch.set(teamDocRef, removeUndefined({
-        id: team.id,
-        name: team.name,
-        color: team.color,
-        ceoName: '',
-        ceoPin: '',
-        isBot: !!team.isBot,
-        botProfile: team.botProfile || '',
-        botDifficulty: team.botDifficulty || '',
-        updatedAt: serverTimestamp()
-      }));
+    // 3. Join Code Lookup Documents: joinCodes/{code}
+    batch.set(doc(db, 'joinCodes', viewerCode), {
+      classId,
+      kind: 'viewer',
     });
+    for (const [tId, tCode] of Object.entries(teamCodes)) {
+      if (tCode && tCode !== 'BOT') {
+        batch.set(doc(db, 'joinCodes', tCode), {
+          classId,
+          kind: 'team',
+          teamId: tId,
+        });
+      }
+    }
+
+    // 4. Split Game State Documents: classes/{classId}/state/control & state/world & rounds/*
+    batch.set(doc(db, 'classes', classId, 'state', 'control'), removeUndefined(control));
+    batch.set(doc(db, 'classes', classId, 'state', 'world'), removeUndefined(world));
+    for (const [rKey, rData] of Object.entries(rounds)) {
+      batch.set(doc(db, 'classes', classId, 'rounds', String(rKey)), removeUndefined(rData));
+    }
 
     await batch.commit();
     return classId;
@@ -755,18 +1137,34 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteClassPermanently = async (classId: string) => {
-    await deleteDoc(doc(db, 'classes', classId));
     try {
-      await deleteDoc(doc(db, 'classes', classId, 'state', 'game'));
-      const teamsSnap = await getDocs(collection(db, 'classes', classId, 'teams'));
+      const secretsSnap = await getDoc(doc(db, 'classes', classId, 'secrets', 'codes')).catch(() => null);
       const batch = writeBatch(db);
-      teamsSnap.forEach((tDoc) => {
-        batch.delete(tDoc.ref);
-      });
+      if (secretsSnap && secretsSnap.exists()) {
+        const secrets = secretsSnap.data() as ClassSecretsDoc;
+        if (secrets.viewerCode) {
+          batch.delete(doc(db, 'joinCodes', secrets.viewerCode));
+        }
+        for (const tCode of Object.values(secrets.teamCodes || {})) {
+          if (tCode && tCode !== 'BOT') {
+            batch.delete(doc(db, 'joinCodes', tCode));
+          }
+        }
+        batch.delete(secretsSnap.ref);
+      }
+      batch.delete(doc(db, 'classes', classId, 'state', 'game'));
+      batch.delete(doc(db, 'classes', classId, 'state', 'control'));
+      batch.delete(doc(db, 'classes', classId, 'state', 'world'));
+
+      for (const subcol of ['teams', 'seats', 'members', 'rounds', 'plans', 'actions']) {
+        const snap = await getDocs(collection(db, 'classes', classId, subcol)).catch(() => null);
+        snap?.forEach((d) => batch.delete(d.ref));
+      }
       await batch.commit();
     } catch (err) {
       console.warn('Permanent delete subcollection cleanup warning:', err);
     }
+    await deleteDoc(doc(db, 'classes', classId));
   };
 
   const deleteClass = async (classId: string) => {
@@ -779,6 +1177,87 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       if (!currentClassId || !currentTeamId) {
         console.warn("claimCeoSlot aborted: missing session variables", { currentClassId, currentTeamId });
         return false;
+      }
+
+      if (activeClass?.schemaVersion === 2) {
+        const uid = await ensureSignedIn();
+        setAuthUid(uid);
+        const regTeam = (activeClass.teamRegistry || []).find(t => t.id === currentTeamId);
+        if (regTeam?.isBot) {
+          toast.error("Cannot claim CEO seat for an automated Bot team!");
+          return false;
+        }
+
+        const seatRef = doc(db, 'classes', currentClassId, 'seats', currentTeamId);
+        const seatSnap = await getDoc(seatRef);
+        const trimmedName = name.trim();
+        let nextPinHash = '';
+
+        if (!seatSnap.exists()) {
+          const pinToSet = (newPin || currentPin || '').trim();
+          if (!pinToSet) {
+            toast.error('Please enter a CEO PIN.');
+            return false;
+          }
+          nextPinHash = await hashCeoPin(currentClassId, currentTeamId, pinToSet);
+          await setDoc(seatRef, {
+            ceoUid: uid,
+            ceoName: trimmedName,
+            pinHash: nextPinHash,
+            updatedAt: new Date().toISOString(),
+          });
+        } else {
+          const existingSeat = seatSnap.data() as ClassSeatDoc;
+          const proofAttempt = (currentPin || newPin || '').trim();
+          const pinHashProof = proofAttempt
+            ? await hashCeoPin(currentClassId, currentTeamId, proofAttempt)
+            : '';
+
+          if (existingSeat.ceoUid !== uid && pinHashProof !== existingSeat.pinHash) {
+            toast.error('This CEO seat is already claimed or PIN is invalid!');
+            return false;
+          }
+
+          const nextPinRaw = (newPin || currentPin || '').trim();
+          nextPinHash = nextPinRaw
+            ? await hashCeoPin(currentClassId, currentTeamId, nextPinRaw)
+            : existingSeat.pinHash;
+
+          await updateDoc(seatRef, {
+            ceoUid: uid,
+            ceoName: trimmedName,
+            pinHash: nextPinHash,
+            pinHashProof,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+
+        const updatedSeatDoc: ClassSeatDoc = {
+          ceoUid: uid,
+          ceoName: trimmedName,
+          pinHash: nextPinHash,
+          updatedAt: new Date().toISOString(),
+        };
+        setCurrentClassSeats((prev) => ({
+          ...prev,
+          [currentTeamId]: updatedSeatDoc,
+        }));
+        setCurrentClassTeams((prev) => {
+          const baseTeam = prev[currentTeamId] || regTeam;
+          if (!baseTeam) return prev;
+          return {
+            ...prev,
+            [currentTeamId]: {
+              ...baseTeam,
+              ceoName: trimmedName,
+              ceoPin: 'HASHED',
+            },
+          };
+        });
+
+        const tName = currentTeamDoc?.name || regTeam?.name || currentTeamId;
+        toast.success(`You have claimed the CEO seat for team ${tName}!`);
+        return true;
       }
 
       const teamRef = doc(db, 'classes', currentClassId, 'teams', currentTeamId);
@@ -836,7 +1315,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
         return false;
       }
 
-      // Save locally after successful transaction
+      // Save locally after successful transaction (legacy v1 only)
       localStorage.setItem('evalu8_ceo_name', name);
       localStorage.setItem('evalu8_ceo_pin', finalPin);
       setLocalCeoPin(finalPin);
@@ -854,6 +1333,29 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   const releaseCeoSlot = async () => {
     try {
       if (!currentClassId || !currentTeamId) return;
+
+      if (activeClass?.schemaVersion === 2) {
+        wasV2CeoRef.current = false;
+        await deleteDoc(doc(db, 'classes', currentClassId, 'seats', currentTeamId));
+        setCurrentClassSeats((prev) => {
+          const next = { ...prev };
+          delete next[currentTeamId];
+          return next;
+        });
+        setCurrentClassTeams((prev) => {
+          if (!prev[currentTeamId]) return prev;
+          return {
+            ...prev,
+            [currentTeamId]: {
+              ...prev[currentTeamId],
+              ceoName: '',
+              ceoPin: '',
+            },
+          };
+        });
+        toast.success(`CEO seat released.`);
+        return;
+      }
 
       const teamRef = doc(db, 'classes', currentClassId, 'teams', currentTeamId);
       const classRef = doc(db, 'classes', currentClassId);
@@ -894,6 +1396,13 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   const facilitatorReleaseCeoSlot = async (classId: string, teamId: string): Promise<void> => {
     try {
+      const targetCls = classes.find(c => c.id === classId) || (activeClass?.id === classId ? activeClass : null);
+      if (targetCls?.schemaVersion === 2) {
+        await deleteDoc(doc(db, 'classes', classId, 'seats', teamId));
+        toast.success(`CEO seat released.`);
+        return;
+      }
+
       const teamRef = doc(db, 'classes', classId, 'teams', teamId);
       const classRef = doc(db, 'classes', classId);
 
@@ -927,6 +1436,17 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   const facilitatorChangeCeoPin = async (classId: string, teamId: string, newPin: string): Promise<void> => {
     try {
+      const targetCls = classes.find(c => c.id === classId) || (activeClass?.id === classId ? activeClass : null);
+      if (targetCls?.schemaVersion === 2) {
+        const pinHash = await hashCeoPin(classId, teamId, newPin.trim());
+        await updateDoc(doc(db, 'classes', classId, 'seats', teamId), {
+          pinHash,
+          updatedAt: new Date().toISOString(),
+        });
+        toast.success(`CEO PIN updated.`);
+        return;
+      }
+
       const teamRef = doc(db, 'classes', classId, 'teams', teamId);
       const classRef = doc(db, 'classes', classId);
 
@@ -1022,6 +1542,106 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   ): Promise<void> => {
     try {
       const classRef = doc(db, 'classes', classId);
+      const classCheckSnap = await getDoc(classRef);
+      if (!classCheckSnap.exists()) throw new Error("Class not found");
+      const classCheckData = classCheckSnap.data() as SimulationClass;
+
+      if (classCheckData.schemaVersion === 2) {
+        const secretsRef = doc(db, 'classes', classId, 'secrets', 'codes');
+        const worldRef = doc(db, 'classes', classId, 'state', 'world');
+        const seatRef = doc(db, 'classes', classId, 'seats', teamId);
+
+        await runTransaction(db, async (tx) => {
+          const clsSnap = await tx.get(classRef);
+          const secretsSnap = await tx.get(secretsRef);
+          const worldSnap = await tx.get(worldRef);
+
+          if (!clsSnap.exists()) throw new Error("Class not found");
+          const clsData = clsSnap.data() as SimulationClass;
+          const secretsData = (secretsSnap.exists() ? secretsSnap.data() : { viewerCode: '', teamCodes: {} }) as ClassSecretsDoc;
+          const oldCode = secretsData.teamCodes?.[teamId];
+
+          const newTeamCodes = { ...(secretsData.teamCodes || {}) };
+          if (targetType === 'BOT') {
+            newTeamCodes[teamId] = 'BOT';
+            if (oldCode && oldCode !== 'BOT') {
+              tx.delete(doc(db, 'joinCodes', oldCode));
+            }
+          } else {
+            const newCode = generateJoinCode(8);
+            newTeamCodes[teamId] = newCode;
+            if (oldCode && oldCode !== 'BOT') {
+              tx.delete(doc(db, 'joinCodes', oldCode));
+            }
+            tx.set(doc(db, 'joinCodes', newCode), {
+              classId,
+              kind: 'team',
+              teamId,
+            });
+          }
+
+          const newTeamRegistry = (clsData.teamRegistry || []).map(t => {
+            if (t.id === teamId) {
+              const updatedTeam: ClassTeam = {
+                ...t,
+                isBot: targetType === 'BOT',
+              };
+              delete updatedTeam.ceoName;
+              delete updatedTeam.ceoPin;
+              if (targetType === 'BOT') {
+                updatedTeam.botProfile = profile;
+                updatedTeam.botDifficulty = difficulty;
+              } else {
+                delete updatedTeam.botProfile;
+                delete updatedTeam.botDifficulty;
+              }
+              return updatedTeam;
+            }
+            return t;
+          });
+
+          tx.update(classRef, removeUndefined({
+            teamRegistry: newTeamRegistry,
+          }));
+          tx.set(secretsRef, removeUndefined({
+            ...secretsData,
+            teamCodes: newTeamCodes,
+          }));
+          tx.delete(seatRef);
+
+          if (worldSnap.exists()) {
+            const worldData = worldSnap.data() as any;
+            const newTeams = (worldData.teams || []).map((t: Team) => {
+              if (t.id === teamId) {
+                const updatedTeam: Team = {
+                  ...t,
+                  isBot: targetType === 'BOT',
+                };
+                delete updatedTeam.ceoName;
+                delete updatedTeam.ceoPin;
+                if (targetType === 'BOT') {
+                  updatedTeam.botProfile = profile;
+                  updatedTeam.botDifficulty = difficulty;
+                } else {
+                  delete updatedTeam.botProfile;
+                  delete updatedTeam.botDifficulty;
+                }
+                return updatedTeam;
+              }
+              return t;
+            });
+            const newBotConfig = worldData.botConfig || { enabled: true, seed: Math.floor(Math.random() * 1000000) };
+            tx.update(worldRef, removeUndefined({
+              teams: newTeams,
+              botConfig: newBotConfig,
+            }));
+          }
+        });
+
+        toast.success(`Team converted to ${targetType === 'BOT' ? 'Bot' : 'Human'}.`);
+        return;
+      }
+
       const teamRef = doc(db, 'classes', classId, 'teams', teamId);
       const stateRef = doc(db, 'classes', classId, 'state', 'game');
 
@@ -1219,6 +1839,8 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       currentTeamId: isDemoRoute ? 'team_1' : currentTeamId,
       currentUserEmail,
       currentUserName,
+      authUid,
+      isAuthReady,
       isMasterFacilitator: isDemoRoute ? false : isMasterFacilitator,
       facilitators,
       classes,

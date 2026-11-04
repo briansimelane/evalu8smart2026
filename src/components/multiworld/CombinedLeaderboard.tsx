@@ -134,7 +134,7 @@ export const CombinedLeaderboard: React.FC<CombinedLeaderboardProps> = ({ worlds
               {topRevenueTeam ? (
                 <div>
                   <p className="text-sm font-black truncate text-foreground flex items-center gap-1.5 mt-0.5">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: topRevenueTeam.color }} />
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: topRevenueTeam.teamColor }} />
                     <span className="truncate">{getTeamDisplayLabel({ name: topRevenueTeam.teamName } as any, topRevenueTeam.worldKey, labelMode)}</span>
                     <Badge variant="outline" className="text-[9px] px-1 py-0 border-emerald-400 text-emerald-800 dark:text-emerald-200">
                       W{topRevenueTeam.worldKey}
@@ -164,7 +164,7 @@ export const CombinedLeaderboard: React.FC<CombinedLeaderboardProps> = ({ worlds
               {topControlTeam ? (
                 <div>
                   <p className="text-sm font-black truncate text-foreground flex items-center gap-1.5 mt-0.5">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: topControlTeam.color }} />
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: topControlTeam.teamColor }} />
                     <span className="truncate">{getTeamDisplayLabel({ name: topControlTeam.teamName } as any, topControlTeam.worldKey, labelMode)}</span>
                     <Badge variant="outline" className="text-[9px] px-1 py-0 border-purple-400 text-purple-800 dark:text-purple-200">
                       W{topControlTeam.worldKey}

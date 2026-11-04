@@ -15,6 +15,7 @@ import {
 import { Award, CheckCircle2, AlertCircle, Lock, ShieldCheck } from 'lucide-react';
 import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 import { getCarriedOverProductsForTeam, hasTech } from '@/lib/rules';
+import { useGameTheme, techLabel } from '@/lib/gameTheme';
 import { toast } from 'sonner';
 
 export interface DirectiveDefinition {
@@ -70,6 +71,7 @@ interface DirectivesClaimModalProps {
 
 export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ teamId, triggerClassName }) => {
   const { gameState, allocateDirective, revokeDirective } = useGame();
+  const theme = useGameTheme();
   const { currentRole } = useSession();
   const isFacilitator = currentRole === 'FACILITATOR' || currentRole === 'ADMIN';
 
@@ -112,7 +114,7 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
         return { text: `R${currentRound} Regions Sold: ${teamRegionsSold}/5`, met: teamRegionsSold >= 5 };
       case 'directive_21':
         if (hasWifiPerk) {
-          return { text: `R${currentRound} Discarded: 0/4 (Wifi active — products carried over)`, met: false };
+          return { text: `R${currentRound} Discarded: 0/4 (${techLabel(theme, 'Wifi')} active — products carried over)`, met: false };
         }
         return { text: `R${currentRound} Discarded: ${teamDiscarded}/4`, met: teamDiscarded >= 4 };
       case 'directive_22':
@@ -298,7 +300,11 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
                 </CardHeader>
 
                 <CardContent className="p-3.5 pt-0 text-xs text-muted-foreground space-y-1.5">
-                  <p>{dir.description}</p>
+                  <p>
+                    {dir.id === 'directive_21'
+                      ? `Discard 4 or more unsold products in 1 round (without ${techLabel(theme, 'Wifi')} carry-over benefit).`
+                      : dir.description}
+                  </p>
                   
                   {/* Metric Hint */}
                   {!isClaimedGlobally && metric && (

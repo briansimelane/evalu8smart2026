@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
-import { Team, SimulationClass, ClassTeam, BotProfile, BotDifficulty } from '@/types/game';
+import { Team, SimulationClass, ClassTeam, BotProfile, BotDifficulty, ClassSeatDoc } from '@/types/game';
 import { collection, onSnapshot, deleteDoc, doc, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Switch } from '@/components/ui/switch';
@@ -16,6 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { MultiWorldCreationModal } from '@/components/multiworld/MultiWorldCreationModal';
 import { MultiWorldSession } from '@/types/multiworld';
 import { normaliseSession } from '@/lib/multiworld/normaliseSession';
+import { GAME_THEME_LIST, GameThemeId } from '@/lib/gameTheme';
+import { useReferee } from '@/hooks/useReferee';
 
 // Predefined colors for teams
 const DEFAULT_TEAMS = [
@@ -35,10 +37,25 @@ export interface ClassTeamCodesTableProps {
 export const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, handleCopy, copiedCode }) => {
   const { selectClass, selectTeam, facilitatorReleaseCeoSlot, facilitatorChangeCeoPin, convertTeamSeat } = useSession();
   const [subcollectionTeams, setSubcollectionTeams] = useState<Record<string, ClassTeam>>({});
+  const [subcollectionSeats, setSubcollectionSeats] = useState<Record<string, ClassSeatDoc>>({});
   const navigate = useNavigate();
+  const isV2 = cls.schemaVersion === 2;
 
   useEffect(() => {
     if (!cls.id) return;
+    if (isV2) {
+      const unsubSeats = onSnapshot(collection(db, 'classes', cls.id, 'seats'), (snapshot) => {
+        const map: Record<string, ClassSeatDoc> = {};
+        snapshot.forEach(docSnap => {
+          map[docSnap.id] = docSnap.data() as ClassSeatDoc;
+        });
+        setSubcollectionSeats(map);
+      }, (error) => {
+        console.error(`Error listening to seats for class ${cls.id}:`, error);
+      });
+      return () => unsubSeats();
+    }
+
     const unsubscribe = onSnapshot(collection(db, 'classes', cls.id, 'teams'), (snapshot) => {
       const map: Record<string, ClassTeam> = {};
       snapshot.forEach(docSnap => {
@@ -50,7 +67,7 @@ export const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, h
     });
 
     return () => unsubscribe();
-  }, [cls.id]);
+  }, [cls.id, isV2]);
 
   const rawTeams = (cls.teamRegistry && cls.teamRegistry.length > 0) ? cls.teamRegistry : cls.gameState?.teams;
   const teamsToRender = (rawTeams && rawTeams.length > 0)
@@ -95,13 +112,18 @@ export const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, h
           const teamId = team.id || `team_${idx + 1}`;
           const code = cls.teamCodes?.[teamId];
           const liveTeamDoc = subcollectionTeams[teamId];
+          const liveSeatDoc = subcollectionSeats[teamId];
           
           const isBot = !!liveTeamDoc?.isBot || !!team.isBot || code === 'BOT';
           const profile = liveTeamDoc?.botProfile || team.botProfile || 'BALANCED';
           const difficulty = liveTeamDoc?.botDifficulty || team.botDifficulty || 'MEDIUM';
 
-          const effectiveCeoName = liveTeamDoc?.ceoName || team.ceoName || '';
-          const effectiveCeoPin = liveTeamDoc?.ceoPin || team.ceoPin || '';
+          const effectiveCeoName = isV2
+            ? (liveSeatDoc?.ceoName || '')
+            : (liveTeamDoc?.ceoName || team.ceoName || '');
+          const effectiveCeoPin = isV2
+            ? ''
+            : (liveTeamDoc?.ceoPin || team.ceoPin || '');
           const hasCeo = !!effectiveCeoName;
 
           return (
@@ -150,7 +172,10 @@ export const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, h
                   </span>
                 ) : hasCeo ? (
                   <span className="text-emerald-600 font-semibold">
-                    {effectiveCeoName} <span className="text-xs text-muted-foreground">(PIN: {effectiveCeoPin || 'N/A'})</span>
+                    {effectiveCeoName}{' '}
+                    <span className="text-xs text-muted-foreground">
+                      {isV2 ? '(PIN Set · Hashed)' : `(PIN: ${effectiveCeoPin || 'N/A'})`}
+                    </span>
                   </span>
                 ) : (
                   <span className="text-muted-foreground text-xs italic">Vacant</span>
@@ -218,7 +243,7 @@ export const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, h
                             size="icon"
                             variant="outline"
                             onClick={() => {
-                              const newPin = prompt(`Enter new CEO PIN code for ${team.name}:`, effectiveCeoPin || '');
+                              const newPin = prompt(`Enter new CEO PIN code for ${team.name}:`, isV2 ? '' : (effectiveCeoPin || ''));
                               if (newPin !== null && newPin.trim().length > 0) {
                                 facilitatorChangeCeoPin(cls.id, team.id, newPin.trim());
                               }
@@ -230,7 +255,9 @@ export const ClassTeamCodesTable: React.FC<ClassTeamCodesTableProps> = ({ cls, h
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p className="text-xs font-semibold">Change CEO PIN ({effectiveCeoPin || 'N/A'})</p>
+                          <p className="text-xs font-semibold">
+                            {isV2 ? 'Reset CEO PIN' : `Change CEO PIN (${effectiveCeoPin || 'N/A'})`}
+                          </p>
                         </TooltipContent>
                       </Tooltip>
 
@@ -315,6 +342,7 @@ export const FacilitatorHub: React.FC = () => {
   }, [visibleClasses]);
 
   const [className, setClassName] = useState('');
+  const [themeId, setThemeId] = useState<GameThemeId>('smartphone');
   const [numTeams, setNumTeams] = useState(5);
   const [teamConfigs, setTeamConfigs] = useState<typeof DEFAULT_TEAMS>(DEFAULT_TEAMS);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -387,7 +415,7 @@ export const FacilitatorHub: React.FC = () => {
         return teamObj;
       });
 
-      await createClass(className, teams);
+      await createClass(className, teams, themeId);
       toast.success(`Class "${className}" created successfully!`);
       setClassName('');
     } catch (err) {
@@ -549,6 +577,42 @@ export const FacilitatorHub: React.FC = () => {
               </div>
 
               <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Simulation</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {GAME_THEME_LIST.map((theme) => {
+                    const selected = themeId === theme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        onClick={() => setThemeId(theme.id)}
+                        aria-pressed={selected}
+                        className={`p-3 rounded-lg border text-left transition-all flex items-start gap-2.5 ${
+                          selected
+                            ? 'bg-blue-600/10 border-blue-600 ring-2 ring-blue-600/30 text-foreground'
+                            : 'bg-background border-border text-muted-foreground hover:border-slate-350'
+                        }`}
+                      >
+                        <img
+                          src={theme.logoSrc}
+                          alt={theme.productName}
+                          className="w-7 h-7 object-contain shrink-0 mt-0.5"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-foreground leading-tight">
+                            {theme.productName}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground leading-snug mt-0.5">
+                            {theme.description}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Number of Teams</label>
                 <div className="flex gap-2">
                   {[2, 3, 4, 5].map((num) => (
@@ -701,9 +765,14 @@ export const FacilitatorHub: React.FC = () => {
                     {activeMultiWorldSessions.map((mw) => (
                       <TableRow key={mw.id} className="border-border hover:bg-muted/10 transition-colors">
                         <TableCell className="font-semibold text-foreground">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="w-2 h-2 rounded-full bg-purple-500" />
                             <span>{mw.name}</span>
+                            {mw.themeId === 'evalu8' && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700">
+                                Evalu8 Inc
+                              </span>
+                            )}
                           </div>
                           {(() => {
                             const norm = normaliseSession(mw);
@@ -819,10 +888,20 @@ export const FacilitatorHub: React.FC = () => {
                 <TableBody>
                   {activeClasses.map((cls) => {
                     const isExpanded = !!expandedClasses[cls.id];
+                    const isEvalu8 = (cls.themeId ?? cls.gameState?.themeId) === 'evalu8';
                     return (
                       <React.Fragment key={cls.id}>
                         <TableRow className="border-border hover:bg-muted/10 transition-colors">
-                          <TableCell className="font-semibold text-foreground">{cls.name}</TableCell>
+                          <TableCell className="font-semibold text-foreground">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span>{cls.name}</span>
+                              {isEvalu8 && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700">
+                                  Evalu8 Inc
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                             {new Date(cls.createdAt).toLocaleDateString()}
                           </TableCell>
@@ -886,21 +965,21 @@ export const FacilitatorHub: React.FC = () => {
                           <TableRow className="border-border bg-muted/5 hover:bg-muted/5">
                             <TableCell colSpan={5} className="p-4 bg-muted/5">
                               <div className="space-y-4 max-w-4xl mx-auto py-2">
-                                {/* Facilitator Code */}
+                                {/* Viewer / Board Code */}
                                 <div className="flex items-center gap-4 bg-background p-3 rounded-lg border border-border">
                                   <span className="text-sm font-semibold text-foreground block min-w-[130px]">
-                                    Facilitator Code:
+                                    {cls.schemaVersion === 2 ? 'Viewer / Board Code:' : 'Facilitator Code:'}
                                   </span>
                                   <code className="text-emerald-700 font-mono font-bold tracking-widest bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
-                                    {cls.facilitatorCode}
+                                    {cls.viewerCode || cls.facilitatorCode}
                                   </code>
                                   <Button
                                     size="icon"
                                     variant="ghost"
                                     className="h-8 w-8 hover:bg-muted text-muted-foreground"
-                                    onClick={() => handleCopy(cls.facilitatorCode)}
+                                    onClick={() => handleCopy(cls.viewerCode || cls.facilitatorCode)}
                                   >
-                                    {copiedCode === cls.facilitatorCode ? (
+                                    {copiedCode === (cls.viewerCode || cls.facilitatorCode) ? (
                                       <Check className="h-4 w-4 text-emerald-600" />
                                     ) : (
                                       <Copy className="h-4 w-4" />
@@ -958,11 +1037,16 @@ export const FacilitatorHub: React.FC = () => {
                         {archivedMultiWorldSessions.map((mw) => (
                           <TableRow key={mw.id} className="border-border hover:bg-muted/10 transition-colors bg-muted/5">
                             <TableCell className="font-semibold text-foreground">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
                                   Archived
                                 </span>
                                 <span>{mw.name}</span>
+                                {mw.themeId === 'evalu8' && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700">
+                                    Evalu8 Inc
+                                  </span>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="font-mono text-purple-700 dark:text-purple-400 font-bold text-xs">
@@ -1021,11 +1105,16 @@ export const FacilitatorHub: React.FC = () => {
                         {archivedClasses.map((cls) => (
                           <TableRow key={cls.id} className="border-border hover:bg-muted/10 transition-colors bg-muted/5">
                             <TableCell className="font-semibold text-foreground">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
                                   Archived
                                 </span>
                                 <span>{cls.name}</span>
+                                {(cls.themeId ?? cls.gameState?.themeId) === 'evalu8' && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700">
+                                    Evalu8 Inc
+                                  </span>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="text-muted-foreground text-sm">

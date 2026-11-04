@@ -8,12 +8,14 @@ import { Switch } from '@/components/ui/switch';
 import { TEAM_COLORS } from '@/data/combinations';
 import { Team } from '@/types/game';
 import { Plus, Trash2, Play, Bot } from 'lucide-react';
+import { useGameTheme } from '@/lib/gameTheme';
 
 interface GameSetupProps {
   onStartGame: (teams: Team[]) => void;
 }
 
 export const GameSetup = ({ onStartGame }: GameSetupProps) => {
+  const theme = useGameTheme();
   const [teams, setTeams] = useState<Team[]>([
     { id: '1', name: 'Team 1', color: TEAM_COLORS[0].value, isBot: false }
   ]);
@@ -63,7 +65,7 @@ export const GameSetup = ({ onStartGame }: GameSetupProps) => {
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20 flex items-center justify-center p-4">
       <Card className="w-full max-w-2xl shadow-xl">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-3xl font-bold text-center">Smartphone Inc Tracker</CardTitle>
+          <CardTitle className="text-3xl font-bold text-center">{theme.productName} Tracker</CardTitle>
           <CardDescription className="text-center text-base">
             Configure your teams to begin tracking the simulation game
           </CardDescription>

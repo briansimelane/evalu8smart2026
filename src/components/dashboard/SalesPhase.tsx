@@ -1,37 +1,40 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useGame } from '@/contexts/GameContext';
 import { REGION_CUSTOMERS, Customer } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { toast } from 'sonner';
-import { Save, AlertTriangle, CheckCircle2, Package, Microscope, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Trophy, Users, Target, TrendingUp, UserCheck } from 'lucide-react';
+import { Save, AlertTriangle, AlertCircle, CheckCircle2, Package, Microscope, MapPin, Trophy, Users, Target, TrendingUp, UserCheck, Info } from 'lucide-react';
 import { GameIcon } from './GameIcon';
 import { SteveIcon } from './SteveIcon';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-
-const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  'GPS': MapPin,
-  'Wifi': Wifi,
-  'Gaming': Gamepad2,
-  'Battery': Battery,
-  'NFC': Radio,
-  '4G': Signal,
-};
-
+import { useGameTheme, regionLabel, techIcon, techLabel } from '@/lib/gameTheme';
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
 import { isSteveBlocking as isSteveBlockingRule, hasTech } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 export const SalesPhase = () => {
-  const { gameState, addRoundData, getCurrentRound, getTeamLogisticsProgress, calculatePlayOrder } = useGame();
+  const { gameState, actionsMap, skipTurn, addRoundData, getCurrentRound, getTeamLogisticsProgress, calculatePlayOrder } = useGame();
+  const theme = useGameTheme();
   const { currentRole, currentTeamId, isReadOnly, selectTeam } = useSession();
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedCustomers, setSelectedCustomers] = useState<Record<string, string[]>>({});
   const [nfcSalesUnits, setNfcSalesUnits] = useState<number>(0);
+  const [showPartialSalesConfirm, setShowPartialSalesConfirm] = useState<boolean>(false);
 
   useEffect(() => {
     if (currentRole === 'STUDENT' && currentTeamId) {
@@ -73,10 +76,14 @@ export const SalesPhase = () => {
     });
   }, [gameState.teams, teamsWithData, currentRoundData]);
 
-  // Load saved sales into selectedCustomers when selectedTeam changes
+  const savedCustomersSold = selectedTeam ? currentRoundData?.teamData[selectedTeam]?.customersSold : undefined;
+  const savedSalesKey = savedCustomersSold ? JSON.stringify(savedCustomersSold) : null;
+  const savedNfcSalesUnits = selectedTeam ? (currentRoundData?.teamData[selectedTeam]?.nfcSalesUnits || 0) : 0;
+
+  // Load saved sales into selectedCustomers only when selectedTeam, round, or committed sales actually change
   useEffect(() => {
-    if (selectedTeam && currentRoundData?.teamData[selectedTeam]?.customersSold) {
-      const sold = currentRoundData.teamData[selectedTeam].customersSold || [];
+    if (selectedTeam && savedSalesKey !== null) {
+      const sold: string[] = JSON.parse(savedSalesKey);
       const grouped: Record<string, string[]> = {};
       
       REGION_CUSTOMERS.forEach(({ region, customers }) => {
@@ -86,12 +93,12 @@ export const SalesPhase = () => {
         }
       });
       setSelectedCustomers(grouped);
-      setNfcSalesUnits(currentRoundData.teamData[selectedTeam].nfcSalesUnits || 0);
+      setNfcSalesUnits(savedNfcSalesUnits);
     } else {
       setSelectedCustomers({});
       setNfcSalesUnits(0);
     }
-  }, [selectedTeam, currentRoundData]);
+  }, [selectedTeam, currentRound, savedSalesKey, savedNfcSalesUnits]);
 
   const selectedTeamData = selectedTeam && currentRoundData?.teamData[selectedTeam];
   const teamName = selectedTeam ? gameState.teams.find(t => t.id === selectedTeam)?.name : '';
@@ -194,6 +201,68 @@ export const SalesPhase = () => {
 
   const isSalesSubmitted = selectedTeamData && !!selectedTeamData.customersSold;
 
+  // Calculate unselected legal sales opportunities remaining for the selected team
+  const additionalEligibleOpportunities = useMemo(() => {
+    if (!selectedTeam || !selectedTeamData) return 0;
+
+    let additionalOffice = 0;
+    let hasEligibleNonOffice = false;
+
+    displayedRegions.forEach(regionName => {
+      const isOffice = teamRegions.includes(regionName);
+      const regionData = REGION_CUSTOMERS.find(r => r.region === regionName);
+      if (!regionData) return;
+
+      const currentlySelectedInRegion = selectedCustomers[regionName] || [];
+
+      regionData.customers.forEach(customer => {
+        if (currentlySelectedInRegion.includes(customer.id)) return;
+
+        const isSoldByOther = soldCustomers.has(customer.id) && !selectedTeamData.customersSold?.includes(customer.id);
+        if (isSoldByOther) return;
+
+        let eligible = false;
+        if (customer.type === 'price') {
+          eligible = selectedTeamData.price <= (customer.price || 0);
+        } else if (customer.type === 'value' && customer.technology) {
+          const reqNorm = customer.technology.toUpperCase();
+          eligible = Array.from(completedTechs).some(t => (t || '').toUpperCase() === reqNorm);
+        }
+
+        if (eligible) {
+          if (isOffice) {
+            additionalOffice++;
+          } else {
+            hasEligibleNonOffice = true;
+          }
+        }
+      });
+    });
+
+    const additional4G = (has4GTech && g4SalesCount === 0 && hasEligibleNonOffice) ? 1 : 0;
+    const additionalNfc = Math.max(0, maxNfcAllowed - effectiveNfcSalesUnits);
+
+    return additionalOffice + additional4G + additionalNfc;
+  }, [
+    selectedTeam,
+    selectedTeamData,
+    displayedRegions,
+    teamRegions,
+    selectedCustomers,
+    soldCustomers,
+    completedTechs,
+    has4GTech,
+    g4SalesCount,
+    maxNfcAllowed,
+    effectiveNfcSalesUnits,
+  ]);
+
+  const cannotMakeAnySale = Boolean(
+    selectedTeamData &&
+      !isSalesSubmitted &&
+      (productsAvailable === 0 || (eligibleCustomerCounts.totalEligible === 0 && maxNfcAllowed === 0))
+  );
+
   const allTeamsHavePlans = useMemo(() => {
     return gameState.teams.every(team => 
       teamsWithPlans.some(t => t.id === team.id)
@@ -204,20 +273,33 @@ export const SalesPhase = () => {
     return <PhaseLockCard phaseName="Sales Phase" />;
   }
 
+  const isV2Turn =
+    gameState.schemaVersion === 2 &&
+    gameState.turn &&
+    gameState.turn.round === currentRound &&
+    gameState.turn.phase === 'sales';
+
   const activeSalesTeam = useMemo(() => {
+    if (isV2Turn && gameState.turn) {
+      const turnTeamId = gameState.turn.order[gameState.turn.index];
+      return turnTeamId ? gameState.teams.find(t => t.id === turnTeamId) : undefined;
+    }
     return playOrder.find(team => {
       const teamData = currentRoundData?.teamData[team.id];
       const produced = teamData?.productsProduced || 0;
       return produced > 0 && !teamData?.customersSold;
     });
-  }, [playOrder, currentRoundData]);
+  }, [isV2Turn, gameState.turn, gameState.teams, playOrder, currentRoundData]);
 
   const isMyTurn = currentRole !== 'STUDENT' || (currentTeamId === activeSalesTeam?.id);
+  const myActionStatus = currentTeamId ? actionsMap?.[`${currentRound}_sales_${currentTeamId}`] : undefined;
+  const isWaitingForReferee = Boolean(myActionStatus && !myActionStatus.status);
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || 
                           (currentRole === 'STUDENT' && !allTeamsHavePlans) || 
                           (currentRole === 'STUDENT' && !isMyTurn) || 
                           (currentRole === 'STUDENT' && isSalesSubmitted) ||
+                          (currentRole === 'STUDENT' && isWaitingForReferee) ||
                           (currentRole === 'STUDENT' && activePhase !== 'sales');
 
   const isCustomerEligible = (customer: Customer): boolean => {
@@ -243,7 +325,7 @@ export const SalesPhase = () => {
     if (!isOfficeRegion && !isCurrentlySelected) {
       const currentRegionCount = (selectedCustomers[regionName] || []).length;
       if (currentRegionCount >= 1) {
-        toast.error(`4G Technology allows a maximum of 1 product sale in ${regionName} (non-office region).`);
+        toast.error(`${techLabel(theme, '4G')} Technology allows a maximum of 1 product sale in ${regionLabel(theme, regionName)} (non-office region).`);
         return;
       }
     }
@@ -277,6 +359,20 @@ export const SalesPhase = () => {
     }
 
     if (!selectedTeamData) return;
+
+    // Warning check: Team has unsold stock remaining while additional legal sales opportunities exist
+    const remainingStock = productsAvailable - totalProductsToSell;
+    if (remainingStock > 0 && additionalEligibleOpportunities > 0) {
+      setShowPartialSalesConfirm(true);
+      return;
+    }
+
+    executeSubmitSales();
+  };
+
+  const executeSubmitSales = () => {
+    setShowPartialSalesConfirm(false);
+    if (!selectedTeam || !selectedTeamData) return;
 
     const allSelectedCustomers = Object.values(selectedCustomers).flat();
 
@@ -319,12 +415,81 @@ export const SalesPhase = () => {
     setNfcSalesUnits(0);
   };
 
-  const allTeamsSubmitted = gameState.teams.every(t => {
-    const teamData = currentRoundData?.teamData[t.id];
-    if (!teamData) return false; // no plan yet
-    const produced = teamData.productsProduced || 0;
-    return produced > 0 ? Array.isArray(teamData.customersSold) : true;
-  });
+  const handleRecordZeroSales = () => {
+    if (!selectedTeam || !selectedTeamData || isReadOnlyMode) return;
+
+    const updatedData = {
+      ...selectedTeamData,
+      customersSold: [],
+      nfcSalesUnits: 0,
+      revenue: 0,
+      totalMoney: (selectedTeamData.totalMoney || 0) - (selectedTeamData.revenue || 0),
+      eligiblePriceCustomers: eligibleCustomerCounts.priceCount,
+      eligibleValueCustomers: eligibleCustomerCounts.valueCount,
+      eligibleSalesUnits: eligibleCustomerCounts.totalEligible,
+      demandFulfillmentRate: 0,
+    };
+
+    addRoundData(currentRound, selectedTeam, updatedData);
+    toast.success(`Zero sales recorded for ${teamName}`);
+
+    if (currentRole !== 'STUDENT' && gameState) {
+      const activeSalesPlayOrder = calculatePlayOrder(currentRound).filter(team => {
+        const productsProduced = currentRoundData?.teamData[team.id]?.productsProduced || 0;
+        return productsProduced > 0;
+      });
+      const currIdx = activeSalesPlayOrder.findIndex(t => t.id === selectedTeam);
+      if (currIdx >= 0 && currIdx < activeSalesPlayOrder.length - 1) {
+        const nextTeam = activeSalesPlayOrder[currIdx + 1];
+        selectTeam(nextTeam.id);
+        setSelectedTeam(nextTeam.id);
+        setSelectedCustomers({});
+        setNfcSalesUnits(0);
+        toast.info(`Turn Order: Advanced to ${nextTeam.name}`);
+        return;
+      }
+    }
+
+    setSelectedTeam('');
+    setSelectedCustomers({});
+    setNfcSalesUnits(0);
+  };
+
+  const handleEndTurn = () => {
+    if (totalProductsToSell > 0 && !salesExceedProduction && selectedTeam) {
+      handleSubmit();
+      return;
+    }
+    if (gameState.schemaVersion === 2) {
+      skipTurn();
+      toast.info(`Skipped sales turn for ${activeSalesTeam?.name || teamName || 'Team'}`);
+      return;
+    }
+    const targetTeamId = selectedTeam || activeSalesTeam?.id;
+    const targetData = targetTeamId ? currentRoundData?.teamData[targetTeamId] : undefined;
+    if (targetTeamId && targetData) {
+      const updatedData = {
+        ...targetData,
+        customersSold: [],
+        revenue: 0,
+        totalMoney: (targetData.totalMoney || 0) - (targetData.revenue || 0),
+      };
+      addRoundData(currentRound, targetTeamId, updatedData);
+      toast.success(`Ended sales turn for ${gameState.teams.find(t => t.id === targetTeamId)?.name || 'Team'}`);
+      setSelectedTeam('');
+      setSelectedCustomers({});
+      setNfcSalesUnits(0);
+    }
+  };
+
+  const allTeamsSubmitted = isV2Turn && gameState.turn
+    ? gameState.turn.index >= gameState.turn.order.length
+    : gameState.teams.every(t => {
+        const teamData = currentRoundData?.teamData[t.id];
+        if (!teamData) return false; // no plan yet
+        const produced = teamData.productsProduced || 0;
+        return produced > 0 ? Array.isArray(teamData.customersSold) : true;
+      });
 
   // Get regions with sales for status display
   const getRegionSalesStatus = () => {
@@ -351,8 +516,7 @@ export const SalesPhase = () => {
 
   return (
     <div className="space-y-4">
-      {true && (
-        <Card>
+      <Card>
           <CardHeader>
             <CardTitle className="text-base sm:text-xl font-bold flex items-center gap-2 flex-wrap tracking-tight">
               <GameIcon type="sales" size="md" />
@@ -372,17 +536,31 @@ export const SalesPhase = () => {
                   <Trophy className="h-4 w-4 text-warning" />
                   <span>Play Order & Team Inventory (Products & Technologies)</span>
                 </h3>
-                {activeSalesTeam ? (
-                  <Badge className="bg-success/15 text-success dark:text-emerald-300 border border-success/30 text-xs font-bold gap-1.5 animate-pulse">
-                    <span className="w-2 h-2 rounded-full bg-success animate-ping" />
-                    Current Turn: {activeSalesTeam.name}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Sales Complete
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  {activeSalesTeam ? (
+                    <Badge className="bg-success/15 text-success dark:text-emerald-300 border border-success/30 text-xs font-bold gap-1.5 animate-pulse">
+                      <span className="w-2 h-2 rounded-full bg-success animate-ping" />
+                      Current Turn: {activeSalesTeam.name}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Sales Complete
+                    </Badge>
+                  )}
+                  {currentRole !== 'STUDENT' && activeSalesTeam && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleEndTurn}
+                      className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5 h-7 text-xs"
+                    >
+                      <UserCheck className="h-3.5 w-3.5" />
+                      End Team Turn
+                    </Button>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
@@ -431,7 +609,7 @@ export const SalesPhase = () => {
                         </div>
                         <div className="flex justify-between items-center text-muted-foreground">
                           <span className="flex items-center gap-1"><GameIcon type="research" size="xs" /> Techs ({techs.length}):</span>
-                          <span className="truncate text-[10px] font-mono">{techs.length > 0 ? techs.join(', ') : 'None'}</span>
+                          <span className="truncate text-[10px] font-mono">{techs.length > 0 ? techs.map(t => techLabel(theme, t)).join(', ') : 'None'}</span>
                         </div>
                       </div>
                     </div>
@@ -453,6 +631,23 @@ export const SalesPhase = () => {
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
                   Waiting for all teams to submit plans. All teams must submit production plans before the sales phase can begin.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {isWaitingForReferee && (
+              <Alert className="border-primary/40 bg-primary/10">
+                <AlertDescription className="text-xs font-medium">
+                  Submitted — waiting for facilitator to confirm your sales...
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {myActionStatus?.status === 'rejected' && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  <strong>Action Rejected:</strong> {myActionStatus.error || 'Invalid sales submission. Please adjust and resubmit.'}
                 </AlertDescription>
               </Alert>
             )}
@@ -589,7 +784,7 @@ export const SalesPhase = () => {
                       <div className="flex flex-wrap gap-2">
                         <span className="text-sm font-medium">Completed Technologies:</span>
                         {Array.from(completedTechs).map(tech => (
-                          <Badge key={tech} variant="secondary">{tech}</Badge>
+                          <Badge key={tech} variant="secondary">{techLabel(theme, tech)}</Badge>
                         ))}
                       </div>
                     )}
@@ -603,85 +798,91 @@ export const SalesPhase = () => {
                       </Alert>
                     )}
 
-                    {hasNfcTech && (
-                      <Card className="border border-indigo-500/30 bg-indigo-500/5 shadow-xs">
-                        <CardHeader className="py-3 px-4">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
-                              <Radio className="h-4 w-4 text-indigo-500 animate-pulse" />
-                              <span>NFC Direct Sales (No Region Required)</span>
-                            </CardTitle>
-                            <Badge className="bg-indigo-600 text-white font-bold text-xs">
-                              Up to 3 Leftover Products
-                            </Badge>
-                          </div>
-                          <CardDescription className="text-xs">
-                            NFC technology allows your team to sell up to 3 products per round without placing them in a region. Each unit is sold at your set price (${selectedTeamData.price}).
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="py-2 px-4 space-y-2">
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <span className="text-xs font-semibold text-muted-foreground">Select NFC Sales Units:</span>
-                            <div className="flex items-center gap-1.5">
-                              {[0, 1, 2, 3].map(n => {
-                                const isAllowed = n <= maxNfcAllowed;
-                                const isSelected = effectiveNfcSalesUnits === n;
-                                return (
-                                  <Button
-                                    key={n}
-                                    type="button"
-                                    variant={isSelected ? 'default' : 'outline'}
-                                    size="sm"
-                                    disabled={!isAllowed || isReadOnlyMode}
-                                    onClick={() => setNfcSalesUnits(n)}
-                                    className={`h-8 px-3 text-xs font-bold ${
-                                      isSelected ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : ''
-                                    }`}
-                                  >
-                                    {n} {n === 1 ? 'Unit' : 'Units'}
-                                  </Button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          <div className="text-xs text-muted-foreground pt-1 flex items-center gap-2 flex-wrap">
-                            <span>Regional Sales: <strong>{regionalSalesCount}</strong></span>
-                            <span>+</span>
-                            <span className="text-indigo-600 dark:text-indigo-400 font-bold">NFC Direct Sales: {effectiveNfcSalesUnits}</span>
-                            <span>=</span>
-                            <span>Total Sold: <strong className="text-foreground">{totalProductsToSell}</strong> / {productsAvailable}</span>
-                            {effectiveNfcSalesUnits > 0 && (
-                              <Badge variant="outline" className="text-[10px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 font-bold ml-auto">
-                                +${(effectiveNfcSalesUnits * selectedTeamData.price).toLocaleString()} NFC Revenue
+                    {hasNfcTech && (() => {
+                      const NfcIcon = techIcon(theme, 'NFC');
+                      return (
+                        <Card className="border border-indigo-500/30 bg-indigo-500/5 shadow-xs">
+                          <CardHeader className="py-3 px-4">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
+                                <NfcIcon className="h-4 w-4 text-indigo-500 animate-pulse" />
+                                <span>{techLabel(theme, 'NFC')} Direct Sales (No Region Required)</span>
+                              </CardTitle>
+                              <Badge className="bg-indigo-600 text-white font-bold text-xs">
+                                Up to 3 Leftover Products
                               </Badge>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
+                            </div>
+                            <CardDescription className="text-xs">
+                              {techLabel(theme, 'NFC')} technology allows your team to sell up to 3 products per round without placing them in a region. Each unit is sold at your set price (${selectedTeamData.price}).
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="py-2 px-4 space-y-2">
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <span className="text-xs font-semibold text-muted-foreground">Select {techLabel(theme, 'NFC')} Sales Units:</span>
+                              <div className="flex items-center gap-1.5">
+                                {[0, 1, 2, 3].map(n => {
+                                  const isAllowed = n <= maxNfcAllowed;
+                                  const isSelected = effectiveNfcSalesUnits === n;
+                                  return (
+                                    <Button
+                                      key={n}
+                                      type="button"
+                                      variant={isSelected ? 'default' : 'outline'}
+                                      size="sm"
+                                      disabled={!isAllowed || isReadOnlyMode}
+                                      onClick={() => setNfcSalesUnits(n)}
+                                      className={`h-8 px-3 text-xs font-bold ${
+                                        isSelected ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : ''
+                                      }`}
+                                    >
+                                      {n} {n === 1 ? 'Unit' : 'Units'}
+                                    </Button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground pt-1 flex items-center gap-2 flex-wrap">
+                              <span>Regional Sales: <strong>{regionalSalesCount}</strong></span>
+                              <span>+</span>
+                              <span className="text-indigo-600 dark:text-indigo-400 font-bold">{techLabel(theme, 'NFC')} Direct Sales: {effectiveNfcSalesUnits}</span>
+                              <span>=</span>
+                              <span>Total Sold: <strong className="text-foreground">{totalProductsToSell}</strong> / {productsAvailable}</span>
+                              {effectiveNfcSalesUnits > 0 && (
+                                <Badge variant="outline" className="text-[10px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 font-bold ml-auto">
+                                  +${(effectiveNfcSalesUnits * selectedTeamData.price).toLocaleString()} {techLabel(theme, 'NFC')} Revenue
+                                </Badge>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })()}
 
-                    {has4GTech && (
-                      <Card className="border border-amber-500/30 bg-amber-500/5 shadow-xs">
-                        <CardHeader className="py-3 px-4">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-700 dark:text-amber-300">
-                              <Signal className="h-4 w-4 text-amber-500 animate-pulse" />
-                              <span>4G Direct Sale (No Office Required)</span>
-                            </CardTitle>
-                            <Badge className="bg-amber-600 text-white font-bold text-xs">
-                              Max 1 Sale Per Non-Office Region
-                            </Badge>
-                          </div>
-                          <CardDescription className="text-xs">
-                            4G technology allows your team to sell 1 product in each region where you have no office (earns sales revenue, no control points).
-                          </CardDescription>
-                        </CardHeader>
-                      </Card>
-                    )}
+                    {has4GTech && (() => {
+                      const G4Icon = techIcon(theme, '4G');
+                      return (
+                        <Card className="border border-amber-500/30 bg-amber-500/5 shadow-xs">
+                          <CardHeader className="py-3 px-4">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                                <G4Icon className="h-4 w-4 text-amber-500 animate-pulse" />
+                                <span>{techLabel(theme, '4G')} Direct Sale (No Office Required)</span>
+                              </CardTitle>
+                              <Badge className="bg-amber-600 text-white font-bold text-xs">
+                                Max 1 Sale Per Non-Office Region
+                              </Badge>
+                            </div>
+                            <CardDescription className="text-xs">
+                              {techLabel(theme, '4G')} technology allows your team to sell 1 product in each region where you have no office (earns sales revenue, no control points).
+                            </CardDescription>
+                          </CardHeader>
+                        </Card>
+                      );
+                    })()}
 
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold">
-                        Select Customers {has4GTech ? '(Office & 4G Remote Regions)' : '(Only Office Regions)'}
+                        Select Customers {has4GTech ? `(Office & ${techLabel(theme, '4G')} Remote Regions)` : '(Only Office Regions)'}
                       </h3>
                       
                       {displayedRegions.length === 0 && (
@@ -704,6 +905,7 @@ export const SalesPhase = () => {
                         const effectiveTeamsCount = Math.max(1, teamsPresentCount);
                         const firstPlaceControl = getControlPointsForRegion(regionName, effectiveTeamsCount, 'first');
                         const secondPlaceControl = getControlPointsForRegion(regionName, effectiveTeamsCount, 'second');
+                        const G4Icon = techIcon(theme, '4G');
 
                         return (
                           <Card key={regionName} className={
@@ -714,11 +916,11 @@ export const SalesPhase = () => {
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                 <CardTitle className="text-base flex items-center gap-2">
                                   <MapPin className="h-4 w-4 text-primary" />
-                                  {regionName}
+                                  {regionLabel(theme, regionName)}
                                   {is4GRemoteRegion && (
                                     <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs font-semibold gap-1">
-                                      <Signal className="h-3 w-3" />
-                                      4G Direct Sale (No Office)
+                                      <G4Icon className="h-3 w-3" />
+                                      {techLabel(theme, '4G')} Direct Sale (No Office)
                                     </Badge>
                                   )}
                                   {isSteveBlocking && (
@@ -755,7 +957,7 @@ export const SalesPhase = () => {
                               {isSteveBlocking ? (
                                 <div className="p-3 rounded-lg bg-red-950/20 border border-red-500/40 text-red-700 dark:text-red-300 flex items-center gap-2 text-xs font-bold">
                                   <SteveIcon size={18} />
-                                  <span>Steve is blocking {regionName}! Product sales are disabled in this region.</span>
+                                  <span>Steve is blocking {regionLabel(theme, regionName)}! Product sales are disabled in this region.</span>
                                 </div>
                               ) : (
                                 <div className="flex flex-wrap gap-2">
@@ -765,7 +967,7 @@ export const SalesPhase = () => {
                                       const isEligible = isCustomerEligible(customer);
                                       const isSoldByOther = soldCustomers.has(customer.id) && !selectedTeamData?.customersSold?.includes(customer.id);
                                       const isSelected = selectedCustomers[regionName]?.includes(customer.id);
-                                      const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
+                                      const TechIcon = customer.technology ? techIcon(theme, customer.technology) : null;
 
                                       return (
                                         <div
@@ -786,7 +988,7 @@ export const SalesPhase = () => {
                                             ? `Blocked by Steve - Sales disabled`
                                             : customer.type === 'price' 
                                             ? `Price Customer - Max ${customer.price}` 
-                                            : `Value Customer - Requires ${customer.technology}`}
+                                            : `Value Customer - Requires ${customer.technology ? techLabel(theme, customer.technology) : ''}`}
                                         >
                                           <div className={`w-full h-full flex items-center justify-center rounded-lg ${
                                             customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'
@@ -813,56 +1015,175 @@ export const SalesPhase = () => {
                       })}
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex flex-wrap gap-2 pt-4 sticky bottom-0 z-30 bg-card/95 backdrop-blur p-3 -mx-6 -mb-6 border-t border-border shadow-2xl sm:static sm:p-0 sm:m-0 sm:shadow-none sm:border-0 sm:bg-transparent">
-                      <Button
-                        onClick={handleSubmit}
-                        className="flex-1 font-bold"
-                        size="lg"
-                        disabled={salesExceedProduction || totalProductsToSell === 0 || isReadOnlyMode}
-                      >
-                        <Save className="mr-2 h-5 w-5" />
-                        Submit Sales
-                      </Button>
-                      {currentRole !== 'STUDENT' && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="lg"
-                          onClick={handleSubmit}
-                          className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
-                        >
-                          <UserCheck className="h-4 w-4" />
-                          End Team Turn
-                        </Button>
-                      )}
-                      <Button
-                        onClick={() => {
-                          const updatedData = {
-                            ...selectedTeamData,
-                            customersSold: [],
-                            revenue: 0,
-                            totalMoney: (selectedTeamData.totalMoney || 0) - (selectedTeamData.revenue || 0)
-                          };
-                          addRoundData(currentRound, selectedTeam, updatedData);
-                          toast.success(`Zero sales recorded for ${teamName}`);
-                          setSelectedTeam('');
-                          setSelectedCustomers({});
-                        }}
-                        variant="outline"
-                        size="lg"
-                        disabled={isReadOnlyMode}
-                      >
-                        Record Zero Sales
-                      </Button>
-                    </div>
+                    {/* Action Buttons or Submitted Status */}
+                    {(() => {
+                      const hasStudentSubmittedSales = Boolean(
+                        isSalesSubmitted || (currentRole === 'STUDENT' && myActionStatus?.status === 'applied')
+                      );
+                      const hasUnsavedFacilitatorEdits =
+                        currentRole !== 'STUDENT' &&
+                        isSalesSubmitted &&
+                        (JSON.stringify(Object.values(selectedCustomers).flat().sort()) !==
+                          JSON.stringify([...(selectedTeamData?.customersSold || [])].sort()) ||
+                          effectiveNfcSalesUnits !== savedNfcSalesUnits);
+
+                      if (isWaitingForReferee) {
+                        return null; // Top alert already displays "Submitted — waiting for facilitator..."
+                      }
+
+                      if (hasStudentSubmittedSales && !hasUnsavedFacilitatorEdits) {
+                        return (
+                          <Alert className="border-success/40 bg-success/10 text-emerald-900 dark:text-emerald-100 flex items-center gap-2.5 shadow-xs">
+                            <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                            <AlertDescription className="font-semibold text-sm">
+                              Sales submitted for <strong>{teamName}</strong> ({totalProductsToSell}{' '}
+                              {totalProductsToSell === 1 ? 'product' : 'products'} sold for $
+                              {calculatedRevenue.toLocaleString()} revenue in Round {currentRound}).
+                            </AlertDescription>
+                          </Alert>
+                        );
+                      }
+
+                      if (isReadOnlyMode) {
+                        return null;
+                      }
+
+                      return (
+                        <div className="space-y-3 pt-4">
+                          {cannotMakeAnySale && (
+                            <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-100 flex items-start gap-3">
+                              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                              <div className="space-y-1">
+                                <AlertTitle className="font-bold text-amber-900 dark:text-amber-200 text-sm">
+                                  No Legal Sales Opportunities Available
+                                </AlertTitle>
+                                <AlertDescription className="text-xs sm:text-sm text-amber-800 dark:text-amber-300">
+                                  {productsAvailable === 0 ? (
+                                    <>
+                                      <strong>{teamName || 'Your team'}</strong> produced <strong>0 products</strong> this round, so no products are available to sell. Please click <strong>Record Zero Sales</strong> below to complete your sales turn.
+                                    </>
+                                  ) : (
+                                    <>
+                                      None of the available customers in your active regions match your product price ($
+                                      {selectedTeamData.price}) or completed technologies, and direct sales are unavailable. With no legal sales possible for your {productsAvailable} {productsAvailable === 1 ? 'product' : 'products'}, please click <strong>Record Zero Sales</strong> below to complete your sales turn.
+                                    </>
+                                  )}
+                                </AlertDescription>
+                              </div>
+                            </Alert>
+                          )}
+
+                          <div className="flex flex-wrap gap-2 sticky bottom-0 z-30 bg-card/95 backdrop-blur p-3 -mx-6 -mb-6 border-t border-border shadow-2xl sm:static sm:p-0 sm:m-0 sm:shadow-none sm:border-0 sm:bg-transparent">
+                            {cannotMakeAnySale ? (
+                              <Button
+                                onClick={handleRecordZeroSales}
+                                className="flex-1 font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
+                                size="lg"
+                                disabled={isReadOnlyMode}
+                              >
+                                <Save className="mr-2 h-5 w-5" />
+                                Record Zero Sales (Complete Turn)
+                              </Button>
+                            ) : (
+                              <>
+                                <Button
+                                  onClick={handleSubmit}
+                                  className="flex-1 font-bold"
+                                  size="lg"
+                                  disabled={salesExceedProduction || totalProductsToSell === 0 || isReadOnlyMode}
+                                >
+                                  <Save className="mr-2 h-5 w-5" />
+                                  {hasUnsavedFacilitatorEdits ? 'Update Sales' : 'Submit Sales'}
+                                </Button>
+                                {currentRole !== 'STUDENT' && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="lg"
+                                    onClick={handleEndTurn}
+                                    className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
+                                  >
+                                    <UserCheck className="h-4 w-4" />
+                                    End Team Turn
+                                  </Button>
+                                )}
+                                <Button
+                                  onClick={handleRecordZeroSales}
+                                  variant="outline"
+                                  size="lg"
+                                  disabled={isReadOnlyMode}
+                                >
+                                  Record Zero Sales
+                                </Button>
+                              </>
+                            )}
+                            {cannotMakeAnySale && currentRole !== 'STUDENT' && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="lg"
+                                onClick={handleEndTurn}
+                                className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
+                              >
+                                <UserCheck className="h-4 w-4" />
+                                End Team Turn
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
               </>
             )}
           </CardContent>
         </Card>
-      )}
+
+        <AlertDialog open={showPartialSalesConfirm} onOpenChange={setShowPartialSalesConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-5 w-5" />
+                Unsold Stock & Eligible Customers Remaining
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-2 pt-1">
+                <span className="block">
+                  <strong>{teamName || 'Your team'}</strong> produced{' '}
+                  <strong>{productsAvailable} products</strong> and selected{' '}
+                  <strong>{totalProductsToSell} to sell</strong> (
+                  <strong className="text-foreground">
+                    {productsAvailable - totalProductsToSell} unsold{' '}
+                    {productsAvailable - totalProductsToSell === 1 ? 'product' : 'products'} remaining
+                  </strong>
+                  ).
+                </span>
+                <span className="block">
+                  There {additionalEligibleOpportunities === 1 ? 'is' : 'are'} still{' '}
+                  <strong>
+                    {additionalEligibleOpportunities} eligible sales{' '}
+                    {additionalEligibleOpportunities === 1 ? 'opportunity' : 'opportunities'}
+                  </strong>{' '}
+                  available across your active regions or direct sales.
+                </span>
+                <span className="block text-amber-700 dark:text-amber-300 font-medium">
+                  Submitting now will finalize your sales turn for Round {currentRound} with{' '}
+                  {productsAvailable - totalProductsToSell}{' '}
+                  {productsAvailable - totalProductsToSell === 1 ? 'product' : 'products'} remaining unsold. Are you sure you want to proceed?
+                </span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Go Back & Review Sales</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={executeSubmitSales}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+              >
+                Confirm & Submit {totalProductsToSell} {totalProductsToSell === 1 ? 'Sale' : 'Sales'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
       {/* All Regions Sales Status */}
       <Card>
@@ -892,7 +1213,7 @@ export const SalesPhase = () => {
                   <CardHeader className="pb-2 border-b border-border/40 mb-2 px-3 pt-3">
                     <div className="flex items-center justify-between gap-1 flex-wrap">
                       <CardTitle className="text-sm font-bold flex items-center gap-1.5">
-                        {region}
+                        {regionLabel(theme, region)}
                         {isSteveBlocking && (
                           <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-[10px] flex items-center gap-1 font-bold [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
                             <SteveIcon size={12} /> BLOCKED
@@ -957,20 +1278,20 @@ export const SalesPhase = () => {
                               {(completedTechs.length > 0 || researchingTechs.length > 0) && (
                                 <div className="flex flex-wrap gap-1 items-center pl-3.5 mt-0.5">
                                   {completedTechs.map(tech => {
-                                    const TechIcon = TECHNOLOGY_ICONS[tech];
+                                    const TechIcon = techIcon(theme, tech);
                                     return (
-                                      <div key={tech} className="flex items-center gap-1 text-primary text-[9px] bg-primary/10 border border-primary/20 px-1 py-0.5 rounded" title={`${tech} (Completed)`}>
-                                        {TechIcon && <TechIcon className="w-2.5 h-2.5" />}
-                                        <span className="font-medium">{tech}</span>
+                                      <div key={tech} className="flex items-center gap-1 text-primary text-[9px] bg-primary/10 border border-primary/20 px-1 py-0.5 rounded" title={`${techLabel(theme, tech)} (Completed)`}>
+                                        <TechIcon className="w-2.5 h-2.5" />
+                                        <span className="font-medium">{techLabel(theme, tech)}</span>
                                       </div>
                                     );
                                   })}
                                   {researchingTechs.map(({ tech, spent, required }) => {
-                                    const TechIcon = TECHNOLOGY_ICONS[tech];
+                                    const TechIcon = techIcon(theme, tech);
                                     return (
-                                      <div key={tech} className="flex items-center gap-1 text-muted-foreground text-[9px] bg-secondary/50 border border-border px-1 py-0.5 rounded" title={`${tech} (Researching)`}>
-                                        {TechIcon && <TechIcon className="w-2.5 h-2.5 opacity-70" />}
-                                        <span>{tech} ({spent}/{required})</span>
+                                      <div key={tech} className="flex items-center gap-1 text-muted-foreground text-[9px] bg-secondary/50 border border-border px-1 py-0.5 rounded" title={`${techLabel(theme, tech)} (Researching)`}>
+                                        <TechIcon className="w-2.5 h-2.5 opacity-70" />
+                                        <span>{techLabel(theme, tech)} ({spent}/{required})</span>
                                       </div>
                                     );
                                   })}
@@ -992,7 +1313,7 @@ export const SalesPhase = () => {
                         .sort((a, b) => a.customer.position - b.customer.position)
                         .map(({ customer, soldTo }) => {
                           const soldToTeam = soldTo ? gameState.teams.find(t => t.id === soldTo) : null;
-                          const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
+                          const TechIcon = customer.technology ? techIcon(theme, customer.technology) : null;
 
                           return (
                             <div
@@ -1000,7 +1321,7 @@ export const SalesPhase = () => {
                               className="relative flex flex-col items-center gap-0.5"
                               title={customer.type === 'price' 
                                 ? `Price Customer - Max ${customer.price}${soldTo ? ` - Sold to ${soldToTeam?.name}` : ''}` 
-                                : `Value Customer - Requires ${customer.technology}${soldTo ? ` - Sold to ${soldToTeam?.name}` : ''}`}
+                                : `Value Customer - Requires ${customer.technology ? techLabel(theme, customer.technology) : ''}${soldTo ? ` - Sold to ${soldToTeam?.name}` : ''}`}
                             >
                               <div className={`w-9 h-9 flex items-center justify-center rounded-md ${
                                 customer.type === 'price' ? 'bg-destructive' : 'bg-purple-600'
@@ -1033,7 +1354,7 @@ export const SalesPhase = () => {
                             <div className="flex flex-wrap gap-0.5">
                               {connectedRegions.map(connRegion => (
                                 <Badge key={connRegion} variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-background/50 text-muted-foreground">
-                                  {connRegion}
+                                  {regionLabel(theme, connRegion)}
                                 </Badge>
                               ))}
                             </div>

@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useGame } from '@/contexts/GameContext';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, Wrench, Microscope, Truck, ShoppingCart, PackageX, TrendingUp, ChevronDown, ChevronRight, MapPin, Award, Download, Plus, Minus, CheckCircle, XCircle, FlaskConical, Wifi, Battery, Gamepad2, MapPinned, Nfc, Radio, Trophy, Medal, Box, Users, RefreshCw } from 'lucide-react';
+import { Package, Wrench, Microscope, Truck, ShoppingCart, PackageX, TrendingUp, ChevronDown, ChevronRight, MapPin, Award, Download, Plus, Minus, CheckCircle, XCircle, FlaskConical, Trophy, Medal, Box, Users, RefreshCw } from 'lucide-react';
 import { GameIcon } from './GameIcon';
 import { TEAM_COLORS } from '@/data/combinations';
 import { Button } from '@/components/ui/button';
@@ -16,9 +16,11 @@ import { useSession } from '@/contexts/SessionContext';
 import { calculateTeamTotalScore, getControlPointsForTeamInRound, getInitialScore, getRegionalControlBreakdownForTeamInRound, getTeamPatentPoints } from '@/types/game';
 import { hasTech } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
+import { useGameTheme, regionLabel, techIcon, techLabel } from '@/lib/gameTheme';
 
 export const SimulationReport = () => {
   const { gameState, getTechnologyCostForTeam } = useGame();
+  const theme = useGameTheme();
   const { currentRole, currentTeamId } = useSession();
   const [expandedRounds, setExpandedRounds] = useState<Record<string, boolean>>({});
   const [showCompetitors, setShowCompetitors] = useState(false);
@@ -66,22 +68,8 @@ export const SimulationReport = () => {
   if (!gameState) return null;
 
   const getTechnologyIcon = (tech: string) => {
-    switch (tech) {
-      case 'GPS':
-        return <MapPinned className="h-3 w-3" />;
-      case 'Wifi':
-        return <Wifi className="h-3 w-3" />;
-      case 'Battery':
-        return <Battery className="h-3 w-3" />;
-      case 'Gaming':
-        return <Gamepad2 className="h-3 w-3" />;
-      case 'NFC':
-        return <Nfc className="h-3 w-3" />;
-      case '4G':
-        return <Radio className="h-3 w-3" />;
-      default:
-        return null;
-    }
+    const Icon = techIcon(theme, tech, 'report');
+    return <Icon className="h-3 w-3" />;
   };
 
   const getCustomerDetails = (customerId: string) => {
@@ -286,7 +274,7 @@ export const SimulationReport = () => {
                                   if (breakdown.length === 0) return <span className="text-[10px] text-muted-foreground italic">No control points in this round</span>;
                                   return breakdown.map(detail => (
                                     <div key={detail.region} className="flex justify-between text-[11px]">
-                                      <span>{detail.region} ({detail.rank === 'first' ? '1st Place' : '2nd Place'})</span>
+                                      <span>{regionLabel(theme, detail.region)} ({detail.rank === 'first' ? '1st Place' : '2nd Place'})</span>
                                       <span className="font-semibold">+{detail.points} pts</span>
                                     </div>
                                   ));
@@ -623,7 +611,7 @@ export const SimulationReport = () => {
                                               <div key={region} className="flex items-center justify-between text-xs">
                                                 <div className="flex items-center gap-1.5">
                                                   <CheckCircle className="h-3 w-3 text-success" />
-                                                  <span className="font-medium">{region}</span>
+                                                  <span className="font-medium">{regionLabel(theme, region)}</span>
                                                 </div>
                                                 <Badge variant="outline" className="text-xs font-semibold">
                                                   {soldInRegion} sold
@@ -643,7 +631,7 @@ export const SimulationReport = () => {
                                               return (
                                                 <div key={region} className="flex items-center gap-2">
                                                   <XCircle className="h-3 w-3 text-warning" />
-                                                  <span className="text-sm">{region}</span>
+                                                  <span className="text-sm">{regionLabel(theme, region)}</span>
                                                   <Badge variant="outline" className="text-xs">
                                                     {invested}/{regionData?.logisticsCost || '?'}
                                                   </Badge>
@@ -673,7 +661,7 @@ export const SimulationReport = () => {
                                                <div key={detail.region} className="flex items-center justify-between p-2 bg-background rounded border text-xs">
                                                  <div className="flex items-center gap-1.5">
                                                    <Trophy className={`h-3.5 w-3.5 ${detail.rank === 'first' ? 'text-warning' : 'text-slate-400'}`} />
-                                                   <span className="font-semibold">{detail.region}</span>
+                                                   <span className="font-semibold">{regionLabel(theme, detail.region)}</span>
                                                    <Badge variant="outline" className="text-[10px] px-1 py-0">
                                                      {detail.rank === 'first' ? '1st Place' : '2nd Place'}
                                                    </Badge>
@@ -717,7 +705,7 @@ export const SimulationReport = () => {
                                                 <div key={tech.name} className="flex items-center justify-between text-xs">
                                                   <div className="flex items-center gap-1.5">
                                                     {getTechnologyIcon(tech.name)}
-                                                    <span className="text-muted-foreground">{tech.name}</span>
+                                                    <span className="text-muted-foreground">{techLabel(theme, tech.name)}</span>
                                                     {hasPatent && (
                                                       <Badge variant="default" className="bg-warning hover:bg-warning text-white text-xs px-2 py-0.5 flex items-center gap-1">
                                                         Patent: {tech.maxPoints}

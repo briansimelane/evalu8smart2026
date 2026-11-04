@@ -24,8 +24,12 @@ dist-ssr
 
 # Firebase local cache/artifacts
 .firebase
+backups/
+firestore-debug.log
+ui-debug.log
 
 # Scratch
 scratch/
+vite.config.ts.timestamp-*
 
 

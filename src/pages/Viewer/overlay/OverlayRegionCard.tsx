@@ -3,24 +3,15 @@ import { GameState, Team } from '@/types/game';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { GameIcon } from '@/components/dashboard/GameIcon';
-import { MapPin, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
-import { WorldMarker, WorldTag, getContrastTextColor } from './WorldMarker';
+import { WorldMarker, WorldTag } from './WorldMarker';
 import { cn } from '@/lib/utils';
 
 import { useOptionalMotion } from '../motion/MotionContext';
-import { getMotionClass, getMotionStyles } from '../motion/motionClass';
+import { getMotionClass } from '../motion/motionClass';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
-
-const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  'GPS': MapPin,
-  'Wifi': Wifi,
-  'Gaming': Gamepad2,
-  'Battery': Battery,
-  'NFC': Radio,
-  '4G': Signal,
-};
+import { getGameTheme, regionLabel, techIcon, techLabel } from '@/lib/gameTheme';
 
 interface OverlayRegionCardProps {
   regionName: string;
@@ -32,6 +23,8 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
   const m = useOptionalMotion();
   const roundA = gameStateA.currentRound;
   const roundB = gameStateB.currentRound;
+  const theme = getGameTheme(gameStateA.themeId ?? gameStateB.themeId);
+  const displayRegionName = regionLabel(theme, regionName);
 
   const regA = gameStateA.regionLogistics[regionName];
   const regB = gameStateB.regionLogistics[regionName];
@@ -325,7 +318,7 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
             <span className="text-slate-900 text-xs font-black">{logisticsCost}</span>
           </div>
           <span className="font-display font-black text-sm tracking-tight text-slate-900">
-            {regionName.toUpperCase()}
+            {displayRegionName.toUpperCase()}
           </span>
         </div>
 
@@ -340,12 +333,13 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
       <div className="flex items-center gap-1.5 py-1.5 justify-start flex-nowrap overflow-visible">
         {customerData.map((customer, idx) => {
           const isPrice = customer.type === 'price';
-          const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
+          const TechIcon = customer.technology ? techIcon(theme, customer.technology) : null;
+          const custTechLabel = customer.technology ? techLabel(theme, customer.technology) : '';
 
           const buyerA = buyersA[idx]?.buyer;
           const buyerB = buyersB[idx]?.buyer;
 
-          const tooltip = `Customer #${customer.position}: ${isPrice ? `$${customer.price}` : customer.technology}\n` +
+          const tooltip = `Customer #${customer.position}: ${isPrice ? `$${customer.price}` : custTechLabel}\n` +
             `A: ${buyerA ? buyerA.name : 'Unsold'}  |  B: ${buyerB ? buyerB.name : 'Unsold'}`;
 
           return (

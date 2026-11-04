@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDemoState, DemoConfig, DemoBotSetup } from './DemoStateProvider';
+import { useDemoState, DemoBotSetup } from './DemoStateProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { TEAM_COLORS, getTeamColorName } from '@/data/combinations';
+import { TEAM_COLORS } from '@/data/combinations';
 import { BotProfile, BotDifficulty } from '@/types/game';
-import { GameIcon } from '@/components/dashboard/GameIcon';
 import { Play, Bot, User, Sparkles, Clock, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { GAME_THEME_LIST, GameThemeId, getGameTheme } from '@/lib/gameTheme';
 
 const DEFAULT_BOTS: DemoBotSetup[] = [
   { name: 'Apex Robotics', color: '#ef4444', botProfile: 'BALANCED', botDifficulty: 'MEDIUM' },
@@ -22,10 +22,13 @@ const DEFAULT_BOTS: DemoBotSetup[] = [
 export function DemoSetup() {
   const navigate = useNavigate();
   const { startDemo } = useDemoState();
+  const [themeId, setThemeId] = useState<GameThemeId>('smartphone');
   const [humanName, setHumanName] = useState('Your Company');
   const [humanColor, setHumanColor] = useState('#22c55e'); // Green
   const [bots, setBots] = useState<DemoBotSetup[]>(DEFAULT_BOTS);
   const [isStarting, setIsStarting] = useState(false);
+
+  const theme = getGameTheme(themeId);
 
   const updateBot = (index: number, updates: Partial<DemoBotSetup>) => {
     setBots(prev => {
@@ -55,6 +58,7 @@ export function DemoSetup() {
         humanTeamName: humanName,
         humanTeamColor: humanColor,
         bots,
+        themeId,
       });
     } catch (err) {
       console.error(err);
@@ -83,14 +87,51 @@ export function DemoSetup() {
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Smartphone Inc. Solo Demo Sandbox</span>
+            <span>{theme.productName} Solo Demo Sandbox</span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-foreground">
             Play the Demo: 1 Human vs 4 AI Bots
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground max-w-xl mx-auto">
-            Test your smartphone strategy against autonomous AI opponents. Runs directly in your browser and automatically saves your game for up to 7 days. No sign-up required.
+            Test your strategy against autonomous AI opponents. Runs directly in your browser and automatically saves your game for up to 7 days. No sign-up required.
           </p>
+        </div>
+
+        {/* Simulation Selector */}
+        <div className="space-y-2">
+          <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Simulation</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {GAME_THEME_LIST.map((t) => {
+              const selected = themeId === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setThemeId(t.id)}
+                  aria-pressed={selected}
+                  className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 ${
+                    selected
+                      ? 'bg-emerald-500/10 border-emerald-500 ring-2 ring-emerald-500/30 text-foreground shadow-sm'
+                      : 'bg-card border-border text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  <img
+                    src={t.logoSrc}
+                    alt={t.productName}
+                    className="w-8 h-8 object-contain shrink-0 mt-0.5"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-sm font-black text-foreground leading-tight">
+                      {t.productName}
+                    </div>
+                    <div className="text-xs text-muted-foreground leading-snug mt-0.5">
+                      {t.description}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Form Container */}

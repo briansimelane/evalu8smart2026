@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import { hasTech, isSteveBlocking, isGpsBonusClaimed, getCarriedOverProductsForTeam } from '@/lib/rules';
 import { getPatentPointsForTech } from '@/types/game';
+import { useGameTheme, regionLabel, techLabel } from '@/lib/gameTheme';
 
 interface TeamPerksBannerProps {
   teamId?: string;
@@ -17,6 +18,7 @@ interface TeamPerksBannerProps {
 
 export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTeamId }) => {
   const { gameState } = useGame();
+  const theme = useGameTheme();
   const { currentTeamId, currentRole } = useSession();
   const [selectedFacilitatorTeamId, setSelectedFacilitatorTeamId] = useState<string>('');
 
@@ -128,7 +130,7 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
               {teamPatents.map(p => (
                 <Badge key={p} className="bg-amber-500 text-white font-semibold text-[11px] shadow-sm">
-                  🏆 {p} (+{getPatentPointsForTech(p)} VPs End Game)
+                  🏆 {techLabel(theme, p)} (+{getPatentPointsForTech(p)} VPs End Game)
                 </Badge>
               ))}
             </div>
@@ -182,7 +184,7 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
           <div className="flex items-center gap-1.5 flex-wrap text-[11px] pt-0.5">
             {steveBlocked && activeSteveRegion && (
               <Badge className="bg-red-600 text-white font-bold text-[10px] shadow-sm animate-pulse">
-                <SteveIcon size={12} /> Steve Blocking {activeSteveRegion}
+                <SteveIcon size={12} /> Steve Blocking {regionLabel(theme, activeSteveRegion)}
               </Badge>
             )}
 
@@ -190,27 +192,27 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
               <>
                 {isGpsDone && (
                   <Badge variant="outline" className="border-purple-300 dark:border-purple-500/40 bg-purple-50 dark:bg-purple-500/10 text-purple-800 dark:text-purple-300 text-[10px] font-semibold">
-                    ⚡ GPS {isGpsClaimed ? '(+5 Bonus Claimed)' : '(+5 One-Time Bonus Ready)'}
+                    ⚡ {techLabel(theme, 'GPS')} {isGpsClaimed ? '(+5 Bonus Claimed)' : '(+5 One-Time Bonus Ready)'}
                   </Badge>
                 )}
                 {isBatteryDone && (
                   <Badge variant="outline" className="border-rose-300 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 text-rose-800 dark:text-rose-300 text-[10px] font-semibold">
-                    ⚡ Battery (+1 Logistics when Price &gt; $5)
+                    ⚡ {techLabel(theme, 'Battery')} ({theme.id === 'evalu8' ? theme.techs.BATTERY.perkText : '+1 Logistics when Price > $5'})
                   </Badge>
                 )}
                 {isGamingDone && (
                   <Badge variant="outline" className="border-indigo-300 dark:border-indigo-500/40 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-800 dark:text-indigo-300 text-[10px] font-semibold">
-                    ⚡ Gaming (-$1 Tech Cost)
+                    ⚡ {techLabel(theme, 'Gaming')} ({theme.id === 'evalu8' ? theme.techs.GAMING.perkText : '-$1 Tech Cost'})
                   </Badge>
                 )}
                 {isWifiDone && carriedOver > 0 && (
                   <Badge variant="outline" className="border-cyan-300 dark:border-cyan-500/40 bg-cyan-50 dark:bg-cyan-500/10 text-cyan-800 dark:text-cyan-300 text-[10px] font-semibold">
-                    ⚡ Wifi (+{carriedOver} Carried Over Products)
+                    ⚡ {techLabel(theme, 'Wifi')} (+{carriedOver} {theme.id === 'evalu8' ? 'Carried Over Vehicles' : 'Carried Over Products'})
                   </Badge>
                 )}
                 {isNfcDone && (
                   <Badge variant="outline" className="border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-[10px] font-semibold">
-                    ⚡ NFC (Sell up to 3 direct products without region placement)
+                    ⚡ {techLabel(theme, 'NFC')} ({theme.id === 'evalu8' ? theme.techs.NFC.perkText : 'Sell up to 3 direct products without region placement'})
                   </Badge>
                 )}
               </>
@@ -227,4 +229,3 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
     </Card>
   );
 };
-

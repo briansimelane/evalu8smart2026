@@ -1,17 +1,89 @@
 import { useEffect, useRef } from 'react';
-import { GameState, Team } from '@/types/game';
-import { decidePlanning, decideResearch, decideLogistics, decideSales, decideImprovement } from '@/bots/botEngine';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { GameState, Team, TeamActionDoc } from '@/types/game';
+import {
+  decidePlanning,
+  decideResearch,
+  decideLogistics,
+  decideSales,
+  decideImprovement,
+} from '@/bots/botEngine';
 import { AVAILABLE_IMPROVEMENT_CARDS } from '@/data/improvements';
-import { calculatePlayOrderForState } from '@/hooks/useGameBoardState';
+import { COMBINATIONS } from '@/data/combinations';
+import { calculatePlanStats, hasTech } from '@/lib/rules';
+import { calculatePlayOrderForState, computeTurnOrder, normalizePhaseName } from '@/lib/turnOrder';
+import {
+  resolvePlan,
+  resolveImprovement,
+  resolveResearch,
+  resolveLogistics,
+  resolveSales,
+} from '@/lib/referee/resolvers';
+import { applyRefereeActionTransaction, submitStudentPlanV2 } from '@/lib/referee/refereeEngine';
 import { WorldSubState } from './useMultiWorldSession';
 import { mutateWorldState } from '@/lib/multiworld/worldWrite';
 
 export function useMultiWorldBotRunners(worlds: WorldSubState[], options?: { paused?: boolean }) {
   const processedActions = useRef<Set<string>>(new Set());
+  const refereeUnsubscribes = useRef<Record<string, () => void>>({});
+  const inFlightReferee = useRef<Set<string>>(new Set());
 
+  // 1. Mount referee listeners for all v2 child worlds so human actions in Multi-World resolve automatically
+  useEffect(() => {
+    if (!worlds || worlds.length === 0) return;
+
+    const currentIds = new Set(worlds.map((w) => w.classId).filter(Boolean));
+    Object.keys(refereeUnsubscribes.current).forEach((cid) => {
+      if (!currentIds.has(cid)) {
+        refereeUnsubscribes.current[cid]();
+        delete refereeUnsubscribes.current[cid];
+      }
+    });
+
+    worlds.forEach((world) => {
+      const { classId, classData, gameState } = world;
+      if (!classId || classData?.schemaVersion !== 2) return;
+      if (refereeUnsubscribes.current[classId]) return;
+
+      refereeUnsubscribes.current[classId] = onSnapshot(
+        collection(db, 'classes', classId, 'actions'),
+        (snap) => {
+          snap.forEach((docSnap) => {
+            const actionId = docSnap.id;
+            const data = docSnap.data() as TeamActionDoc;
+            if (data.status === 'applied' || data.status === 'rejected') return;
+
+            const flightKey = `${classId}:${actionId}:${data.submittedAt || ''}`;
+            if (inFlightReferee.current.has(flightKey)) return;
+            inFlightReferee.current.add(flightKey);
+
+            const teams = gameState?.teams || (classData?.teams as Team[]) || [];
+            applyRefereeActionTransaction(classId, actionId, teams, classData?.themeId)
+              .catch((err) => {
+                console.warn(`MultiWorld referee warning for ${classId}/${actionId}:`, err);
+              })
+              .finally(() => {
+                inFlightReferee.current.delete(flightKey);
+              });
+          });
+        },
+        () => {}
+      );
+    });
+
+    return () => {
+      Object.values(refereeUnsubscribes.current).forEach((u) => u());
+      refereeUnsubscribes.current = {};
+    };
+  }, [worlds]);
+
+  // 2. Execute bot turns for all child worlds through the canonical referee resolvers
   useEffect(() => {
     if (options?.paused) return;
     if (!worlds || worlds.length === 0) return;
+
+    const timers: NodeJS.Timeout[] = [];
 
     worlds.forEach((world, wIdx) => {
       const { classId, gameState } = world;
@@ -19,13 +91,12 @@ export function useMultiWorldBotRunners(worlds: WorldSubState[], options?: { pau
       if (gameState.botConfig?.enabled === false) return;
 
       const round = gameState.currentRound;
-      const rawPhase = (gameState.currentPhase || 'planning').toLowerCase();
-      const phase = rawPhase === 'innovation' ? 'research' : (rawPhase === 'expansion' ? 'logistics' : rawPhase);
-
-      const roundData = gameState.rounds.find(r => r.roundNumber === round);
+      const normPhase = normalizePhaseName(gameState.currentPhase);
+      const roundData = gameState.rounds.find((r) => r.roundNumber === round);
       const playOrder = calculatePlayOrderForState(gameState, round);
 
-      const isBotTeam = (t: Team) => {
+      const isBotTeam = (t?: Team) => {
+        if (!t) return false;
         return !!(
           t.isBot ||
           (t as any).accessCode === 'BOT' ||
@@ -36,54 +107,62 @@ export function useMultiWorldBotRunners(worlds: WorldSubState[], options?: { pau
 
       let activeBotTeam: Team | undefined = undefined;
 
-      if (phase === 'planning') {
-        activeBotTeam = playOrder.find(t => isBotTeam(t) && !roundData?.teamData[t.id]);
-      } else if (phase === 'improvement') {
-        const activeTeam = playOrder.find(t => {
-          const count = roundData?.teamData[t.id]?.improvementCards || 0;
-          const isDone = gameState.improvementCards?.some(c =>
-            (c.availableForTeam === t.id || c.usedBy === t.id) && c.allocatedInRound === round
-          );
-          return count > 0 && !isDone;
-        });
-        if (activeTeam && isBotTeam(activeTeam)) {
-          activeBotTeam = activeTeam;
-        }
-      } else if (phase === 'research') {
-        const activeTeam = playOrder.find(t => {
-          const icons = roundData?.teamData[t.id]?.researchIcons || 0;
-          const spent = (gameState.researchAllocatedByRound || {})[round]?.[t.id] || 0;
-          return icons > 0 && spent < icons;
-        });
-        if (activeTeam && isBotTeam(activeTeam)) {
-          activeBotTeam = activeTeam;
-        }
-      } else if (phase === 'logistics') {
-        const activeTeam = playOrder.find(t => {
-          const icons = roundData?.teamData[t.id]?.logisticsIcons || 0;
-          const spent = (gameState.logisticsAllocatedByRound || {})[round]?.[t.id] || 0;
-          return icons > 0 && spent < icons;
-        });
-        if (activeTeam && isBotTeam(activeTeam)) {
-          activeBotTeam = activeTeam;
-        }
-      } else if (phase === 'sales') {
-        const activeSalesPlayOrder = playOrder.filter(team => {
-          const tData = roundData?.teamData[team.id];
-          return (tData?.productsProduced || 0) > 0;
-        });
-        const activeTeam = activeSalesPlayOrder.find(t => {
-          const tData = roundData?.teamData[t.id];
-          return !tData?.customersSold;
-        });
-        if (activeTeam && isBotTeam(activeTeam)) {
-          activeBotTeam = activeTeam;
+      if (normPhase === 'planning') {
+        activeBotTeam = playOrder.find(
+          (t) =>
+            isBotTeam(t) &&
+            !roundData?.teamData[t.id] &&
+            !gameState.planSubmittedByRound?.[round]?.[t.id]
+        );
+      } else if (
+        normPhase === 'improvement' ||
+        normPhase === 'innovation' ||
+        normPhase === 'expansion' ||
+        normPhase === 'sales'
+      ) {
+        if (
+          gameState.turn &&
+          gameState.turn.round === round &&
+          normalizePhaseName(gameState.turn.phase) === normPhase
+        ) {
+          const turnTeamId = gameState.turn.order[gameState.turn.index];
+          const candidate = gameState.teams.find((t) => t.id === turnTeamId);
+          if (isBotTeam(candidate)) {
+            activeBotTeam = candidate;
+          }
+        } else {
+          const computed = computeTurnOrder(gameState, normPhase);
+          const candidateId = computed.order.find((tid) => {
+            if (normPhase === 'improvement') {
+              return !gameState.improvementCards?.some(
+                (c) => (c.availableForTeam === tid || c.usedBy === tid) && c.allocatedInRound === round
+              );
+            }
+            if (normPhase === 'innovation') {
+              const icons = roundData?.teamData[tid]?.researchIcons || 0;
+              const spent = (gameState.researchAllocatedByRound || {})[round]?.[tid] || 0;
+              return spent < icons;
+            }
+            if (normPhase === 'expansion') {
+              const icons = roundData?.teamData[tid]?.logisticsIcons || 0;
+              const spent = (gameState.logisticsAllocatedByRound || {})[round]?.[tid] || 0;
+              return spent < icons;
+            }
+            if (normPhase === 'sales') {
+              return !roundData?.teamData[tid]?.customersSold;
+            }
+            return false;
+          });
+          const candidate = gameState.teams.find((t) => t.id === candidateId);
+          if (isBotTeam(candidate)) {
+            activeBotTeam = candidate;
+          }
         }
       }
 
       if (!activeBotTeam) return;
 
-      const actionKey = `${classId}:${round}:${phase}:${activeBotTeam.id}`;
+      const actionKey = `${classId}:${round}:${normPhase}:${activeBotTeam.id}`;
       if (processedActions.current.has(actionKey)) return;
       processedActions.current.add(actionKey);
 
@@ -94,157 +173,194 @@ export function useMultiWorldBotRunners(worlds: WorldSubState[], options?: { pau
 
         try {
           const teamId = activeBotTeam!.id;
-          const profile = (activeBotTeam as any).botProfile || 'BALANCED';
-          const difficulty = (activeBotTeam as any).botDifficulty || 'MEDIUM';
+          const profile = activeBotTeam!.botProfile || 'BALANCED';
+          const difficulty = activeBotTeam!.botDifficulty || 'MEDIUM';
 
-          await mutateWorldState(classId, (fresh) => {
-            let nextState = JSON.parse(JSON.stringify(fresh)) as GameState;
-            let rIdx = nextState.rounds.findIndex(r => r.roundNumber === round);
-            if (rIdx === -1) {
-              nextState.rounds.push({ roundNumber: round, teamData: {} });
-              rIdx = nextState.rounds.length - 1;
-            }
+          if (normPhase === 'planning' && world.classData?.schemaVersion === 2) {
+            const combinations = gameState.combinationsData || COMBINATIONS;
+            const decision = decidePlanning(gameState, teamId, profile, difficulty, combinations);
+            const stats = calculatePlanStats(
+              gameState,
+              teamId,
+              decision.combination,
+              decision.position,
+              decision.cardUsages,
+              combinations
+            );
+            await submitStudentPlanV2(classId, round, teamId, {
+              teamId,
+              combination: decision.combination,
+              position: decision.position,
+              price: stats.calculatedPrice,
+              productsProduced: stats.productsAvailable,
+              improvementCards: stats.improvementPoints,
+              researchIcons: stats.researchPoints,
+              logisticsIcons: stats.logisticsPoints,
+              cardUsages: decision.cardUsages,
+              revenue: 0,
+              technologiesResearched: [],
+              expansionLocations: [],
+              salesByRegion: {},
+              regionControlPoints: {},
+              controlValue: 0,
+              totalMoney: 0,
+            });
+            return;
+          }
 
-            if (phase === 'planning') {
-              const botPlan = decidePlanning(nextState, teamId, profile, difficulty);
-              nextState.rounds[rIdx].teamData[teamId] = botPlan;
-            } else if (phase === 'improvement') {
-              if (!nextState.improvementPoolByRound) nextState.improvementPoolByRound = {};
-              if (!nextState.improvementPoolByRound[round] || nextState.improvementPoolByRound[round].length === 0) {
-                const usedCardIds = (nextState.improvementCards || []).filter(c => c.used).map(c => c.id);
-                const availablePool = AVAILABLE_IMPROVEMENT_CARDS.filter(c => !usedCardIds.includes(c.id));
-                nextState.improvementPoolByRound[round] = availablePool.slice(0, nextState.teams.length).map(c => c.id);
+          await mutateWorldState(
+            classId,
+            (fresh) => {
+              let working = JSON.parse(JSON.stringify(fresh)) as GameState;
+              const combinations = working.combinationsData || COMBINATIONS;
+
+              if (normPhase === 'planning') {
+                const decision = decidePlanning(working, teamId, profile, difficulty, combinations);
+                const stats = calculatePlanStats(
+                  working,
+                  teamId,
+                  decision.combination,
+                  decision.position,
+                  decision.cardUsages,
+                  combinations
+                );
+                const res = resolvePlan(working, round, teamId, {
+                  teamId,
+                  combination: decision.combination,
+                  position: decision.position,
+                  price: stats.calculatedPrice,
+                  productsProduced: stats.productsAvailable,
+                  improvementCards: stats.improvementPoints,
+                  researchIcons: stats.researchPoints,
+                  logisticsIcons: stats.logisticsPoints,
+                  cardUsages: decision.cardUsages,
+                  revenue: 0,
+                  technologiesResearched: [],
+                  expansionLocations: [],
+                  salesByRegion: {},
+                  regionControlPoints: {},
+                  controlValue: 0,
+                  totalMoney: 0,
+                });
+                return res.valid ? res.nextState : null;
               }
 
-              let cardIdToClaim = decideImprovement(nextState, teamId, profile, difficulty);
-
-              if (cardIdToClaim === null) {
-                const poolIds = nextState.improvementPoolByRound[round] || [];
-                const claimedInRound = (nextState.improvementCards || [])
-                  .filter(c => c.allocatedInRound === round && c.availableForTeam)
-                  .map(c => c.id);
-                const availableCardId = poolIds.find(id => !claimedInRound.includes(id));
-                if (availableCardId !== undefined) {
-                  cardIdToClaim = availableCardId;
-                } else {
-                  cardIdToClaim = -(Math.floor(Math.random() * 1000) + 1);
-                }
-              }
-
-              if (!nextState.improvementCards) nextState.improvementCards = [];
-
-              if (cardIdToClaim !== null) {
-                const existingIdx = nextState.improvementCards.findIndex(c => c.id === cardIdToClaim);
-                if (existingIdx !== -1) {
-                  nextState.improvementCards[existingIdx] = {
-                    ...nextState.improvementCards[existingIdx],
-                    availableForTeam: teamId,
-                    allocatedInRound: round
-                  };
-                } else {
-                  const cardData = AVAILABLE_IMPROVEMENT_CARDS.find(c => c.id === cardIdToClaim);
-                  nextState.improvementCards.push({
-                    id: cardIdToClaim,
-                    icon1: cardData?.icon1 || 'Research',
-                    icon2: cardData?.icon2 || 'Product',
-                    availableForTeam: teamId,
-                    used: false,
-                    isInitial: false,
-                    allocatedInRound: round
-                  });
-                }
-              }
-            } else if (phase === 'research') {
-              const currentTeamData = nextState.rounds[rIdx].teamData[teamId];
-              const maxIcons = currentTeamData?.researchIcons || 0;
-              const alreadySpent = (nextState.researchAllocatedByRound || {})[round]?.[teamId] || 0;
-              const neededPoints = maxIcons - alreadySpent;
-
-              if (neededPoints > 0) {
-                const resDecision = decideResearch(nextState, teamId, profile, difficulty);
-                if (resDecision) {
-                  if (!nextState.teamResearchProgress[teamId]) {
-                    nextState.teamResearchProgress[teamId] = { teamId, technologyInvestments: {}, completedTechnologies: [] };
-                  }
-
-                  const techName = resDecision.techName;
-                  const currentPoints = nextState.teamResearchProgress[teamId].technologyInvestments[techName] || 0;
-                  const newPoints = currentPoints + neededPoints;
-                  nextState.teamResearchProgress[teamId].technologyInvestments[techName] = newPoints;
-
-                  const reqPoints = nextState.technologies[techName]?.researchPoints || 4;
-                  if (newPoints >= reqPoints && !nextState.teamResearchProgress[teamId].completedTechnologies.includes(techName)) {
-                    nextState.teamResearchProgress[teamId].completedTechnologies.push(techName);
-                    if (!nextState.patents[techName]) {
-                      nextState.patents[techName] = teamId;
-                    }
-                  }
-
-                  if (!nextState.researchAllocatedByRound) nextState.researchAllocatedByRound = {};
-                  if (!nextState.researchAllocatedByRound[round]) nextState.researchAllocatedByRound[round] = {};
-                  nextState.researchAllocatedByRound[round][teamId] = maxIcons;
-                }
-              }
-            } else if (phase === 'logistics') {
-              const currentTeamData = nextState.rounds[rIdx].teamData[teamId];
-              const maxIcons = currentTeamData?.logisticsIcons || 0;
-              const allocatedSpent = (nextState.logisticsAllocatedByRound || {})[round]?.[teamId] || 0;
-              const neededPoints = maxIcons - allocatedSpent;
-
-              if (neededPoints > 0) {
-                const logDecision = decideLogistics(nextState, teamId, profile, difficulty);
-                if (logDecision) {
-                  const regionName = logDecision.regionName;
-                  const reg = nextState.regionLogistics[regionName];
-
-                  if (reg) {
-                    const currentInvested = reg.teamProgress[teamId] || 0;
-                    const newInvested = currentInvested + neededPoints;
-                    reg.teamProgress[teamId] = newInvested;
-
-                    if (newInvested >= reg.logisticsCost && !reg.teamsPresent.includes(teamId)) {
-                      reg.teamsPresent.push(teamId);
-                    }
-                    nextState.regionLogistics[regionName] = reg;
-
-                    const teamLog = nextState.teamLogisticsProgress[teamId] || { teamId, regionsWithPresence: [], regionInvestments: {} };
-                    if (newInvested >= reg.logisticsCost && !teamLog.regionsWithPresence.includes(regionName)) {
-                      teamLog.regionsWithPresence = [...teamLog.regionsWithPresence, regionName];
-                    }
-                    teamLog.regionInvestments = teamLog.regionInvestments || {};
-                    teamLog.regionInvestments[regionName] = newInvested;
-                    nextState.teamLogisticsProgress[teamId] = teamLog;
-                  }
+              if (normPhase === 'improvement') {
+                if (!working.improvementPoolByRound) working.improvementPoolByRound = {};
+                if (
+                  !working.improvementPoolByRound[round] ||
+                  working.improvementPoolByRound[round].length === 0
+                ) {
+                  const usedCardIds = (working.improvementCards || [])
+                    .filter((c) => c.used)
+                    .map((c) => c.id);
+                  const availablePool = AVAILABLE_IMPROVEMENT_CARDS.filter(
+                    (c) => !usedCardIds.includes(c.id)
+                  );
+                  working.improvementPoolByRound[round] = availablePool
+                    .slice(0, working.teams.length)
+                    .map((c) => c.id);
                 }
 
-                if (!nextState.logisticsAllocatedByRound) nextState.logisticsAllocatedByRound = {};
-                if (!nextState.logisticsAllocatedByRound[round]) nextState.logisticsAllocatedByRound[round] = {};
-                nextState.logisticsAllocatedByRound[round][teamId] = maxIcons;
-              }
-            } else if (phase === 'sales') {
-              const currentTeamData = nextState.rounds[rIdx].teamData[teamId];
-              if (currentTeamData && !currentTeamData.customersSold) {
+                let cardIdToClaim = decideImprovement(working, teamId, profile, difficulty);
+                if (cardIdToClaim === null) {
+                  const poolIds = working.improvementPoolByRound[round] || [];
+                  const claimedInRound = (working.improvementCards || [])
+                    .filter((c) => c.allocatedInRound === round && c.availableForTeam)
+                    .map((c) => c.id);
+                  const availableCardId = poolIds.find((id) => !claimedInRound.includes(id));
+                  cardIdToClaim = availableCardId !== undefined ? availableCardId : -100;
+                }
+
+                const res = resolveImprovement(working, teamId, cardIdToClaim);
+                if (!res.valid) return null;
+                working = res.nextState;
+              } else if (normPhase === 'innovation') {
+                const rData = working.rounds.find((r) => r.roundNumber === round);
+                const tData = rData?.teamData[teamId];
+                const maxIcons = tData?.researchIcons || 0;
+                const alreadySpent = (working.researchAllocatedByRound || {})[round]?.[teamId] || 0;
+                const neededPoints = Math.max(0, maxIcons - alreadySpent);
+                const allocations = decideResearch(
+                  working,
+                  teamId,
+                  neededPoints,
+                  profile,
+                  difficulty
+                );
+                const res = resolveResearch(working, teamId, allocations, true);
+                if (!res.valid) return null;
+                working = res.nextState;
+              } else if (normPhase === 'expansion') {
+                const rData = working.rounds.find((r) => r.roundNumber === round);
+                const tData = rData?.teamData[teamId];
+                const maxIcons = tData?.logisticsIcons || 0;
+                const alreadySpent =
+                  (working.logisticsAllocatedByRound || {})[round]?.[teamId] || 0;
+                const neededPoints = Math.max(0, maxIcons - alreadySpent);
+                const allocations = decideLogistics(
+                  working,
+                  teamId,
+                  neededPoints,
+                  profile,
+                  difficulty
+                );
+                const res = resolveLogistics(working, teamId, allocations, true);
+                if (!res.valid) return null;
+                working = res.nextState;
+              } else if (normPhase === 'sales') {
+                const rData = working.rounds.find((r) => r.roundNumber === round);
+                const tData = rData?.teamData[teamId];
+                if (!tData || tData.customersSold) return null;
+
                 const soldCustomers = new Set<string>();
-                Object.values(nextState.rounds[rIdx].teamData || {}).forEach((td: any) => {
-                  if (td?.customersSold) {
-                    td.customersSold.forEach((cid: string) => soldCustomers.add(cid));
+                Object.values(rData?.teamData || {}).forEach((td) => {
+                  if (td.customersSold) {
+                    td.customersSold.forEach((cid) => soldCustomers.add(cid));
                   }
                 });
 
-                const soldIds = decideSales(nextState, teamId, soldCustomers);
-                nextState.rounds[rIdx].teamData[teamId].customersSold = soldIds;
+                const chosenCustomerIds = decideSales(
+                  working,
+                  teamId,
+                  profile,
+                  difficulty,
+                  soldCustomers
+                );
+                const hasNfc = hasTech(working, teamId, 'NFC');
+                const produced = tData.productsProduced || 0;
+                const remainingForNfc = Math.max(0, produced - chosenCustomerIds.length);
+                const nfcSalesUnits = hasNfc ? Math.min(3, remainingForNfc) : 0;
+
+                const res = resolveSales(working, teamId, {
+                  customersSold: chosenCustomerIds,
+                  nfcSalesUnits,
+                });
+                if (!res.valid) return null;
+                working = res.nextState;
               }
-            }
 
-            return nextState;
-          }, { expectPhase: gameState.currentPhase, expectRound: gameState.currentRound });
+              // Advance turn.index if in a turn-based phase
+              const baseTurn = working.turn || computeTurnOrder(working, normPhase);
+              working.turn = {
+                ...baseTurn,
+                index: baseTurn.index + 1,
+              };
 
+              return working;
+            },
+            { expectPhase: gameState.currentPhase, expectRound: gameState.currentRound }
+          );
         } catch (err) {
           console.error(`Error executing bot turn for ${classId}:`, err);
         }
       }, delay);
 
-      return () => clearTimeout(timerId);
+      timers.push(timerId);
     });
+
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+    };
   }, [worlds, options?.paused]);
 }

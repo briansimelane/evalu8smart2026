@@ -13,6 +13,7 @@ import { getControlPointsForRegion } from '@/data/control';
 import { getControlPointsForTeamInRound, getTeamPatentPoints, getInitialScore, calculateTeamTotalScore } from '@/types/game';
 import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
+import { useGameTheme, regionLabel, techLabel } from '@/lib/gameTheme';
 
 interface SummaryMapProps {
   initialRound?: number;
@@ -20,6 +21,7 @@ interface SummaryMapProps {
 
 export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
   const { gameState } = useGame();
+  const theme = useGameTheme();
 
   if (!gameState) return null;
 
@@ -291,7 +293,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base font-bold flex items-center gap-2">
                       <GameIcon type="logistics" size="xs" />
-                      {region}
+                      {regionLabel(theme, region)}
                     </CardTitle>
                     <div className="flex items-center gap-1.5">
                       {isSteveBlocking && (
@@ -391,7 +393,7 @@ export const SummaryMap = ({ initialRound }: SummaryMapProps) => {
                           style={buyerTeam ? { backgroundColor: buyerTeam.color + '25', borderColor: buyerTeam.color, color: 'inherit' } : undefined}
                           title={buyerTeam ? `Sold to ${buyerTeam.name}` : `Unsold customer`}
                         >
-                          {customer.type === 'price' ? `$${customer.price}` : customer.technology}
+                          {customer.type === 'price' ? `$${customer.price}` : (customer.technology ? techLabel(theme, customer.technology) : '')}
                           {buyerTeam && (
                             <span className="px-1 py-0.2 rounded text-[9px] font-black text-white ml-0.5 shrink-0" style={{ backgroundColor: buyerTeam.color }}>
                               {getTeamBubbleText(buyerTeam)}

@@ -23,6 +23,7 @@ interface RegionControlResult {
 import { PhaseLockCard } from './PhaseLockCard';
 import { isSteveBlocking as isSteveBlockingRule } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
+import { useGameTheme, regionLabel } from '@/lib/gameTheme';
 
 interface ControlPhaseProps {
   onEndGame?: () => void;
@@ -30,6 +31,7 @@ interface ControlPhaseProps {
 
 export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
   const { gameState, addRoundData, getCurrentRound, recalculateControlPoints, endGame, updatePhase } = useGame();
+  const theme = useGameTheme();
   const { currentRole, currentTeamId } = useSession();
   const [controlCalculated, setControlCalculated] = useState(false);
   const [regionControlResults, setRegionControlResults] = useState<RegionControlResult[]>([]);
@@ -303,7 +305,7 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
                         {myWins.map(w => (
                           <div key={w.region} className="flex items-center justify-between p-2 bg-card rounded-lg border text-xs">
-                            <span className="font-medium text-foreground">{w.region} ({w.place} Place)</span>
+                            <span className="font-medium text-foreground">{regionLabel(theme, w.region)} ({w.place} Place)</span>
                             <Badge variant="outline" className="text-[10px] font-bold bg-warning/10 text-warning dark:text-warning border-warning/30">
                               +{w.points} pts
                             </Badge>
@@ -334,7 +336,7 @@ export const ControlPhase = ({ onEndGame }: ControlPhaseProps) => {
                         <CardTitle className="text-base flex items-center justify-between">
                           <span className="flex items-center gap-2">
                             <Trophy className="h-4 w-4 text-warning" />
-                            {result.region}
+                            {regionLabel(theme, result.region)}
                             {isSteveBlockingRegion && (
                               <Badge className="bg-red-950 text-red-300 border border-red-500/50 text-[10px] flex items-center gap-1 font-bold [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
                                 <SteveIcon size={12} /> BLOCKED

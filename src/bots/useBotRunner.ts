@@ -12,14 +12,16 @@ export function useBotRunner() {
     gameState, 
     addRoundData, 
     allocateResearch, 
+    submitResearchTurn,
     allocateLogistics, 
+    submitLogisticsTurn,
     getCombinations, 
     calculatePlayOrder,
     claimImprovementCard,
     setBotThinking
   } = useGame();
   
-  const { currentClassId, currentClassTeams, isDemo } = useSession();
+  const { currentClassId, currentClassTeams, currentRole, isDemo } = useSession();
   const demoState = isDemo ? useDemoState() : null;
   const isReadOnlyTab = demoState?.isReadOnlyTab || false;
 
@@ -38,6 +40,7 @@ export function useBotRunner() {
   useEffect(() => {
     if (!effectiveState) return;
     if (!currentClassId && !isDemo) return;
+    if (!isDemo && currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') return;
     if (isReadOnlyTab) return;
     if (effectiveState.botConfig?.enabled === false) return;
 
@@ -70,7 +73,15 @@ export function useBotRunner() {
 
     if (phase === 'planning') {
       // In planning phase, all bot teams without a submitted plan can submit concurrently
-      activeTurnTeam = playOrder.find(t => !roundData?.teamData[t.id] && isTeamBot(t.id));
+      activeTurnTeam = playOrder.find(
+        t =>
+          !roundData?.teamData[t.id] &&
+          !effectiveState.planSubmittedByRound?.[round]?.[t.id] &&
+          isTeamBot(t.id)
+      );
+    } else if (effectiveState.schemaVersion === 2 && effectiveState.turn) {
+      const activeId = effectiveState.turn.order[effectiveState.turn.index];
+      activeTurnTeam = activeId ? (effectiveState.teams?.find(t => t.id === activeId) || null) : null;
     } else if (phase === 'improvement') {
       activeTurnTeam = playOrder.find(t => {
         const count = roundData?.teamData[t.id]?.improvementCards || 0;
@@ -134,7 +145,7 @@ export function useBotRunner() {
         const combinationsData = getCombinations();
 
         if (phase === 'planning') {
-          if (currentTeamData) return;
+          if (currentTeamData || currentState.planSubmittedByRound?.[round]?.[teamId]) return;
 
           const profile = (currentBotTeam as any)?.botProfile || 'BALANCED';
           const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
@@ -209,11 +220,11 @@ export function useBotRunner() {
           const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
           const neededPoints = totalIcons - allocatedSpent;
           const allocations = decideResearch(currentState, teamId, neededPoints, profile, difficulty);
-
+          const mergedAllocations: Record<string, number> = {};
           let sumAllocated = 0;
           Object.entries(allocations).forEach(([techName, points]) => {
             if (points > 0) {
-              allocateResearch(teamId, techName, points);
+              mergedAllocations[techName] = (mergedAllocations[techName] || 0) + points;
               sumAllocated += points;
             }
           });
@@ -223,8 +234,12 @@ export function useBotRunner() {
           if (leftoverPoints > 0) {
             const allTechs = Object.keys(currentState.technologies);
             const fallbackTech = allTechs[0] || 'GPS';
-            allocateResearch(teamId, fallbackTech, leftoverPoints);
+            mergedAllocations[fallbackTech] = (mergedAllocations[fallbackTech] || 0) + leftoverPoints;
           }
+
+          submitResearchTurn(teamId, mergedAllocations).catch((e) =>
+            console.error('Bot research turn error:', e)
+          );
 
           toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} allocated research points.`);
 
@@ -241,11 +256,11 @@ export function useBotRunner() {
           const difficulty = (currentBotTeam as any)?.botDifficulty || 'MEDIUM';
           const neededPoints = totalIcons - allocatedSpent;
           const allocations = decideLogistics(currentState, teamId, neededPoints, profile, difficulty);
-
+          const mergedAllocations: Record<string, number> = {};
           let sumAllocated = 0;
           Object.entries(allocations).forEach(([regionName, points]) => {
             if (points > 0) {
-              allocateLogistics(teamId, regionName, points);
+              mergedAllocations[regionName] = (mergedAllocations[regionName] || 0) + points;
               sumAllocated += points;
             }
           });
@@ -255,8 +270,12 @@ export function useBotRunner() {
           if (leftoverPoints > 0) {
             const allRegions = Object.keys(currentState.regionLogistics);
             const fallbackRegion = allRegions[0] || 'USA';
-            allocateLogistics(teamId, fallbackRegion, leftoverPoints);
+            mergedAllocations[fallbackRegion] = (mergedAllocations[fallbackRegion] || 0) + leftoverPoints;
           }
+
+          submitLogisticsTurn(teamId, mergedAllocations).catch((e) =>
+            console.error('Bot logistics turn error:', e)
+          );
 
           toast.info(`🤖 ${currentBotTeam?.name || 'Bot'} allocated logistics points.`);
 
@@ -314,5 +333,5 @@ export function useBotRunner() {
       }
     }, delay);
 
-  }, [effectiveState, currentClassId, currentClassTeams, isDemo]);
+  }, [effectiveState, currentClassId, currentClassTeams, currentRole, isDemo]);
 }

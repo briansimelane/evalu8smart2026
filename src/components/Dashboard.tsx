@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import type { GamePhase } from '@/types/game';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { useGame, GameContext } from '@/contexts/GameContext';
@@ -50,6 +51,7 @@ import { toast } from 'sonner';
 import { CeoClaimBar } from './CeoClaimBar';
 import { GameIcon } from './dashboard/GameIcon';
 import { useBotRunner } from '@/bots/useBotRunner';
+import { useGameTheme, useApplyGameThemeAttribute } from '@/lib/gameTheme';
 const PHASE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   planning: { bg: 'bg-indigo-500/10 dark:bg-indigo-950/20', text: 'text-indigo-600 dark:text-indigo-400', border: 'border-indigo-500/20' },
   production: { bg: 'bg-emerald-500/10 dark:bg-emerald-950/20', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500/20' },
@@ -74,8 +76,10 @@ const PHASE_DISPLAY_NAMES: Record<string, string> = {
 export const Dashboard = () => {
   const navigate = useNavigate();
   const gameContext = useGame();
-  const { gameState, resetGame, advanceRound, updatePhase, calculatePlayOrder, endGame, updateTeamLabelMode } = gameContext;
+  const { gameState, resetGame, advanceRound, updatePhase, skipTurn, reopenTeamAction, calculatePlayOrder, endGame, updateTeamLabelMode } = gameContext;
   const { currentRole, logout, activeClass, selectClass, selectTeam, isDemo, exitDemo } = useSession();
+  const theme = useGameTheme(gameState ?? activeClass);
+  useApplyGameThemeAttribute(gameState?.themeId ?? activeClass?.themeId);
   const isFacilitatorView = currentRole !== 'STUDENT' && !isDemo;
   
   // Housekeeping for demo mode
@@ -109,7 +113,7 @@ export const Dashboard = () => {
   }, []);
 
   const handleOpenViewer = () => {
-    const code = activeClass?.facilitatorCode || activeClass?.id || '';
+    const code = activeClass?.viewerCode || activeClass?.facilitatorCode || activeClass?.id || '';
     if (code) {
       window.open(
         `/viewer/${code}`,
@@ -128,8 +132,19 @@ export const Dashboard = () => {
     const roundData = gameState.rounds.find(r => r.roundNumber === round);
     const playOrder = calculatePlayOrder(round);
 
+    if (
+      gameState.schemaVersion === 2 &&
+      rawPhase !== 'planning' &&
+      gameState.turn &&
+      gameState.turn.round === round &&
+      gameState.turn.phase === rawPhase
+    ) {
+      const turnTeamId = gameState.turn.order[gameState.turn.index];
+      return turnTeamId ? gameState.teams.find(t => t.id === turnTeamId) || null : null;
+    }
+
     if (phase === 'planning') {
-      return playOrder.find(t => !roundData?.teamData[t.id]);
+      return playOrder.find(t => !roundData?.teamData[t.id] && !gameState.planSubmittedByRound?.[round]?.[t.id]);
     } else if (phase === 'improvement') {
       return playOrder.find(t => {
         const count = roundData?.teamData[t.id]?.improvementCards || 0;
@@ -215,9 +230,12 @@ export const Dashboard = () => {
   const realActiveRound = gameState.currentRound;
   const currentRoundData = gameState.rounds.find(r => r.roundNumber === realActiveRound);
   const submittedTeamDataMap = currentRoundData?.teamData || {};
-  const allTeamsSubmitted = gameState.teams.length > 0 && gameState.teams.every(t => !!submittedTeamDataMap[t.id]);
+  const hasTeamSubmitted = (tId: string) =>
+    Boolean(submittedTeamDataMap[tId] || gameState.planSubmittedByRound?.[realActiveRound]?.[tId]);
+  const allTeamsSubmitted = gameState.teams.length > 0 && gameState.teams.every(t => hasTeamSubmitted(t.id));
+  const isPlanningPhase = (gameState.currentPhase || 'planning').toLowerCase() === 'planning';
 
-  const isDataRestricted = !allTeamsSubmitted;
+  const isDataRestricted = !allTeamsSubmitted || isPlanningPhase;
   const effectiveRound = isDataRestricted ? Math.max(0, realActiveRound - 1) : realActiveRound;
 
   const getRestrictedGameState = () => {
@@ -255,7 +273,7 @@ export const Dashboard = () => {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                   <h1 className="font-display text-lg sm:text-xl font-bold text-foreground whitespace-nowrap">
-                    Smartphone Inc Tracker
+                    {theme.productName} Tracker
                   </h1>
                   {activeClass?.name && (
                     <Badge className="bg-primary/10 text-primary border border-primary/20 text-[11px] px-2.5 py-0.5 font-semibold whitespace-nowrap">
@@ -472,7 +490,10 @@ export const Dashboard = () => {
                     <span className="text-xs text-muted-foreground font-semibold whitespace-nowrap">Active Phase:</span>
                     <Select
                       value={gameState.currentPhase || 'planning'}
-                      onValueChange={updatePhase}
+                      onValueChange={(val) => {
+                        setActiveTab(val);
+                        updatePhase(val as GamePhase);
+                      }}
                     >
                       <SelectTrigger className="w-[140px] h-8 bg-background border-border text-foreground text-xs font-semibold">
                         <SelectValue />
@@ -496,6 +517,46 @@ export const Dashboard = () => {
                         🤖 Bots active
                       </span>
                     )}
+
+                    {gameState.schemaVersion === 2 &&
+                      ['improvement', 'innovation', 'expansion', 'sales'].includes(gameState.currentPhase || '') &&
+                      gameState.turn && (
+                        <div className="flex items-center gap-1.5">
+                          {gameState.turn.index < gameState.turn.order.length && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                skipTurn();
+                                toast.info('Skipped current team turn.');
+                              }}
+                              className="h-8 text-xs font-semibold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                              title="Skip active team's turn"
+                            >
+                              Skip Turn
+                            </Button>
+                          )}
+                          {gameState.turn.index > 0 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const prevTeamId = gameState.turn!.order[gameState.turn!.index - 1];
+                                if (prevTeamId) {
+                                  reopenTeamAction(gameState.currentPhase || 'planning', prevTeamId);
+                                  toast.info('Reopened previous team turn.');
+                                }
+                              }}
+                              className="h-8 text-xs font-semibold border-sky-500/40 text-sky-700 dark:text-sky-300 hover:bg-sky-500/10"
+                              title="Reopen previous team's turn"
+                            >
+                              Reopen Prev Turn
+                            </Button>
+                          )}
+                        </div>
+                      )}
 
                     {/* Mobile-only Open Viewer quick button */}
                     <Button
@@ -632,6 +693,14 @@ export const Dashboard = () => {
 
       <main className="container mx-auto px-4 sm:px-6 py-4 sm:py-5 space-y-4">
         {!isDemo && <CeoClaimBar />}
+        {currentRole === 'STUDENT' &&
+          gameState.schemaVersion === 2 &&
+          (!gameState.refereeHeartbeatAt ||
+            Date.now() - new Date(gameState.refereeHeartbeatAt).getTime() > 45_000) && (
+            <div className="bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between">
+              <span>Waiting for facilitator connection — submitted actions will be processed automatically as soon as the facilitator is online.</span>
+            </div>
+          )}
         <TeamPerksBanner />
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <div className="max-w-6xl mx-auto space-y-2">
@@ -832,7 +901,7 @@ export const Dashboard = () => {
 
           {/* Data View Tabs */}
           {(() => {
-            const isPlaceholderMode = effectiveRound === 0 && !allTeamsSubmitted;
+            const isPlaceholderMode = effectiveRound === 0 && isDataRestricted;
 
             return (
               <>
@@ -848,7 +917,14 @@ export const Dashboard = () => {
                 </TabsContent>
 
                 <TabsContent value="summary-map" className="space-y-4">
-                  <SummaryMap />
+                  {isPlaceholderMode ? (
+                    renderPhasePlaceholder("Summary Map")
+                  ) : (
+                    <GameContext.Provider value={restrictedGameContextValue}>
+                      <TeamSubmissionStatus tabName="Summary Map" isCompact realRound={realActiveRound} />
+                      <SummaryMap />
+                    </GameContext.Provider>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="scoreboard" className="space-y-4">

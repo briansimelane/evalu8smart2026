@@ -4,8 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import React, { useEffect } from "react";
-import { GameProvider } from "./contexts/GameContext";
-import { SessionProvider, useSession } from "./contexts/SessionContext";
+import { GameProvider } from "@/contexts/GameContext";
+import { SessionProvider, useSession } from "@/contexts/SessionContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { Login } from "./pages/Login";
@@ -16,8 +16,8 @@ import MultiWorldControl from "./pages/MultiWorldControl";
 import CombinedViewerPage from "./pages/Viewer/CombinedViewerPage";
 import ViewerConcepts from "./pages/ViewerConcepts";
 
-import { DemoStateProvider, useDemoState } from "./demo/DemoStateProvider";
-import { DemoSetup } from "./demo/DemoSetup";
+import { DemoStateProvider, useDemoState } from "@/demo/DemoStateProvider";
+import { DemoSetup } from "@/demo/DemoSetup";
 
 const queryClient = new QueryClient();
 
@@ -89,6 +89,10 @@ const IndexRedirect = () => {
   }
   if (currentRole === 'STUDENT') {
     return <Navigate to="/dashboard" replace />;
+  }
+  if (currentRole === 'VIEWER') {
+    const viewerCode = localStorage.getItem('evalu8_viewer_code') || currentClassId || '';
+    return <Navigate to={viewerCode ? `/viewer/${viewerCode}` : "/login"} replace />;
   }
   return <Navigate to="/login" replace />;
 };

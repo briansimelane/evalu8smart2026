@@ -18,7 +18,12 @@ export const CeoClaimBar: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (currentRole !== 'STUDENT') {
-    const teamsList = activeClass?.gameState?.teams || activeClass?.teamRegistry || [];
+    const teamsList =
+      activeClass?.gameState?.teams ||
+      (activeClass?.teamRegistry && activeClass.teamRegistry.length > 0
+        ? activeClass.teamRegistry
+        : Object.values(currentClassTeams)) ||
+      [];
     const activeTeamObj = teamsList.find(t => t.id === currentTeamId);
 
     return (

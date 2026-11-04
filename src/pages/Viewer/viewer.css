@@ -1,8 +1,12 @@
 /* Custom style patterns and transitions for Evalu8smart digital board viewer */
 
 .bg-grid-pattern {
-  background-image: radial-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 0);
+  background-image: radial-gradient(var(--viewer-grid-dot, rgba(0, 0, 0, 0.08)) 1px, transparent 0);
   background-size: 24px 24px;
+}
+
+.viewer-board-bg {
+  background-color: rgb(var(--viewer-board-bg, 241 245 249));
 }
 
 @keyframes scale-in {

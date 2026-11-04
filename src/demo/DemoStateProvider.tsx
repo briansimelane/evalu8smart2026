@@ -4,6 +4,7 @@ import { db } from '@/lib/firebase';
 import { GameState, Team, BotProfile, BotDifficulty } from '@/types/game';
 import { ensureDemoUid } from './demoAuth';
 import { buildInitialGameState } from '@/lib/initialGameState';
+import { GameThemeId } from '@/lib/gameTheme';
 import { removeUndefined } from '@/lib/utils';
 import { maskGameStateForDemo } from './demoVisibility';
 import { toast } from 'sonner';
@@ -19,6 +20,7 @@ export interface DemoConfig {
   humanTeamName: string;
   humanTeamColor: string;
   bots: DemoBotSetup[];
+  themeId?: GameThemeId;
 }
 
 interface DemoStateContextType {
@@ -35,7 +37,9 @@ interface DemoStateContextType {
   revealAllScores: () => void;
 }
 
-const DemoStateContext = createContext<DemoStateContextType | null>(null);
+const DemoStateContext: React.Context<DemoStateContextType | null> =
+  (globalThis as any).__EVALU8_DEMO_STATE_CONTEXT__ ||
+  ((globalThis as any).__EVALU8_DEMO_STATE_CONTEXT__ = createContext<DemoStateContextType | null>(null));
 
 export function useDemoState() {
   const context = useContext(DemoStateContext);
@@ -229,7 +233,7 @@ export function DemoStateProvider({ children }: { children: ReactNode }) {
     }));
 
     const allTeams = [humanTeam, ...botTeams];
-    const initialState = buildInitialGameState(allTeams);
+    const initialState = buildInitialGameState(allTeams, config.themeId);
 
     localStorage.setItem('evalu8_demo_id', newDemoId);
     setDemoId(newDemoId);

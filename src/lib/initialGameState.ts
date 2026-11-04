@@ -1,14 +1,17 @@
 import { GameState, Team, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress } from '@/types/game';
-import { getTeamColorName, REGIONS, TECHNOLOGIES } from '@/data/combinations';
+import { REGIONS, TECHNOLOGIES, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS } from '@/data/improvements';
 import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
+import { DEFAULT_GAME_THEME_ID, GameThemeId } from '@/lib/gameTheme';
 
-export const buildInitialGameState = (teams: Team[]): GameState => {
+export function buildInitialGameState(
+  teams: Team[],
+  themeId: GameThemeId = DEFAULT_GAME_THEME_ID
+): GameState {
   const baseId = Date.now();
   const initialCards = teams.map((team, idx) => {
     const colorName = getTeamColorName(team.color, team.name);
     const cardData = INITIAL_IMPROVEMENT_CARDS[colorName];
-    
     return {
       id: baseId + idx + 1,
       icon1: cardData.icon1,
@@ -57,10 +60,8 @@ export const buildInitialGameState = (teams: Team[]): GameState => {
   teams.forEach(team => {
     const colorName = getTeamColorName(team.color, team.name);
     const startingRegion = INITIAL_TEAM_REGIONS[colorName];
-    
     if (startingRegion) {
       regionLogistics[startingRegion].teamsPresent.push(team.id);
-      
       teamLogisticsProgress[team.id] = {
         teamId: team.id,
         regionsWithPresence: [startingRegion],
@@ -75,17 +76,20 @@ export const buildInitialGameState = (teams: Team[]): GameState => {
     }
   });
 
+  const hasBots = teams.some(t => t.isBot);
+
   return {
     gameId: Date.now().toString(),
+    themeId,
     teams,
     currentRound: 1,
     currentPhase: 'planning',
     rounds: [],
     technologies: TECHNOLOGIES.reduce((acc, tech) => ({
       ...acc,
-      [tech]: { 
-        name: tech, 
-        researchPoints: 0, 
+      [tech]: {
+        name: tech,
+        researchPoints: 0,
         maxPoints: 6,
         researchCost: tech.toUpperCase().includes('WIFI') ? 3 : (techCosts[tech] || 4),
         teamProgress: {}
@@ -104,8 +108,15 @@ export const buildInitialGameState = (teams: Team[]): GameState => {
     regionLogistics,
     teamLogisticsProgress,
     logisticsAllocatedByRound: {},
-    createdAt: new Date().toISOString() as any,
-    updatedAt: new Date().toISOString() as any,
-    botConfig: teams.some(t => t.isBot) ? { enabled: true, seed: Math.floor(Math.random() * 1000000) } : null as any
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    botConfig: {
+      enabled: hasBots,
+      seed: Math.floor(Math.random() * 1000000),
+    },
+    botThinking: {},
+    botActionsLog: [],
+    gameEnded: false,
+    stateVersion: 1,
   };
-};
+}

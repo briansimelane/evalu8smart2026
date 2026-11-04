@@ -9,32 +9,35 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Microscope, Trophy, CheckCircle, MapPin, Wifi, Gamepad2, Battery, Radio, Signal, AlertCircle, UserCheck } from 'lucide-react';
+import { Microscope, Trophy, CheckCircle, AlertCircle, AlertTriangle, UserCheck } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { GameIcon } from './GameIcon';
 import { toast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-
-const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  'GPS': MapPin,
-  'Wifi': Wifi,
-  'Gaming': Gamepad2,
-  'Battery': Battery,
-  'NFC': Radio,
-  '4G': Signal,
-};
-
+import { useGameTheme, techIcon, techLabel } from '@/lib/gameTheme';
 import { useSession } from '@/contexts/SessionContext';
 import { PhaseLockCard } from './PhaseLockCard';
 import { PATENT_POINTS, getPatentPointsForTech } from '@/types/game';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 
 export const ResearchPhase = () => {
-  const { gameState, allocateResearch, getTeamResearchProgress, getTechnologyCostForTeam, calculatePlayOrder } = useGame();
+  const { gameState, actionsMap, allocateResearch, submitResearchTurn, getTeamResearchProgress, getTechnologyCostForTeam, calculatePlayOrder, skipTurn, reopenTeamAction } = useGame();
+  const theme = useGameTheme();
   const { currentRole, currentTeamId, isReadOnly, selectTeam } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'innovation');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [allocations, setAllocations] = useState<Record<string, number>>({});
+  const [showPartialConfirm, setShowPartialConfirm] = useState(false);
   
   useEffect(() => {
     if (currentRole === 'STUDENT' && currentTeamId) {
@@ -123,36 +126,24 @@ export const ResearchPhase = () => {
     }));
   };
 
-  const handleConfirmAllocations = () => {
+  const executeConfirmAllocations = () => {
     if (!selectedTeam) return;
 
-    if (totalAllocated > availableResearchIcons) {
+    if (totalAllocated > availableThisTeam) {
       toast({
         title: "Invalid Allocation",
-        description: `Cannot allocate more than ${availableResearchIcons} research icons.`,
+        description: `Cannot allocate more than ${availableThisTeam} research icons.`,
         variant: "destructive",
       });
       return;
     }
 
-    if (totalAllocated === 0) {
-      toast({
-        title: "No Allocation",
-        description: "Please allocate research points to at least one technology.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Apply all allocations
-    Object.entries(allocations).forEach(([tech, points]) => {
-      if (points > 0) {
-        allocateResearch(selectedTeam, tech, points);
-      }
-    });
+    // Apply all allocations atomically (and conclude the team's research turn)
+    submitResearchTurn(selectedTeam, allocations).catch((err) =>
+      console.error('Research turn submission error:', err)
+    );
 
     // Check for completed technologies
-    const updatedProgress = getTeamResearchProgress(selectedTeam);
     const newCompletions = Object.entries(allocations).filter(([tech, points]) => {
       if (points === 0) return false;
       const currentInvestment = (teamProgress?.technologyInvestments[tech] || 0);
@@ -170,49 +161,69 @@ export const ResearchPhase = () => {
         if (patentOwner === selectedTeam) {
           toast({
             title: "Patent Awarded! 🏆",
-            description: `${tech} research completed! You own the patent.${bonusMsg}`,
+            description: `${techLabel(theme, tech)} research completed! You own the patent.${bonusMsg}`,
           });
         } else {
           toast({
             title: "Research Completed! ✅",
-            description: `${tech} research completed!${bonusMsg}`,
+            description: `${techLabel(theme, tech)} research completed!${bonusMsg}`,
           });
         }
       });
     }
 
     toast({
-      title: "Research Allocated",
-      description: `Allocated ${totalAllocated} research icons.`,
+      title: totalAllocated > 0 ? "Research Allocated" : "Research Turn Ended",
+      description:
+        totalAllocated > 0
+          ? `Allocated ${totalAllocated} research ${totalAllocated === 1 ? 'icon' : 'icons'}.`
+          : `Ended research turn without allocating icons.`,
     });
 
     // Update local tracking and auto-advance (the GameContext now persists this too)
-    const prevSpent = allocatedThisRound[selectedTeam] || 0;
-    const newSpent = prevSpent + totalAllocated;
-    const updatedAllocations = { ...allocatedThisRound, [selectedTeam]: newSpent };
+    const teamIcons = currentRoundData?.teamData[selectedTeam]?.researchIcons || 0;
+    const updatedAllocations = { ...allocatedThisRound, [selectedTeam]: teamIcons };
     setAllocatedThisRound(updatedAllocations);
 
-    const teamIcons = currentRoundData?.teamData[selectedTeam]?.researchIcons || 0;
-    if (newSpent >= teamIcons) {
-      const nextTeam = playOrder.find(t => {
-        const icons = currentRoundData?.teamData[t.id]?.researchIcons || 0;
-        const spent = updatedAllocations[t.id] || 0;
-        return spent < icons;
-      });
-      const nextId = nextTeam ? nextTeam.id : '';
-      if (currentRole !== 'STUDENT' && nextId) {
-        setSelectedTeam(nextId);
-        selectTeam(nextId);
-        if (nextTeam) {
-          toast({
-            title: "Turn Order",
-            description: `Advanced to ${nextTeam.name}`
-          });
-        }
+    const nextTeam = playOrder.find(t => {
+      const icons = currentRoundData?.teamData[t.id]?.researchIcons || 0;
+      const spent = updatedAllocations[t.id] || 0;
+      return spent < icons;
+    });
+    const nextId = nextTeam ? nextTeam.id : '';
+    if (currentRole !== 'STUDENT' && nextId) {
+      setSelectedTeam(nextId);
+      selectTeam(nextId);
+      if (nextTeam) {
+        toast({
+          title: "Turn Order",
+          description: `Advanced to ${nextTeam.name}`
+        });
       }
     }
 
     setAllocations({});
+    setShowPartialConfirm(false);
+  };
+
+  const handleConfirmAllocations = () => {
+    if (!selectedTeam) return;
+
+    if (totalAllocated > availableThisTeam) {
+      toast({
+        title: "Invalid Allocation",
+        description: `Cannot allocate more than ${availableThisTeam} research icons.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (remainingIcons > 0) {
+      setShowPartialConfirm(true);
+      return;
+    }
+
+    executeConfirmAllocations();
   };
 
   const handleClearAll = () => {
@@ -221,6 +232,16 @@ export const ResearchPhase = () => {
 
   const handleEndTurn = () => {
     if (!selectedTeam) return;
+
+    if (gameState.schemaVersion === 2) {
+      if (totalAllocated > 0 && remainingIcons >= 0) {
+        submitResearchTurn(selectedTeam, allocations).catch(() => {});
+      } else {
+        skipTurn().catch(() => {});
+      }
+      setAllocations({});
+      return;
+    }
 
     if (totalAllocated > 0 && remainingIcons >= 0) {
       Object.entries(allocations).forEach(([tech, points]) => {
@@ -282,21 +303,34 @@ export const ResearchPhase = () => {
   };
 
   // Check if all teams with research icons have fully allocated
-  const allTeamsAllocated = playOrder.every(team => {
-    const icons = currentRoundData?.teamData[team.id]?.researchIcons || 0;
-    const spent = allocatedThisRound[team.id] || 0;
-    return spent >= icons;
-  });
+  const allTeamsAllocated = gameState.schemaVersion === 2 && gameState.turn && gameState.turn.phase === 'innovation'
+    ? gameState.turn.index >= gameState.turn.order.length
+    : playOrder.every(team => {
+        const icons = currentRoundData?.teamData[team.id]?.researchIcons || 0;
+        const spent = allocatedThisRound[team.id] || 0;
+        return spent >= icons;
+      });
 
   const activeTurnTeam = useMemo(() => {
+    if (gameState.schemaVersion === 2 && gameState.turn && gameState.turn.phase === 'innovation') {
+      const turnId = gameState.turn.order[gameState.turn.index];
+      if (!turnId) return undefined;
+      return playOrder.find(t => t.id === turnId) || gameState.teams.find(t => t.id === turnId);
+    }
     return playOrder.find(t => {
       const icons = currentRoundData?.teamData[t.id]?.researchIcons || 0;
       const spent = allocatedThisRound[t.id] || 0;
       return icons > 0 && spent < icons;
     });
-  }, [playOrder, currentRoundData, allocatedThisRound]);
+  }, [gameState.schemaVersion, gameState.turn, gameState.teams, playOrder, currentRoundData, allocatedThisRound]);
 
-  const isMyTurn = !activeTurnTeam || activeTurnTeam.id === currentTeamId;
+  const isMyTurn = gameState.schemaVersion === 2 && gameState.turn && gameState.turn.phase === 'innovation'
+    ? activeTurnTeam?.id === currentTeamId
+    : (!activeTurnTeam || activeTurnTeam.id === currentTeamId);
+
+  const myActionDoc = currentTeamId
+    ? actionsMap?.[`${gameState.currentRound}_innovation_${currentTeamId}`]
+    : undefined;
 
   // Helper to render conic pie circle for research progress (matching Viewer TechPanel style)
   const renderTechProgressCircle = (
@@ -311,7 +345,7 @@ export const ResearchPhase = () => {
         <div
           className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-black shadow-md shrink-0 ring-2 ring-white transition-all"
           style={{ backgroundColor: team.color }}
-          title={`${team.name}: ${techName} Completed!`}
+          title={`${team.name}: ${techLabel(theme, techName)} Completed!`}
         >
           ✓
         </div>
@@ -433,12 +467,31 @@ export const ResearchPhase = () => {
               </div>
             </div>
 
+            {myActionDoc && !myActionDoc.status && currentRole === 'STUDENT' && (
+              <Alert className="bg-blue-500/10 border-blue-500/30 text-blue-900 dark:text-blue-100 flex items-center justify-between shadow-sm">
+                <AlertDescription className="font-semibold text-sm">
+                  Submitted — Resolving your research allocations with the facilitator referee...
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {myActionDoc?.status === 'rejected' && currentRole === 'STUDENT' && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="font-semibold text-sm">
+                  Action Rejected: {myActionDoc.error || 'Invalid research allocation. Please re-submit.'}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {!isMyTurn && currentRole === 'STUDENT' && (
               <Alert className="bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-100 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
                   <AlertDescription className="font-semibold text-sm">
-                    Waiting for <strong>{activeTurnTeam?.name}</strong> to complete their research turn before you can allocate.
+                    {activeTurnTeam
+                      ? <>Waiting for <strong>{activeTurnTeam.name}</strong> to complete their research turn before you can allocate.</>
+                      : 'All research turns for this round have been completed.'}
                   </AlertDescription>
                 </div>
               </Alert>
@@ -530,7 +583,7 @@ export const ResearchPhase = () => {
             {/* Technology Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {technologies.map((tech) => {
-                const Icon = TECHNOLOGY_ICONS[tech.name] || Microscope;
+                const Icon = techIcon(theme, tech.name);
                 const patentHolder = gameState.patents[tech.name];
                 const baseCost = tech.researchCost;
                 const effectiveCost = selectedTeam
@@ -560,7 +613,7 @@ export const ResearchPhase = () => {
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2">
                           <Icon className="h-5 w-5" />
-                          <CardTitle className="text-base">{tech.name}</CardTitle>
+                          <CardTitle className="text-base">{techLabel(theme, tech.name)}</CardTitle>
                         </div>
                         {isCompleted && (
                           <CheckCircle className="h-5 w-5 text-success" />
@@ -625,13 +678,15 @@ export const ResearchPhase = () => {
                         <Input
                           id={`research-${tech.name}`}
                           type="number"
+                          inputMode="numeric"
                           min="0"
                           max={availableThisTeam}
                           value={allocations[tech.name] || ''}
                           onChange={(e) => handleAllocationChange(tech.name, e.target.value)}
+                          onWheel={(e) => (e.target as HTMLElement).blur()}
                           placeholder="0"
                           disabled={isCompleted || availableThisTeam <= 0 || isReadOnlyMode || (currentRole === 'STUDENT' && !isMyTurn)}
-                          className="h-8"
+                          className="h-8 font-mono font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </div>
 
@@ -663,54 +718,141 @@ export const ResearchPhase = () => {
               })}
             </div>
 
-            {/* Allocation Summary */}
-            {selectedTeam && totalAllocated > 0 && (
-              <Card className="bg-card/95 backdrop-blur border-primary/30 sticky bottom-0 z-30 shadow-2xl sm:static sm:shadow-none sm:bg-primary/5 sm:border-primary/20">
-                <CardHeader className="py-2.5 px-4 sm:pb-3">
-                  <CardTitle className="text-sm sm:text-base">Current Allocations</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    {Object.entries(allocations)
-                      .filter(([_, points]) => points > 0)
-                      .map(([tech, points]) => (
-                        <div key={tech} className="flex justify-between text-sm">
-                          <span className="font-medium">{tech}</span>
-                          <span className="text-muted-foreground">{points} icons</span>
-                        </div>
-                      ))}
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between font-bold">
-                    <span>Total Allocated</span>
-                    <span className={remainingIcons < 0 ? 'text-destructive' : ''}>{totalAllocated} / {availableResearchIcons}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      onClick={handleConfirmAllocations}
-                      disabled={totalAllocated === 0 || remainingIcons < 0 || isReadOnlyMode || (currentRole === 'STUDENT' && !isMyTurn)}
-                      className="flex-1"
-                    >
-                      Confirm Allocations
-                    </Button>
-                    {currentRole !== 'STUDENT' && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleEndTurn}
-                        className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
-                      >
-                        <UserCheck className="h-4 w-4" />
-                        End Team Turn
-                      </Button>
+            {/* Allocation Summary or Submitted Status */}
+            {selectedTeam && (() => {
+              const isWaitingForReferee = Boolean(currentRole === 'STUDENT' && myActionDoc && !myActionDoc.status);
+              const isSubmitted = Boolean(
+                (availableResearchIcons > 0 && spentThisRound >= availableResearchIcons) ||
+                  (currentRole === 'STUDENT' && myActionDoc?.status === 'applied')
+              );
+
+              if (isWaitingForReferee) {
+                return null; // Top alert already displays "Submitted — Resolving..."
+              }
+
+              if (isSubmitted) {
+                return (
+                  <Alert className="border-success/40 bg-success/10 text-emerald-900 dark:text-emerald-100 flex items-center gap-2.5 shadow-xs">
+                    <CheckCircle className="h-4 w-4 text-success shrink-0" />
+                    <AlertDescription className="font-semibold text-sm">
+                      Research allocations submitted for <strong>{selectedTeamObj?.name}</strong> in Round {gameState.currentRound}.
+                    </AlertDescription>
+                  </Alert>
+                );
+              }
+
+              if (!(totalAllocated > 0 || (availableThisTeam > 0 && !isReadOnlyMode && (currentRole !== 'STUDENT' || isMyTurn)))) {
+                return null;
+              }
+
+              return (
+                <Card className="bg-card/95 backdrop-blur border-primary/30 sticky bottom-0 z-30 shadow-2xl sm:static sm:shadow-none sm:bg-primary/5 sm:border-primary/20">
+                  <CardHeader className="py-2.5 px-4 sm:pb-3">
+                    <CardTitle className="text-sm sm:text-base">Current Allocations</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {totalAllocated > 0 ? (
+                      <div className="space-y-2">
+                        {Object.entries(allocations)
+                          .filter(([_, points]) => points > 0)
+                          .map(([tech, points]) => (
+                            <div key={tech} className="flex justify-between text-sm">
+                              <span className="font-medium">{techLabel(theme, tech)}</span>
+                              <span className="text-muted-foreground">{points} icons</span>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Enter how many research icons to allocate to each technology above ({availableThisTeam} {availableThisTeam === 1 ? 'icon' : 'icons'} available).
+                      </p>
                     )}
-                    <Button onClick={handleClearAll} variant="outline" disabled={isReadOnlyMode}>
-                      Clear All
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                    <Separator />
+                    <div className="flex justify-between font-bold">
+                      <span>Total Allocated</span>
+                      <span className={remainingIcons < 0 ? 'text-destructive' : remainingIcons > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-success'}>
+                        {totalAllocated} / {availableThisTeam}
+                      </span>
+                    </div>
+                    {remainingIcons > 0 && totalAllocated > 0 && (
+                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200 font-medium">
+                        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                        <span>
+                          You still have <strong>{remainingIcons}</strong> unallocated research {remainingIcons === 1 ? 'icon' : 'icons'}. Allocate all {availableThisTeam} icons before confirming, or click below if you wish to forfeit the remaining {remainingIcons === 1 ? 'icon' : 'icons'}.
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        onClick={handleConfirmAllocations}
+                        disabled={remainingIcons < 0 || isReadOnlyMode || (currentRole === 'STUDENT' && !isMyTurn)}
+                        variant={remainingIcons > 0 ? 'outline' : 'default'}
+                        className={`flex-1 ${
+                          remainingIcons > 0 && totalAllocated > 0
+                            ? 'border-amber-500/60 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-100 font-semibold'
+                            : ''
+                        }`}
+                      >
+                        {remainingIcons === 0
+                          ? `Confirm Allocations (${totalAllocated} ${totalAllocated === 1 ? 'icon' : 'icons'})`
+                          : totalAllocated > 0
+                          ? `Confirm Partial Allocation (${totalAllocated}/${availableThisTeam} icons)...`
+                          : `End Turn Without Allocating (0/${availableThisTeam} icons)...`}
+                      </Button>
+                      {currentRole !== 'STUDENT' && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleEndTurn}
+                          className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5"
+                        >
+                          <UserCheck className="h-4 w-4" />
+                          End Team Turn
+                        </Button>
+                      )}
+                      {totalAllocated > 0 && (
+                        <Button onClick={handleClearAll} variant="outline" disabled={isReadOnlyMode}>
+                          Clear All
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+            <AlertDialog open={showPartialConfirm} onOpenChange={setShowPartialConfirm}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <AlertTriangle className="h-5 w-5" />
+                    Unallocated Research Icons Remaining
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-2 pt-1">
+                    <span className="block">
+                      <strong>{selectedTeamObj?.name || 'Your team'}</strong> still has{' '}
+                      <strong className="text-foreground">
+                        {remainingIcons} unallocated research {remainingIcons === 1 ? 'icon' : 'icons'}
+                      </strong>{' '}
+                      (allocated {totalAllocated} of {availableThisTeam}).
+                    </span>
+                    <span className="block">
+                      Confirming now will end your research turn immediately and forfeit the remaining{' '}
+                      {remainingIcons} {remainingIcons === 1 ? 'icon' : 'icons'} for Round {gameState.currentRound}.
+                    </span>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Go Back & Allocate All Icons</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={executeConfirmAllocations}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+                  >
+                    Confirm & Forfeit {remainingIcons} {remainingIcons === 1 ? 'Icon' : 'Icons'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             {/* Research History */}
             {selectedTeam && teamProgress && (
@@ -730,7 +872,7 @@ export const ResearchPhase = () => {
 
                         return (
                           <div key={tech.name} className="grid grid-cols-6 gap-4 text-sm py-2 border-b items-center">
-                            <span className="font-medium">{tech.name}</span>
+                            <span className="font-medium">{techLabel(theme, tech.name)}</span>
                             <span>{cost}</span>
                             <span className="font-semibold text-amber-600 dark:text-amber-400">+{patentPts} pts</span>
                             <span className="font-semibold">{invested}</span>
@@ -791,7 +933,7 @@ export const ResearchPhase = () => {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {technologies.map((tech) => {
-                const Icon = TECHNOLOGY_ICONS[tech.name] || Microscope;
+                const Icon = techIcon(theme, tech.name);
                 const patentHolder = gameState.patents[tech.name];
                 const patentHolderTeam = patentHolder ? gameState.teams.find(t => t.id === patentHolder) : undefined;
 
@@ -819,7 +961,7 @@ export const ResearchPhase = () => {
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-5 w-5" />
-                            <h4 className="font-semibold">{tech.name}</h4>
+                            <h4 className="font-semibold">{techLabel(theme, tech.name)}</h4>
                           </div>
                           <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                             <span>Cost: {tech.researchCost} research icons</span>

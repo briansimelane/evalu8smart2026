@@ -9,6 +9,7 @@ import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn, removeUndefined, safeIsoString } from '@/lib/utils';
 import { useSession } from '@/contexts/SessionContext';
 import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
+import { revealPlanningAndAdvanceV2 } from '@/lib/referee/refereeEngine';
 
 interface TopBarProps {
   classData: SimulationClass;
@@ -28,7 +29,7 @@ const getContrastTextColor = (hexColor: string) => {
 
 export function TopBar({ classData, gameState }: TopBarProps) {
   const { currentRole, isReadOnly } = useSession();
-  const canChangePhase = currentRole !== 'STUDENT' && !isReadOnly;
+  const canChangePhase = (currentRole === 'FACILITATOR' || currentRole === 'ADMIN') && !isReadOnly;
   const round = gameState.currentRound;
   const roundData = gameState.rounds.find(r => r.roundNumber === round);
   const m = useMotion();
@@ -40,7 +41,18 @@ export function TopBar({ classData, gameState }: TopBarProps) {
 
   // Determine active turn team
   const activeTurnTeam = useMemo(() => {
-    const phase = gameState.currentPhase || 'planning';
+    const phase = (gameState.currentPhase || 'planning').toLowerCase();
+    if (gameState.schemaVersion === 2 && gameState.turn && gameState.turn.round === round) {
+      const turnPhase = (gameState.turn.phase || '').toLowerCase();
+      const normTurnPhase = turnPhase === 'innovation' ? 'research' : turnPhase === 'expansion' ? 'logistics' : turnPhase;
+      const normActivePhase = phase === 'innovation' ? 'research' : phase === 'expansion' ? 'logistics' : phase;
+      if (normTurnPhase === normActivePhase && normActivePhase !== 'planning') {
+        const activeId = gameState.turn.order[gameState.turn.index];
+        if (!activeId) return null;
+        return gameState.teams.find(t => t.id === activeId) || null;
+      }
+    }
+
     const roundData = gameState.rounds.find(r => r.roundNumber === round);
     if (!roundData) return null;
 
@@ -52,13 +64,13 @@ export function TopBar({ classData, gameState }: TopBarProps) {
         );
         return count > 0 && !isDone;
       });
-    } else if (phase === 'innovation') {
+    } else if (phase === 'innovation' || phase === 'research') {
       return playOrder.find(t => {
         const icons = roundData.teamData[t.id]?.researchIcons || 0;
         const spent = (gameState.researchAllocatedByRound || {})[round]?.[t.id] || 0;
         return icons > 0 && spent < icons;
       });
-    } else if (phase === 'expansion') {
+    } else if (phase === 'expansion' || phase === 'logistics') {
       return playOrder.find(t => {
         const icons = roundData.teamData[t.id]?.logisticsIcons || 0;
         const spent = (gameState.logisticsAllocatedByRound || {})[round]?.[t.id] || 0;
@@ -83,6 +95,15 @@ export function TopBar({ classData, gameState }: TopBarProps) {
     if (phaseKey === 'improvement' && round >= 5) return;
     if (!classData?.id || !gameState) return;
     try {
+      const canonicalPhase = phaseKey === 'research' ? 'innovation' : phaseKey === 'logistics' ? 'expansion' : phaseKey;
+
+      if (classData.schemaVersion === 2 || gameState.schemaVersion === 2) {
+        await revealPlanningAndAdvanceV2(classData.id, gameState.teams, classData.themeId, {
+          targetPhase: canonicalPhase,
+        });
+        return;
+      }
+
       const sanitizedState = {
         ...gameState,
         currentPhase: phaseKey,
@@ -161,10 +182,15 @@ export function TopBar({ classData, gameState }: TopBarProps) {
               return (
                 <div 
                   key={team.id}
-                  style={{ backgroundColor: team.color, color: textColor, ...turnStyles }}
+                  style={{
+                    backgroundColor: team.color,
+                    color: textColor,
+                    ['--turn-pulse-color' as string]: team.color,
+                    ...turnStyles,
+                  }}
                   className={cn(
                     "px-3 py-1.5 rounded-lg text-xs font-black shadow-sm ring-1 ring-black/10 transition-all duration-300 flex items-center gap-1.5",
-                    isActive && "ring-2 ring-purple-600 ring-offset-2 scale-105 animate-pulse",
+                    isActive && "ring-2 ring-purple-600 ring-offset-2 animate-turn-pulse",
                     turnClass
                   )}
                 >
@@ -180,7 +206,7 @@ export function TopBar({ classData, gameState }: TopBarProps) {
       </div>
 
       {/* 8 Phase Stepper Bar */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mt-5">
         {phases.map((p, idx) => {
           const state = getPhaseState(idx);
           const isDisabled = p.key === 'improvement' && round >= 5;

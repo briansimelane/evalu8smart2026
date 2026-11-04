@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { TeamMarksResult, WorldMarksResult, MARKS_CRITERIA } from '@/lib/marks/syndicateMarks';
+import { GameTheme, SMARTPHONE_THEME, techLabel } from '@/lib/gameTheme';
 
 function sanitizeFilename(str: string): string {
   return (str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -36,6 +37,7 @@ export async function generateTeamMarksPdf(
   team: TeamMarksResult,
   world: WorldMarksResult,
   className: string,
+  theme: GameTheme = SMARTPHONE_THEME,
 ): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -194,7 +196,7 @@ export async function generateTeamMarksPdf(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  const methodText = "Each criterion is totalled across rounds. For each criterion we calculate the world average and standard deviation across the teams in this world, and express each team's total as a number of standard deviations above or below the average (z). The weighted z-scores are combined using the criterion weights. The mark is the average mark plus the marks-per-standard-deviation multiplied by the combined z-score. Lost products are a penalty only: the team with the most lost products loses the full penalty, others lose a share in proportion to their losses. Wifi carry-over removes lost products only in rounds where the Permanent Tech Benefits rule was on. Class adjustments are added last and the mark is limited to 0–100%.";
+  const methodText = `Each criterion is totalled across rounds. For each criterion we calculate the world average and standard deviation across the teams in this world, and express each team's total as a number of standard deviations above or below the average (z). The weighted z-scores are combined using the criterion weights. The mark is the average mark plus the marks-per-standard-deviation multiplied by the combined z-score. Lost products are a penalty only: the team with the most lost products loses the full penalty, others lose a share in proportion to their losses. ${techLabel(theme, 'Wifi')} carry-over removes lost products only in rounds where the Permanent Tech Benefits rule was on. Class adjustments are added last and the mark is limited to 0–100%.`;
   const splitMethod = doc.splitTextToSize(methodText, pageWidth - (margin * 2));
   doc.text(splitMethod, margin, finalY + 8);
 
@@ -222,11 +224,12 @@ export async function exportAllTeamPdfs(
   world: WorldMarksResult,
   className: string,
   onProgress?: (current: number, total: number) => void,
+  theme: GameTheme = SMARTPHONE_THEME,
 ): Promise<void> {
   const scoredTeams = world.teams.filter(t => !t.excluded);
   for (let i = 0; i < scoredTeams.length; i++) {
     if (onProgress) onProgress(i + 1, scoredTeams.length);
-    await generateTeamMarksPdf(scoredTeams[i], world, className);
+    await generateTeamMarksPdf(scoredTeams[i], world, className, theme);
     await new Promise(r => setTimeout(r, 250));
   }
 }

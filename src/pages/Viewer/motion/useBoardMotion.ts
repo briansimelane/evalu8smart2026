@@ -183,7 +183,7 @@ export function useBoardMotion(gameState: GameState | null): MotionState {
       const newTickerEntries: TickerEntry[] = [];
 
       finalEventsToAnimate.forEach(e => {
-        const delay = staggerIndex * 350; // 350ms stagger (slower, clearer sequence)
+        const delay = staggerIndex * 120; // 120ms stagger (snappy, responsive sequence)
         staggerIndex++;
 
         const duration = e.tier === 1 ? 2200 : 1400; // 2.2s for tier-1, 1.4s for tier-2 (much slower)
@@ -235,7 +235,7 @@ export function useBoardMotion(gameState: GameState | null): MotionState {
 
       // Spotlight engages for tier-1 updates
       if (shouldAnimate && tier1Count > 0) {
-        const maxAnimationTime = staggerIndex * 350 + 2200;
+        const maxAnimationTime = staggerIndex * 120 + 2200;
         setSpotlight(true);
         if (spotlightTimeoutRef.current) {
           clearTimeout(spotlightTimeoutRef.current);
@@ -258,10 +258,10 @@ export function useBoardMotion(gameState: GameState | null): MotionState {
       setTick(t => t + 1);
     };
 
-    if (timePassedSinceFirst >= 600) {
+    if (timePassedSinceFirst >= 120) {
       processChange();
     } else {
-      coalesceTimerRef.current = setTimeout(processChange, 250);
+      coalesceTimerRef.current = setTimeout(processChange, 40);
     }
   }, [gameState]);
 

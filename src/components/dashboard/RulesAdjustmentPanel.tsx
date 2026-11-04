@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { SteveControlModal } from './SteveControlModal';
 import { DirectivesClaimModal } from './DirectivesClaimModal';
 import { FacilitatorWildcardConsole } from './FacilitatorWildcardConsole';
+import { useGameTheme } from '@/lib/gameTheme';
 
 interface RulesAdjustmentPanelProps {
   onClose?: () => void;
@@ -40,6 +41,7 @@ const ADVANCED_RULE_IDS = [
 
 export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onClose }) => {
   const { gameState, getRuleAdjustments, updateRuleAdjustments } = useGame();
+  const theme = useGameTheme();
   const [rulesState, setRulesState] = useState<RuleAdjustmentsState>(() => getRuleAdjustments());
   const [selectedCategory, setSelectedCategory] = useState<'All' | RuleCategory>('All');
   const [ruleGroupTab, setRuleGroupTab] = useState<'ALL' | 'ADVANCED' | 'STANDARD'>('ALL');
@@ -243,7 +245,7 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
                 )}
               </div>
               <CardDescription className="text-xs text-muted-foreground">
-                {rule.description}
+                {theme.ruleDescriptions?.[rule.id] ?? rule.description}
               </CardDescription>
               {!rule.enabled && rule.id === 'steve_event_blocker' && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold pt-1">

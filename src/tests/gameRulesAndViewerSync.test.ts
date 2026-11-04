@@ -4,18 +4,7 @@ import { getTechnologyCostForTeam, isCustomerEligible } from '../lib/rules';
 import { decideSales, decideResearch, decideLogistics } from '../bots/botEngine';
 import { REGION_CUSTOMERS } from '../data/customers';
 import { MapPin, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
-
-// Case-insensitive Tech Icon Helper (used in TechPanel & OverlayTechPanel)
-const getTechIconComponent = (techName: string) => {
-  const norm = (techName || '').toUpperCase();
-  if (norm.includes('GPS')) return MapPin;
-  if (norm.includes('WIFI')) return Wifi;
-  if (norm.includes('GAMING')) return Gamepad2;
-  if (norm.includes('BATTERY')) return Battery;
-  if (norm.includes('NFC')) return Radio;
-  if (norm.includes('4G')) return Signal;
-  return Wifi;
-};
+import { SMARTPHONE_THEME, techIcon } from '../lib/gameTheme';
 
 function createTestGameState(): GameState {
   const teams: Team[] = [
@@ -344,15 +333,15 @@ describe('Game Rules & Viewer Synchronization Test Suite', () => {
   // 5. VIEWER ICON MAPPING
   describe('Viewer Technology Icon Resolution', () => {
     it('resolves all technology names case-insensitively to the correct Lucide icon', () => {
-      expect(getTechIconComponent('Wifi')).toBe(Wifi);
-      expect(getTechIconComponent('WIFI')).toBe(Wifi);
-      expect(getTechIconComponent('wifi')).toBe(Wifi);
+      expect(techIcon(SMARTPHONE_THEME, 'Wifi')).toBe(Wifi);
+      expect(techIcon(SMARTPHONE_THEME, 'WIFI')).toBe(Wifi);
+      expect(techIcon(SMARTPHONE_THEME, 'wifi')).toBe(Wifi);
 
-      expect(getTechIconComponent('GPS')).toBe(MapPin);
-      expect(getTechIconComponent('Gaming')).toBe(Gamepad2);
-      expect(getTechIconComponent('Battery')).toBe(Battery);
-      expect(getTechIconComponent('NFC')).toBe(Radio);
-      expect(getTechIconComponent('4G')).toBe(Signal);
+      expect(techIcon(SMARTPHONE_THEME, 'GPS')).toBe(MapPin);
+      expect(techIcon(SMARTPHONE_THEME, 'Gaming')).toBe(Gamepad2);
+      expect(techIcon(SMARTPHONE_THEME, 'Battery')).toBe(Battery);
+      expect(techIcon(SMARTPHONE_THEME, 'NFC')).toBe(Radio);
+      expect(techIcon(SMARTPHONE_THEME, '4G')).toBe(Signal);
     });
   });
 

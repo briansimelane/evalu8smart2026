@@ -16,6 +16,7 @@ import { CombinationsGuideModal } from './CombinationsGuideModal';
 import { calculatePlanStats, hasTech, isGpsBonusClaimed, getCarriedOverProductsForTeam } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import { WildcardsWidget } from './WildcardsWidget';
+import { useGameTheme, techLabel } from '@/lib/gameTheme';
 
 export interface PlanningPhaseRef {
   loadTeamPlan: (roundNumber: number, teamId: string) => void;
@@ -23,6 +24,7 @@ export interface PlanningPhaseRef {
 
 export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const { gameState, getCurrentRound, addRoundData, getCombinations, calculatePlayOrder } = useGame();
+  const theme = useGameTheme();
   const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'planning');
@@ -329,7 +331,16 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
 
   const renderPlayOrderSection = () => {
     const playOrder = calculatePlayOrder(currentRound);
-    const activeTurnTeam = playOrder.find(t => !currentRoundData?.teamData[t.id]);
+    const hasSubmittedPlan = (teamId: string) =>
+      Boolean(
+        currentRoundData?.teamData[teamId] ||
+          gameState.planSubmittedByRound?.[currentRound]?.[teamId]
+      );
+    const allTeamsSubmitted =
+      gameState.teams.length > 0 && gameState.teams.every(t => hasSubmittedPlan(t.id));
+    const isPlanningPhase = (gameState.currentPhase || 'planning').toLowerCase() === 'planning';
+    const arePricesRevealed = allTeamsSubmitted && !isPlanningPhase;
+    const activeTurnTeam = playOrder.find(t => !hasSubmittedPlan(t.id));
 
     return (
       <div className="space-y-2 mb-4 p-4 bg-card border border-border rounded-xl shadow-sm">
@@ -399,9 +410,13 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
 
                 <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
                   <span className="truncate">CEO: {ceoName ? <strong className="text-foreground font-semibold">{ceoName}</strong> : <span className="italic">Vacant</span>}</span>
-                  {submittedData?.price !== undefined ? (
+                  {arePricesRevealed && submittedData?.price !== undefined ? (
                     <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-success/10 text-success border-success/20">
                       ${submittedData.price}
+                    </Badge>
+                  ) : hasSubmittedPlan(team.id) ? (
+                    <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-success/10 text-success border-success/20">
+                      Submitted
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="text-[10px] py-0 px-1 font-semibold bg-warning/10 text-warning dark:text-warning border-warning/20">
@@ -693,7 +708,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                       <div>
                         <span className="font-semibold text-slate-900 dark:text-slate-200">Products:</span> {selectedComboData.products} combo {improvementProductEffect > 0 && `+ ${improvementProductEffect} card `}
                         {Boolean(gameState?.advancedState?.wildcards?.[selectedTeam]?.conversionsByRound?.[currentRound]?.product) && `+ ${gameState.advancedState.wildcards[selectedTeam].conversionsByRound[currentRound].product} wildcard `}
-                        {hasTech(gameState, selectedTeam, 'GPS') && !isGpsBonusClaimed(gameState, selectedTeam) && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ 5 GPS `}
+                        {hasTech(gameState, selectedTeam, 'GPS') && !isGpsBonusClaimed(gameState, selectedTeam) && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ 5 ${techLabel(theme, 'GPS')} `}
                         {hasTech(gameState, selectedTeam, 'WIFI') && getCarriedOverProductsForTeam(gameState, selectedTeam) > 0 && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ ${getCarriedOverProductsForTeam(gameState, selectedTeam)} carried over `}
                         = <strong className="text-slate-900 dark:text-white">{productsAvailable}</strong>
                       </div>
@@ -704,7 +719,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                       </div>
                       <div>
                         <span className="font-semibold text-slate-900 dark:text-slate-200">Logistics:</span> {selectedComboData.logistics} combo {improvementLogisticsEffect > 0 && `+ ${improvementLogisticsEffect} card `}
-                        {hasTech(gameState, selectedTeam, 'BATTERY') && calculatedPrice > 5 && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ 1 Battery `}
+                        {hasTech(gameState, selectedTeam, 'BATTERY') && calculatedPrice > 5 && isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', selectedTeam) && `+ 1 ${techLabel(theme, 'Battery')} `}
                         {Boolean(gameState?.advancedState?.wildcards?.[selectedTeam]?.conversionsByRound?.[currentRound]?.logistics) && `+ ${gameState.advancedState.wildcards[selectedTeam].conversionsByRound[currentRound].logistics} wildcard `}
                         = <strong className="text-slate-900 dark:text-white">{logisticsPoints}</strong>
                       </div>

@@ -1,3 +1,5 @@
+import type { GameThemeId } from '@/lib/gameTheme';
+
 export type WorldKey = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J';
 export const WORLD_KEYS: WorldKey[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 export const MAX_WORLDS = 10;
@@ -13,10 +15,13 @@ export interface MultiWorldWorld {
 export interface MultiWorldSession {
   id: string;                    // e.g. "mw_1700000000000"
   name: string;                  // e.g. "Cohort 12 — Championship"
+  schemaVersion?: 1 | 2;
+  ownerUid?: string;
   sessionCode: string;           // short human code for combined viewer URL, e.g. "MW-8492"
   worlds: MultiWorldWorld[];     // ordered by key
   advanceMode: 'lockstep' | 'independent';
   teamLabelMode?: 'name' | 'code'; // default 'code' for >2 worlds, else 'name'
+  themeId?: GameThemeId;
   createdAt: string;
   createdByEmail?: string;
   createdByName?: string;

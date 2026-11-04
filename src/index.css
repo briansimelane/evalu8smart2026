@@ -62,6 +62,9 @@
     --sidebar-accent-foreground: 220 20% 92%;
     --sidebar-border: 224 25% 22%;
     --sidebar-ring: 10 82% 55%;
+
+    --viewer-board-bg: 241 245 249;      /* Tailwind slate-100, used by ViewerPage at lines 112 and 116 */
+    --viewer-grid-dot: rgba(0, 0, 0, 0.08); /* currently hard-coded in viewer.css .bg-grid-pattern */
   }
 
   .dark {
@@ -112,6 +115,15 @@
     --sidebar-border: 224 25% 16%;
     --sidebar-ring: 10 85% 60%;
   }
+
+  /* Per-simulation colour scheme. Smartphone Inc uses the :root / .dark values above.
+     Evalu8 Inc intentionally has no overrides yet. To add a scheme, override any token
+     here (e.g. --primary, --accent, --ring, --viewer-board-bg) and, if needed, add a
+     matching dark block under `.dark[data-game-theme="evalu8"]`.
+     Example:
+     :root[data-game-theme="evalu8"] {
+       --primary: 215 80% 55%;
+     } */
 }
 
 @layer base {
@@ -163,7 +175,26 @@
     text-wrap: balance;
   }
 
+  .animate-turn-pulse {
+    animation: turn-pulse-gentle 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+}
 
+@keyframes turn-pulse-gentle {
+  0%, 100% {
+    transform: scale(1.04);
+    opacity: 1;
+    box-shadow:
+      0 0 0 2px #9333ea,
+      0 0 8px 1px var(--turn-pulse-color, rgba(147, 51, 234, 0.45));
+  }
+  50% {
+    transform: scale(1.09);
+    opacity: 0.86;
+    box-shadow:
+      0 0 0 3px var(--turn-pulse-color, #9333ea),
+      0 0 18px 5px var(--turn-pulse-color, rgba(147, 51, 234, 0.65));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -15,10 +15,33 @@ import { calculatePlanStats, canExpandToRegion as canExpandToRegionRule, hasTech
 import { getDefaultRuleAdjustments, isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 import { advanceOnePhase } from '@/lib/phaseEngine';
 import { withMarksSnapshot } from '@/lib/marks/marksSnapshot';
+import { DEFAULT_GAME_THEME_ID, GameThemeId } from '@/lib/gameTheme';
+import { TeamActionDoc } from '@/types/game';
+import { useAssembledGameState } from '@/hooks/useAssembledGameState';
+import { useReferee } from '@/hooks/useReferee';
+import { mutateV2GameState, mutateWorld, mutateControl } from '@/lib/v2State';
+import {
+  submitStudentPlanV2,
+  submitStudentActionV2,
+  revealPlanningAndAdvanceV2,
+  skipTurnV2,
+  reopenTeamActionV2,
+  rejectTeamActionV2,
+} from '@/lib/referee/refereeEngine';
+import {
+  resolvePlan,
+  resolveImprovement,
+  resolveResearch,
+  resolveLogistics,
+  resolveSales,
+} from '@/lib/referee/resolvers';
+import { normalizePhaseName } from '@/lib/turnOrder';
 
 export interface GameContextType {
   gameState: GameState | null;
-  initializeGame: (teams: Team[]) => void;
+  isLoaded: boolean;
+  actionsMap: Record<string, TeamActionDoc>;
+  initializeGame: (teams: Team[], themeId?: GameThemeId) => void;
   addRoundData: (roundNumber: number, teamId: string, data: TeamRoundData) => void;
   updatePatent: (techName: string, teamId: string) => void;
   getCurrentRound: () => number;
@@ -35,11 +58,13 @@ export interface GameContextType {
   clearNonInitialCards: () => void;
   previewNextRoundCards: () => import('@/data/improvements').ImprovementCardData[];
   allocateResearch: (teamId: string, technology: string, points: number) => void;
+  submitResearchTurn: (teamId: string, allocations: Record<string, number>) => Promise<void>;
   getTeamResearchProgress: (teamId: string) => import('@/types/game').TeamResearchProgress | undefined;
   getTechnologyCostForTeam: (teamId: string, technology: string) => number;
   calculatePlayOrder: (roundNumber: number) => import('@/types/game').Team[];
   allocateLogistics: (teamId: string, regionName: string, points: number) => void;
   finishLogisticsTurn: (teamId: string) => void;
+  submitLogisticsTurn: (teamId: string, allocations: Record<string, number>) => Promise<void>;
   getTeamLogisticsProgress: (teamId: string) => TeamLogisticsProgress | undefined;
   canExpandToRegion: (teamId: string, regionName: string) => boolean;
   getAvailableRegionsForTeam: (teamId: string) => RegionLogistics[];
@@ -59,9 +84,14 @@ export interface GameContextType {
   updatePhase: (phase: GamePhase) => void;
   updateTeamLabelMode: (mode: 'name' | 'code') => void;
   endGame: () => void;
+  skipTurn: () => Promise<void>;
+  reopenTeamAction: (phase: string, teamId: string) => Promise<void>;
+  rejectTeamAction: (phase: string, teamId: string, reason: string) => Promise<void>;
 }
 
-export const GameContext = createContext<GameContextType | undefined>(undefined);
+export const GameContext: React.Context<GameContextType | undefined> =
+  (globalThis as any).__EVALU8_GAME_CONTEXT__ ||
+  ((globalThis as any).__EVALU8_GAME_CONTEXT__ = createContext<GameContextType | undefined>(undefined));
 
 export const useGame = () => {
   const context = useContext(GameContext);
@@ -86,11 +116,76 @@ function toValidDate(val: any): Date {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function normalizeLoadedGameState(raw: any): GameState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const candidate =
+    raw.gameState && typeof raw.gameState === 'object' && !Array.isArray(raw.rounds)
+      ? raw.gameState
+      : raw;
+  if (!candidate || typeof candidate !== 'object') return null;
+  if (!Array.isArray(candidate.teams) && !Array.isArray(candidate.rounds)) return null;
+
+  return {
+    ...candidate,
+    teams: Array.isArray(candidate.teams) ? candidate.teams : [],
+    rounds: Array.isArray(candidate.rounds) ? candidate.rounds : [],
+    currentRound: typeof candidate.currentRound === 'number' ? candidate.currentRound : 1,
+    currentPhase: candidate.currentPhase || 'planning',
+    improvementCards: Array.isArray(candidate.improvementCards) ? candidate.improvementCards : [],
+    regions: Array.isArray(candidate.regions) ? candidate.regions : [],
+    technologies:
+      candidate.technologies && typeof candidate.technologies === 'object'
+        ? candidate.technologies
+        : {},
+    patents:
+      candidate.patents && typeof candidate.patents === 'object' ? candidate.patents : {},
+    teamResearchProgress:
+      candidate.teamResearchProgress && typeof candidate.teamResearchProgress === 'object'
+        ? candidate.teamResearchProgress
+        : {},
+    regionLogistics:
+      candidate.regionLogistics && typeof candidate.regionLogistics === 'object'
+        ? candidate.regionLogistics
+        : {},
+    teamLogisticsProgress:
+      candidate.teamLogisticsProgress && typeof candidate.teamLogisticsProgress === 'object'
+        ? candidate.teamLogisticsProgress
+        : {},
+    createdAt: toValidDate(candidate.createdAt),
+    updatedAt: toValidDate(candidate.updatedAt),
+  } as GameState;
+}
+
 export function GameProvider({ children }: { children: ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [loadedClassId, setLoadedClassId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const { currentClassId, activeClass, isDemo } = useSession();
+  const { currentClassId, activeClass, currentRole, currentTeamId, authUid, isAuthReady, isDemo } = useSession();
   const demoContext = useDemoState();
+
+  const isV2 = !isDemo && (activeClass ? activeClass.schemaVersion !== 1 : true);
+  const fallbackTeams: Team[] = React.useMemo(
+    () => activeClass?.teams || (activeClass?.teamRegistry as any) || [],
+    [activeClass?.teams, activeClass?.teamRegistry]
+  );
+  const v2Assembled = useAssembledGameState({
+    classId: currentClassId,
+    enabled: isV2 && isAuthReady,
+    teams: fallbackTeams,
+    themeId: activeClass?.themeId,
+    role: currentRole,
+    teamId: currentTeamId,
+    authUid,
+  });
+
+  // Mount facilitator referee loop whenever a facilitator/admin has an active v2 class selected
+  const isRefereeEnabled = isV2 && isAuthReady && (currentRole === 'FACILITATOR' || currentRole === 'ADMIN');
+  useReferee({
+    classId: currentClassId,
+    enabled: isRefereeEnabled,
+    teams: fallbackTeams,
+    themeId: activeClass?.themeId,
+  });
   
   const mutateGameState = useCallback((updater: (prev: GameState | null) => GameState | null) => {
     if (isDemo) {
@@ -98,8 +193,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    if (isV2 && currentClassId) {
+      if (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') {
+        return;
+      }
+      mutateV2GameState(
+        currentClassId,
+        fallbackTeams,
+        activeClass?.themeId,
+        (freshState) => updater(freshState) || freshState
+      ).catch((e) => console.error("Failed to mutate v2 game state:", e));
+      return;
+    }
+
     setGameState(prev => {
-      const next = updater(prev);
+      const next = normalizeLoadedGameState(updater(prev));
       if (next) {
         const safeState = { ...next };
         const createdDate = safeState.createdAt ? toValidDate(safeState.createdAt) : new Date();
@@ -121,29 +229,36 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
-  }, [currentClassId, isDemo, demoContext]);
+  }, [currentClassId, isDemo, isV2, currentRole, fallbackTeams, activeClass?.themeId, demoContext]);
 
   useEffect(() => {
-    if (isDemo) {
+    if (isDemo || isV2) {
       setGameState(null);
+      setLoadedClassId(currentClassId);
       setIsLoaded(true);
       return;
     }
 
+    if (!isAuthReady) {
+      return;
+    }
+
     setGameState(null);
+    setLoadedClassId(currentClassId);
     setIsLoaded(false);
 
     if (!currentClassId) {
+      if (!currentRole) {
+        setIsLoaded(true);
+        return;
+      }
       let isMounted = true;
       const loadState = async () => {
         try {
           const docRef = doc(db, 'evalu8smart_sessions', 'default_game');
           const snap = await getDoc(docRef);
           if (snap.exists() && isMounted) {
-            const data = snap.data() as GameState;
-            if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
-            if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
-            setGameState(data);
+            setGameState(normalizeLoadedGameState(snap.data()));
           } else {
             setGameState(null);
           }
@@ -160,22 +275,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const unsubscribe = onSnapshot(stateDocRef, (snap) => {
         if (snap.exists()) {
           const stateData = snap.data();
-          const data = stateData?.gameState as GameState;
-          if (data) {
-            if (data.createdAt) data.createdAt = new Date(data.createdAt as any);
-            if (data.updatedAt) data.updatedAt = new Date(data.updatedAt as any);
-            if (!data.currentPhase) data.currentPhase = 'planning';
-            setGameState(data);
-          } else {
-            setGameState(null);
-          }
+          const normalized = normalizeLoadedGameState(stateData?.gameState ?? stateData);
+          setGameState(normalized);
         } else {
           // Fallback check on legacy root gameState or teamRegistry for new classes
           getDoc(doc(db, 'classes', currentClassId)).then(classSnap => {
             if (classSnap.exists()) {
               const classData = classSnap.data() as SimulationClass;
+              if (classData.schemaVersion === 2) {
+                setIsLoaded(true);
+                return;
+              }
               if (classData.gameState) {
-                setGameState(classData.gameState);
+                setGameState(normalizeLoadedGameState(classData.gameState));
               } else {
                 const teamsToInit: Team[] = (classData.teamRegistry && classData.teamRegistry.length > 0)
                   ? classData.teamRegistry.map((t, idx) => ({
@@ -188,7 +300,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
                     }))
                   : [];
                 if (teamsToInit.length > 0) {
-                  initializeGame(teamsToInit);
+                  initializeGame(teamsToInit, classData.themeId);
                 } else {
                   setGameState(null);
                 }
@@ -207,13 +319,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setIsLoaded(true);
       return () => unsubscribe();
     }
-  }, [currentClassId, isDemo]);
+  }, [currentClassId, currentRole, isDemo, isV2, isAuthReady, authUid]);
 
-  const effectiveGameState = isDemo ? demoContext.demoGameState : gameState;
-  const activeGameState = isDemo ? (demoContext.maskedDemoState || demoContext.demoGameState) : gameState;
-  const activeIsLoaded = isDemo ? demoContext.isLoaded : isLoaded;
+  const legacyMatchedState = loadedClassId === currentClassId ? gameState : null;
 
-  const initializeGame = (teams: Team[]) => {
+  const effectiveGameState = isDemo
+    ? demoContext.demoGameState
+    : isV2
+    ? v2Assembled.gameState
+    : legacyMatchedState;
+  const activeGameState = isDemo
+    ? (demoContext.maskedDemoState || demoContext.demoGameState)
+    : isV2
+    ? v2Assembled.gameState
+    : legacyMatchedState;
+  const activeIsLoaded = isDemo
+    ? demoContext.isLoaded
+    : isV2
+    ? v2Assembled.isLoaded
+    : isLoaded;
+
+  const initializeGame = (teams: Team[], themeId?: GameThemeId) => {
     // Create initial improvement cards for each team with UNIQUE IDs
     const baseId = Date.now();
     const initialCards = teams.map((team, idx) => {
@@ -295,6 +421,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const newGame: GameState = {
       gameId: Date.now().toString(),
+      themeId: themeId ?? activeClass?.themeId ?? effectiveGameState?.themeId ?? DEFAULT_GAME_THEME_ID,
       teams,
       currentRound: 1,
       currentPhase: 'planning',
@@ -330,6 +457,76 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const addRoundData = (roundNumber: number, teamId: string, data: TeamRoundData) => {
     if (!effectiveGameState) return;
+
+    if (isV2 && currentClassId) {
+      const currentPhaseNorm = normalizePhaseName(effectiveGameState.currentPhase || 'planning');
+      const isSalesSubmission =
+        currentPhaseNorm === 'sales' ||
+        (data.customersSold !== undefined && currentPhaseNorm !== 'planning');
+
+      if (currentRole === 'STUDENT') {
+        if (!isSalesSubmission) {
+          submitStudentPlanV2(currentClassId, roundNumber, teamId, data).catch((err) => {
+            console.error('Failed to submit student plan v2:', err);
+          });
+        } else {
+          const customersSold = data.customersSold || [];
+          const nfcSalesUnits = data.nfcSalesUnits || 0;
+          submitStudentActionV2(
+            currentClassId,
+            roundNumber,
+            'sales',
+            teamId,
+            { customersSold, nfcSalesUnits },
+            customersSold.length + nfcSalesUnits
+          ).catch((err) => {
+            console.error('Failed to submit student sales action v2:', err);
+          });
+        }
+        return;
+      }
+
+      // Facilitator or Bot on v2 class
+      if (!isSalesSubmission) {
+        if (currentPhaseNorm === 'planning') {
+          submitStudentPlanV2(currentClassId, roundNumber, teamId, data).catch((err) => {
+            console.error('Failed to submit sealed plan v2:', err);
+          });
+        } else {
+          mutateV2GameState(
+            currentClassId,
+            fallbackTeams,
+            activeClass?.themeId,
+            (freshState) => {
+              const res = resolvePlan(freshState, roundNumber, teamId, data);
+              return res.valid ? res.nextState : freshState;
+            }
+          ).catch((err) => console.error('Failed to apply plan v2:', err));
+        }
+      } else {
+        mutateV2GameState(
+          currentClassId,
+          fallbackTeams,
+          activeClass?.themeId,
+          (freshState) => {
+            const res = resolveSales(freshState, teamId, {
+              customersSold: data.customersSold || [],
+              nfcSalesUnits: data.nfcSalesUnits || 0,
+            });
+            if (!res.valid) return freshState;
+            const nextState = res.nextState;
+            if (nextState.turn && nextState.turn.order[nextState.turn.index] === teamId) {
+              nextState.turn = {
+                ...nextState.turn,
+                index: Math.min(nextState.turn.index + 1, nextState.turn.order.length),
+              };
+            }
+            return nextState;
+          }
+        ).catch((err) => console.error('Failed to apply sales v2:', err));
+      }
+      return;
+    }
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -530,7 +727,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       : (effectiveGameState?.teams || []);
 
     if (teamsToUse.length > 0) {
-      initializeGame(teamsToUse);
+      initializeGame(teamsToUse, activeClass?.themeId ?? effectiveGameState?.themeId);
     } else {
       mutateGameState(() => null);
     }
@@ -700,6 +897,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const updatePhase = (phase: GamePhase) => {
     if (!effectiveGameState) return;
 
+    if (isV2 && currentClassId) {
+      if (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') return;
+      revealPlanningAndAdvanceV2(currentClassId, fallbackTeams, activeClass?.themeId, {
+        targetPhase: phase,
+      }).catch((err) => console.error('Failed to update phase v2:', err));
+      return;
+    }
+
     mutateGameState(prev => {
       if (!prev) return prev;
 
@@ -775,6 +980,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const setBotThinking = (teamId: string, thinking: boolean) => {
     if (!effectiveGameState) return;
+    if (isV2 && currentClassId) {
+      if (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') return;
+      mutateControl(currentClassId, (ctl) => {
+        const currentVal = Boolean(ctl.botThinking?.[teamId]);
+        if (currentVal === thinking) return null;
+        return {
+          ...ctl,
+          botThinking: {
+            ...(ctl.botThinking || {}),
+            [teamId]: thinking,
+          },
+        };
+      }).catch(() => {});
+      return;
+    }
     mutateGameState(prev => {
       if (!prev) return prev;
       return {
@@ -790,6 +1010,39 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const claimImprovementCard = (cardId: number, teamId: string) => {
     if (!effectiveGameState) return;
+
+    if (isV2 && currentClassId) {
+      if (currentRole === 'STUDENT') {
+        submitStudentActionV2(
+          currentClassId,
+          effectiveGameState.currentRound || 1,
+          'improvement',
+          teamId,
+          { cardId },
+          1
+        ).catch((err) => console.error('Failed to submit student improvement action v2:', err));
+        return;
+      }
+
+      mutateV2GameState(
+        currentClassId,
+        fallbackTeams,
+        activeClass?.themeId,
+        (freshState) => {
+          const res = resolveImprovement(freshState, teamId, cardId);
+          if (!res.valid) return freshState;
+          const nextState = res.nextState;
+          if (nextState.turn && nextState.turn.order[nextState.turn.index] === teamId) {
+            nextState.turn = {
+              ...nextState.turn,
+              index: Math.min(nextState.turn.index + 1, nextState.turn.order.length),
+            };
+          }
+          return nextState;
+        }
+      ).catch((err) => console.error('Failed to apply improvement v2:', err));
+      return;
+    }
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -885,6 +1138,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const markImprovementCardUsed = (cardId: number) => {
     if (!effectiveGameState) return;
+    if (isV2 && currentRole === 'STUDENT') {
+      // On v2 classes, cardUsages are stored in plans/{round}_{teamId} and marked used by the referee upon reveal.
+      return;
+    }
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -972,8 +1229,85 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return selected;
   };
 
+  const submitResearchTurn = useCallback(async (teamId: string, allocations: Record<string, number>) => {
+    if (!effectiveGameState) return;
+
+    if (isV2 && currentClassId) {
+      const roundNumber = effectiveGameState.currentRound || 1;
+      const totalSpent = Object.values(allocations).reduce((acc, v) => acc + Math.max(0, Number(v || 0)), 0);
+
+      if (currentRole === 'STUDENT') {
+        await submitStudentActionV2(
+          currentClassId,
+          roundNumber,
+          'innovation',
+          teamId,
+          { allocations },
+          totalSpent
+        );
+        return;
+      }
+
+      await mutateV2GameState(
+        currentClassId,
+        fallbackTeams,
+        activeClass?.themeId,
+        (freshState) => {
+          const res = resolveResearch(freshState, teamId, allocations);
+          if (!res.valid) return freshState;
+          const nextState = res.nextState;
+          if (nextState.turn && nextState.turn.order[nextState.turn.index] === teamId) {
+            nextState.turn = {
+              ...nextState.turn,
+              index: Math.min(nextState.turn.index + 1, nextState.turn.order.length),
+            };
+          }
+          return nextState;
+        }
+      );
+      return;
+    }
+
+    let sumAllocated = 0;
+    Object.entries(allocations).forEach(([tech, pts]) => {
+      if (pts > 0) {
+        allocateResearch(teamId, tech, pts);
+        sumAllocated += pts;
+      }
+    });
+    const roundData = effectiveGameState.rounds.find(r => r.roundNumber === effectiveGameState.currentRound);
+    const allowedIcons = roundData?.teamData[teamId]?.researchIcons || 0;
+    const prevSpent = (effectiveGameState.researchAllocatedByRound?.[effectiveGameState.currentRound] || {})[teamId] || 0;
+    if (prevSpent + sumAllocated < allowedIcons) {
+      mutateGameState(prev => {
+        if (!prev) return prev;
+        const rNum = prev.currentRound;
+        const rData = prev.rounds.find(r => r.roundNumber === rNum);
+        const finalAllowed = rData?.teamData[teamId]?.researchIcons ?? allowedIcons;
+        return {
+          ...prev,
+          researchAllocatedByRound: {
+            ...prev.researchAllocatedByRound,
+            [rNum]: {
+              ...(prev.researchAllocatedByRound?.[rNum] || {}),
+              [teamId]: finalAllowed,
+            },
+          },
+          updatedAt: new Date(),
+        };
+      });
+    }
+  }, [effectiveGameState, isV2, currentClassId, currentRole, fallbackTeams, activeClass?.themeId, mutateGameState]);
+
   const allocateResearch = (teamId: string, technology: string, points: number) => {
     if (!effectiveGameState) return;
+
+    if (isV2 && currentClassId) {
+      submitResearchTurn(teamId, { [technology]: points }).catch((err) =>
+        console.error('Failed to allocate research v2:', err)
+      );
+      return;
+    }
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -1202,6 +1536,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const roundData = effectiveGameState.rounds.find(r => r.roundNumber === roundNumber);
     if (!roundData) return effectiveGameState.teams;
 
+    const isCurrentRound = roundNumber === effectiveGameState.currentRound;
+    const isPlanningPhase =
+      (effectiveGameState.currentPhase || 'planning').toLowerCase() === 'planning';
+    const allTeamsSubmitted =
+      effectiveGameState.teams.length > 0 &&
+      effectiveGameState.teams.every(t =>
+        Boolean(
+          roundData.teamData[t.id] ||
+            effectiveGameState.planSubmittedByRound?.[roundNumber]?.[t.id]
+        )
+      );
+    const hideCurrentRoundPrices = isCurrentRound && (isPlanningPhase || !allTeamsSubmitted);
+
     const teamsWithData = effectiveGameState.teams.map(team => {
       const currentData = roundData.teamData[team.id];
       const previousScore = roundNumber > 1
@@ -1210,7 +1557,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       return {
         team,
-        currentPrice: currentData?.price ?? Infinity,
+        currentPrice: hideCurrentRoundPrices ? Infinity : (currentData?.price ?? Infinity),
         previousScore,
       };
     });
@@ -1226,8 +1573,69 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return teamsWithData.map(item => item.team);
   };
 
+  const submitLogisticsTurn = useCallback(async (teamId: string, allocations: Record<string, number>) => {
+    if (!effectiveGameState) return;
+
+    if (isV2 && currentClassId) {
+      const roundNumber = effectiveGameState.currentRound || 1;
+      const totalSpent = Object.values(allocations).reduce((acc, v) => acc + Math.max(0, Number(v || 0)), 0);
+
+      if (currentRole === 'STUDENT') {
+        await submitStudentActionV2(
+          currentClassId,
+          roundNumber,
+          'expansion',
+          teamId,
+          { allocations },
+          totalSpent
+        );
+        return;
+      }
+
+      await mutateV2GameState(
+        currentClassId,
+        fallbackTeams,
+        activeClass?.themeId,
+        (freshState) => {
+          const res = resolveLogistics(freshState, teamId, allocations);
+          if (!res.valid) return freshState;
+          const nextState = res.nextState;
+          if (nextState.turn && nextState.turn.order[nextState.turn.index] === teamId) {
+            nextState.turn = {
+              ...nextState.turn,
+              index: Math.min(nextState.turn.index + 1, nextState.turn.order.length),
+            };
+          }
+          return nextState;
+        }
+      );
+      return;
+    }
+
+    let sumAllocated = 0;
+    Object.entries(allocations).forEach(([regionName, pts]) => {
+      if (pts > 0) {
+        allocateLogistics(teamId, regionName, pts);
+        sumAllocated += pts;
+      }
+    });
+    const roundData = effectiveGameState.rounds.find(r => r.roundNumber === effectiveGameState.currentRound);
+    const allowedIcons = roundData?.teamData[teamId]?.logisticsIcons || 0;
+    const prevSpent = (effectiveGameState.logisticsAllocatedByRound?.[effectiveGameState.currentRound] || {})[teamId] || 0;
+    if (prevSpent + sumAllocated < allowedIcons) {
+      finishLogisticsTurn(teamId);
+    }
+  }, [effectiveGameState, isV2, currentClassId, currentRole, fallbackTeams, activeClass?.themeId]);
+
   const allocateLogistics = useCallback((teamId: string, regionName: string, points: number) => {
     if (!effectiveGameState) return;
+
+    if (isV2 && currentClassId) {
+      submitLogisticsTurn(teamId, { [regionName]: points }).catch((err) =>
+        console.error('Failed to allocate logistics v2:', err)
+      );
+      return;
+    }
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -1365,6 +1773,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const finishLogisticsTurn = useCallback((teamId: string) => {
     if (!effectiveGameState) return;
+
+    if (isV2 && currentClassId) {
+      submitLogisticsTurn(teamId, {}).catch((err) =>
+        console.error('Failed to finish logistics turn v2:', err)
+      );
+      return;
+    }
 
     mutateGameState(prev => {
       if (!prev) return prev;
@@ -1550,6 +1965,26 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const contributeWildcardsToSteve = useCallback((teamId: string, delta: number = 1) => {
     if (!effectiveGameState) return;
+
+    if (isV2 && currentClassId && currentRole === 'STUDENT') {
+      const currentRound = effectiveGameState.currentRound || 1;
+      const currentSteveInRound =
+        effectiveGameState.advancedState?.steve?.wildcardsContributedByRound?.[currentRound]?.[teamId] || 0;
+      const nextSteveInRound = Math.max(0, currentSteveInRound + delta);
+      const currentConvs =
+        effectiveGameState.advancedState?.wildcards?.[teamId]?.conversionsByRound?.[currentRound] || {};
+      const convSum = Object.values(currentConvs).reduce((a, b) => Number(a) + Number(b || 0), 0);
+      submitStudentActionV2(
+        currentClassId,
+        currentRound,
+        'wildcard',
+        teamId,
+        { wildcardConversions: currentConvs, steveContribution: nextSteveInRound },
+        convSum + nextSteveInRound
+      ).catch((err) => console.error('Failed to submit student wildcard steve action v2:', err));
+      return;
+    }
+
     mutateGameState(prev => {
       if (!prev) return prev;
       if (!isRuleActiveForTeam(prev.ruleAdjustments, 'wildcard_tokens_system', teamId)) return prev;
@@ -1677,6 +2112,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
     delta: number = 1
   ) => {
     if (!effectiveGameState) return;
+
+    if (isV2 && currentClassId && currentRole === 'STUDENT') {
+      const currentRound = effectiveGameState.currentRound || 1;
+      const currentConvs = {
+        ...(effectiveGameState.advancedState?.wildcards?.[teamId]?.conversionsByRound?.[currentRound] || {}),
+      };
+      const nextVal = Math.max(0, (currentConvs[conversionType] || 0) + delta);
+      currentConvs[conversionType] = nextVal;
+      const currentSteveInRound =
+        effectiveGameState.advancedState?.steve?.wildcardsContributedByRound?.[currentRound]?.[teamId] || 0;
+      const convSum = Object.values(currentConvs).reduce((a, b) => Number(a) + Number(b || 0), 0);
+      submitStudentActionV2(
+        currentClassId,
+        currentRound,
+        'wildcard',
+        teamId,
+        { wildcardConversions: currentConvs, steveContribution: currentSteveInRound },
+        convSum + currentSteveInRound
+      ).catch((err) => console.error('Failed to submit student wildcard convert action v2:', err));
+      return;
+    }
+
     mutateGameState(prev => {
       if (!prev) return prev;
       if (!isRuleActiveForTeam(prev.ruleAdjustments, 'wildcard_tokens_system', teamId)) return prev;
@@ -1877,14 +2334,33 @@ export function GameProvider({ children }: { children: ReactNode }) {
     });
   }, [effectiveGameState]);
 
-  if (!activeIsLoaded) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#0D1117] text-white">Loading Game State...</div>;
-  }
+  const skipTurn = useCallback(async () => {
+    if (!isV2 || !currentClassId) return;
+    if (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') return;
+    await skipTurnV2(currentClassId, fallbackTeams, activeClass?.themeId);
+  }, [isV2, currentClassId, currentRole, fallbackTeams, activeClass?.themeId]);
+
+  const reopenTeamAction = useCallback(async (phase: string, teamId: string) => {
+    if (!isV2 || !currentClassId || !effectiveGameState) return;
+    if (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') return;
+    await reopenTeamActionV2(currentClassId, effectiveGameState.currentRound || 1, phase, teamId);
+  }, [isV2, currentClassId, effectiveGameState, currentRole]);
+
+  const rejectTeamAction = useCallback(async (phase: string, teamId: string, reason: string) => {
+    if (!isV2 || !currentClassId || !effectiveGameState) return;
+    if (currentRole !== 'FACILITATOR' && currentRole !== 'ADMIN') return;
+    const round = effectiveGameState.currentRound || 1;
+    const normPhase = normalizePhaseName(phase);
+    const actionId = `${round}_${normPhase}_${teamId}`;
+    await rejectTeamActionV2(currentClassId, actionId, reason);
+  }, [isV2, currentClassId, effectiveGameState, currentRole]);
 
   return (
     <GameContext.Provider
       value={{
         gameState: activeGameState,
+        isLoaded: activeIsLoaded,
+        actionsMap: isV2 ? v2Assembled.actionsMap : {},
         initializeGame,
         addRoundData,
         updatePatent,
@@ -1904,11 +2380,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
         clearNonInitialCards,
         previewNextRoundCards,
         allocateResearch,
+        submitResearchTurn,
         getTeamResearchProgress,
         getTechnologyCostForTeam,
         calculatePlayOrder,
         allocateLogistics,
         finishLogisticsTurn,
+        submitLogisticsTurn,
         getTeamLogisticsProgress,
         canExpandToRegion,
         getAvailableRegionsForTeam,
@@ -1926,6 +2404,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
         allocateWildcardToken,
         recalculateControlPoints,
         endGame,
+        skipTurn,
+        reopenTeamAction,
+        rejectTeamAction,
       }}
     >
       {children}

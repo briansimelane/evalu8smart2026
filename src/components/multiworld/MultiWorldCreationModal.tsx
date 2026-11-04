@@ -7,13 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Team, ClassTeam } from '@/types/game';
+import { Team } from '@/types/game';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { MultiWorldSession, WorldKey, WORLD_KEYS } from '@/types/multiworld';
+import { generateJoinCode } from '@/lib/security';
 import { WorldConfigSection, WorldConfig } from './WorldConfigSection';
-import { Globe, Sparkles, Plus } from 'lucide-react';
-import { STANDARD_5_COLORS, getTeamColorName } from '@/data/combinations';
+import { Globe, Sparkles } from 'lucide-react';
+import { STANDARD_5_COLORS } from '@/data/combinations';
+import { GAME_THEME_LIST, GameThemeId } from '@/lib/gameTheme';
 
 interface MultiWorldCreationModalProps {
   isOpen: boolean;
@@ -43,6 +45,7 @@ export const MultiWorldCreationModal: React.FC<MultiWorldCreationModalProps> = (
   const navigate = useNavigate();
 
   const [sessionName, setSessionName] = useState('');
+  const [themeId, setThemeId] = useState<GameThemeId>('smartphone');
   const [worldCount, setWorldCount] = useState<number>(2);
   const [worlds, setWorlds] = useState<WorldConfig[]>([
     createDefaultWorld('A'),
@@ -123,25 +126,22 @@ export const MultiWorldCreationModal: React.FC<MultiWorldCreationModalProps> = (
         }));
 
         const className = `${sessionName.trim()} — ${w.label.trim() || 'World ' + w.key}`;
-        const classId = await createClass(className, teams);
+        const classId = await createClass(className, teams, themeId);
         createdClassIds.push(classId);
       }
 
-      // 2. Generate session code (e.g. MW-7492)
-      const rand4Alpha = () => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        let res = '';
-        for (let i = 0; i < 4; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
-        return res;
-      };
-      const sessionCode = `MW-${rand4Alpha()}`;
+      // 2. Generate 8-character unambiguous session code
+      const sessionCode = generateJoinCode(8);
       const sessionId = `mw_${Date.now()}`;
 
       // 3. Save parent session document
       const sessionDoc: MultiWorldSession = {
         id: sessionId,
         name: sessionName.trim(),
+        schemaVersion: 2,
+        ownerUid: auth.currentUser?.uid || '',
         sessionCode,
+        themeId,
         worlds: worlds.map((w, idx) => ({
           key: w.key,
           classId: createdClassIds[idx],
@@ -219,6 +219,41 @@ export const MultiWorldCreationModal: React.FC<MultiWorldCreationModalProps> = (
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label className="font-semibold text-foreground">Simulation</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {GAME_THEME_LIST.map((theme) => {
+                  const selected = themeId === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => setThemeId(theme.id)}
+                      aria-pressed={selected}
+                      className={`p-3 rounded-lg border text-left transition-all flex items-start gap-2.5 ${
+                        selected
+                          ? 'bg-purple-600/10 border-purple-600 ring-2 ring-purple-600/30 text-foreground'
+                          : 'bg-background border-border text-muted-foreground hover:border-slate-350'
+                      }`}
+                    >
+                      <img
+                        src={theme.logoSrc}
+                        alt={theme.productName}
+                        className="w-7 h-7 object-contain shrink-0 mt-0.5"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-foreground leading-tight">
+                          {theme.productName}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground leading-snug mt-0.5">
+                          {theme.description}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

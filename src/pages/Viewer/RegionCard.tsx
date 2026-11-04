@@ -1,25 +1,16 @@
 import React, { useMemo } from 'react';
-import { GameState, Team, TeamLogisticsProgress } from '@/types/game';
+import { GameState, Team } from '@/types/game';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { GameIcon } from '@/components/dashboard/GameIcon';
 import { SteveIcon } from '@/components/dashboard/SteveIcon';
-import { MapPin, Wifi, Gamepad2, Battery, Radio, Signal } from 'lucide-react';
 import { useMotion } from './motion/MotionContext';
 import { getMotionClass, getMotionStyles } from './motion/motionClass';
 import { cn } from '@/lib/utils';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import { isSteveBlocking as isSteveBlockingRule, isTeamBuildingOffice, getCompletedOffices } from '@/lib/rules';
 import { getTeamBubbleText } from '@/lib/multiworld/teamLabel';
-
-const TECHNOLOGY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  'GPS': MapPin,
-  'Wifi': Wifi,
-  'Gaming': Gamepad2,
-  'Battery': Battery,
-  'NFC': Radio,
-  '4G': Signal,
-};
+import { getGameTheme, regionLabel, techIcon, techLabel } from '@/lib/gameTheme';
 
 // Helper to calculate high-contrast text color (black vs white) for any background hex
 const getContrastTextColor = (hexColor: string) => {
@@ -42,6 +33,8 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
   const roundData = gameState.rounds.find(r => r.roundNumber === round);
   const regionConfig = gameState.regionLogistics[regionName];
   const m = useMotion();
+  const theme = getGameTheme(gameState.themeId);
+  const displayRegionName = regionLabel(theme, regionName);
   
   const customerData = useMemo(() => {
     return REGION_CUSTOMERS.find(c => c.region === regionName)?.customers || [];
@@ -293,7 +286,7 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
             <GameIcon type="logistics" size="sm" />
             <span className="text-slate-900 text-sm font-black">{logisticsCost}</span>
           </div>
-          <span className="font-display font-black text-base tracking-tight text-slate-900">{regionName.toUpperCase()}</span>
+          <span className="font-display font-black text-base tracking-tight text-slate-900">{displayRegionName.toUpperCase()}</span>
         </div>
 
         {/* Office & Logistics Slots Row */}
@@ -343,7 +336,8 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
       <div className="flex items-center gap-1.5 py-1 flex-nowrap justify-start">
         {customerStatus.map(({ customer, buyerTeam }) => {
           const isPrice = customer.type === 'price';
-          const TechIcon = customer.technology ? TECHNOLOGY_ICONS[customer.technology] : null;
+          const TechIcon = customer.technology ? techIcon(theme, customer.technology) : null;
+          const custTechLabel = customer.technology ? techLabel(theme, customer.technology) : '';
           const custKey = `customer:${regionName}:${customer.id}`;
 
           return (
@@ -357,8 +351,8 @@ export function RegionCard({ regionName, gameState }: RegionCardProps) {
               )}
               title={
                 buyerTeam 
-                  ? `Sold to ${buyerTeam.name} (${isPrice ? `$${customer.price}` : customer.technology})` 
-                  : isPrice ? `Price Customer: Max $${customer.price}` : `Value Customer: Requires ${customer.technology}`
+                  ? `Sold to ${buyerTeam.name} (${isPrice ? `$${customer.price}` : custTechLabel})` 
+                  : isPrice ? `Price Customer: Max $${customer.price}` : `Value Customer: Requires ${custTechLabel}`
               }
             >
               {/* Customer Requirement Icon/Price (100% visible and centered) */}

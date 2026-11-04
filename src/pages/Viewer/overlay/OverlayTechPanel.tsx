@@ -2,19 +2,9 @@ import React, { useMemo } from 'react';
 import { GameState, Team, getPatentPointsForTech } from '@/types/game';
 import { getTechnologyCostForTeamForState } from '@/hooks/useGameBoardState';
 import { GameIcon } from '@/components/dashboard/GameIcon';
-import { MapPin, Wifi, Gamepad2, Battery, Radio, Signal, Award, Check } from 'lucide-react';
+import { Award, Check } from 'lucide-react';
 import { WorldMarker, WorldTag } from './WorldMarker';
-
-const getTechIconComponent = (techName: string) => {
-  const norm = (techName || '').toUpperCase();
-  if (norm.includes('GPS')) return MapPin;
-  if (norm.includes('WIFI')) return Wifi;
-  if (norm.includes('GAMING')) return Gamepad2;
-  if (norm.includes('BATTERY')) return Battery;
-  if (norm.includes('NFC')) return Radio;
-  if (norm.includes('4G')) return Signal;
-  return Wifi;
-};
+import { getGameTheme, techIcon, techLabel } from '@/lib/gameTheme';
 
 const DESIRED_TECH_ORDER = ['GPS', 'WIFI', 'GAMING', 'BATTERY', 'NFC', '4G'];
 
@@ -24,6 +14,8 @@ interface OverlayTechPanelProps {
 }
 
 export const OverlayTechPanel: React.FC<OverlayTechPanelProps> = ({ gameStateA, gameStateB }) => {
+  const theme = getGameTheme(gameStateA.themeId ?? gameStateB.themeId);
+
   const sortedTechs = useMemo(() => {
     return Object.values(gameStateA.technologies).sort((a, b) => {
       const rankA = DESIRED_TECH_ORDER.indexOf(a.name.toUpperCase());
@@ -96,7 +88,8 @@ export const OverlayTechPanel: React.FC<OverlayTechPanelProps> = ({ gameStateA, 
         {sortedTechs.map(tech => {
           const patentA = gameStateA.patents[tech.name] ? gameStateA.teams.find(t => t.id === gameStateA.patents[tech.name]) : null;
           const patentB = gameStateB.patents[tech.name] ? gameStateB.teams.find(t => t.id === gameStateB.patents[tech.name]) : null;
-          const Icon = getTechIconComponent(tech.name);
+          const Icon = techIcon(theme, tech.name);
+          const displayTechName = techLabel(theme, tech.name);
 
           return (
             <div
@@ -108,7 +101,7 @@ export const OverlayTechPanel: React.FC<OverlayTechPanelProps> = ({ gameStateA, 
                 <div className="flex items-center gap-1.5">
                   <Icon className="w-4 h-4 text-purple-700 stroke-[2.5]" />
                   <span className="font-display font-black text-xs text-slate-900 tracking-tight">
-                    {tech.name.toUpperCase()}
+                    {displayTechName.toUpperCase()}
                   </span>
                   <span className="text-[9px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded shadow-2xs">
                     🏆 {getPatentPointsForTech(tech.name)} pts
