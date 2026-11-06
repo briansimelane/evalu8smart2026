@@ -12,21 +12,24 @@ import { GameIcon } from './GameIcon';
 import { Badge } from '@/components/ui/badge';
 
 import { useSession } from '@/contexts/SessionContext';
-import { ViewerBoard } from '@/pages/Viewer/ViewerPage';
 import { CombinationsGuideModal } from './CombinationsGuideModal';
 import { calculatePlanStats, hasTech, isGpsBonusClaimed, getCarriedOverProductsForTeam } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import { WildcardsWidget } from './WildcardsWidget';
 import { useGameTheme, techLabel } from '@/lib/gameTheme';
 
+export interface PlanningPhaseProps {
+  onViewWorldMap?: () => void;
+}
+
 export interface PlanningPhaseRef {
   loadTeamPlan: (roundNumber: number, teamId: string) => void;
 }
 
-export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
+export const PlanningPhase = forwardRef<PlanningPhaseRef, PlanningPhaseProps>((props, ref) => {
   const { gameState, getCurrentRound, addRoundData, getCombinations, calculatePlayOrder } = useGame();
   const theme = useGameTheme();
-  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam, activeClass } = useSession();
+  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'planning');
   const [selectedTeam, setSelectedTeam] = useState('');
@@ -37,7 +40,6 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const [animatingValues, setAnimatingValues] = useState<Record<string, boolean>>({});
   const previousValues = useRef<Record<string, number>>({});
   const [isEditingSubmittedPlan, setIsEditingSubmittedPlan] = useState(false);
-  const [showRoundOneMap, setShowRoundOneMap] = useState(true);
 
   const currentRound = gameState ? getCurrentRound() : 1;
   const currentCombinations = gameState ? getCombinations() : [];
@@ -331,7 +333,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const submittedPlan = currentRoundData?.teamData[selectedTeam];
   const isPlanSubmitted = !!submittedPlan;
 
-  const renderRoundOneWorldMapSection = () => {
+  const renderRoundOnePlanningSection = () => {
     const hasSubmittedPlan = (teamId: string) =>
       Boolean(
         currentRoundData?.teamData[teamId] ||
@@ -339,27 +341,45 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
       );
     const submittedCount = gameState.teams.filter(t => hasSubmittedPlan(t.id)).length;
     const totalCount = gameState.teams.length;
-    const classData = activeClass || { id: 'demo', name: 'Simulation Game', code: 'DEMO', facilitatorCode: '' };
+
+    const handleOpenMap = () => {
+      if (props.onViewWorldMap) {
+        props.onViewWorldMap();
+      } else {
+        window.dispatchEvent(new CustomEvent('navigate_tab', { detail: 'scoreboard' }));
+      }
+    };
 
     return (
       <div className="space-y-3 mb-4 p-4 bg-card border border-border rounded-xl shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Globe className="h-5 w-5 text-purple-600 dark:text-purple-400 shrink-0" />
-              <h3 className="text-sm sm:text-base font-extrabold tracking-tight text-foreground">
-                World Map — Round 1 Market & Starting Offices
+              <Trophy className="h-4 w-4 text-warning shrink-0" />
+              <h3 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-foreground">
+                Round 1 — Planning Phase
               </h3>
-              <Badge variant="outline" className="text-[11px] font-bold border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300">
-                Live Reference Board
+              <Badge variant="outline" className="text-[11px] font-semibold border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                Turn Order & Pricing Sealed
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Review market demand and starting offices to formulate your Round 1 strategy. Turn order, product prices, and production will be calculated and revealed in the Production phase after all team plans are submitted.
+            <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
+              Turn order, product prices, and production will update and be revealed in the <strong>Production phase</strong> once all team plans are submitted. Use the <strong>World Map page</strong> to inspect your starting offices and regional demand.
             </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleOpenMap}
+              className="h-8 text-xs font-bold gap-1.5 border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 shadow-sm"
+            >
+              <Globe className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+              <span>Open World Map</span>
+            </Button>
+
             <Badge
               variant="outline"
               className={`text-xs font-bold gap-1.5 px-2.5 py-1 ${
@@ -369,28 +389,10 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
               }`}
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
-              <span>Plans Submitted: {submittedCount} / {totalCount}</span>
+              <span>{submittedCount} / {totalCount} Submitted</span>
             </Badge>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowRoundOneMap(prev => !prev)}
-              className="h-8 text-xs font-semibold gap-1"
-            >
-              <Eye className="h-3.5 w-3.5" />
-              {showRoundOneMap ? 'Collapse Map' : 'View Map'}
-            </Button>
           </div>
         </div>
-
-        {/* Interactive World Map Canvas */}
-        {showRoundOneMap && (
-          <div className="w-full h-[62vh] min-h-[440px] max-h-[780px] rounded-xl overflow-hidden border border-border shadow-lg bg-slate-900 relative transition-all">
-            <ViewerBoard classData={classData} gameState={gameState} />
-          </div>
-        )}
 
         {/* Team Submissions Tracker Bar */}
         <div className="pt-2 border-t border-border/50">
@@ -401,7 +403,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
             </span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-            {gameState.teams.map((team, index) => {
+            {gameState.teams.map((team) => {
               const liveTeamDoc = currentClassTeams[team.id];
               const ceoName = liveTeamDoc?.ceoName || team.ceoName || null;
               const isSubmitted = hasSubmittedPlan(team.id);
@@ -411,7 +413,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                 <div
                   key={team.id}
                   onClick={() => currentRole !== 'STUDENT' && setSelectedTeam(team.id)}
-                  className={`p-2 rounded-lg border text-xs flex flex-col justify-between space-y-1 transition-all ${
+                  className={`p-2.5 rounded-lg border text-xs flex flex-col justify-between space-y-1.5 transition-all ${
                     isSelected
                       ? 'ring-2 ring-primary bg-primary/5 shadow-sm border-primary/50'
                       : 'bg-card hover:bg-muted/30 border-border'
@@ -419,7 +421,6 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
                 >
                   <div className="flex items-center justify-between font-bold">
                     <div className="flex items-center gap-1.5 truncate">
-                      <span className="text-muted-foreground font-mono text-[11px]">{index + 1}.</span>
                       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
                       <span className="truncate flex items-center gap-1">
                         {team.name}
@@ -430,7 +431,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
 
                   <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
                     <span className="truncate max-w-[90px]">
-                      {ceoName ? <strong>{ceoName}</strong> : <span className="italic">Team</span>}
+                      {ceoName ? <strong className="text-foreground font-semibold">{ceoName}</strong> : <span className="italic">Team</span>}
                     </span>
                     {isSubmitted ? (
                       <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-success/10 text-success border-success/20">
@@ -454,10 +455,10 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const renderPlayOrderSection = () => {
     const isPlanningPhase = (gameState.currentPhase || 'planning').toLowerCase() === 'planning';
 
-    // In Round 1 Planning Phase: show the World Map with starting offices,
+    // In Round 1 Planning Phase: show clean team submission tracker with sealed status & link to World Map,
     // and wait for Production phase to update and show pricing, turn order, and production.
     if (currentRound === 1 && isPlanningPhase) {
-      return renderRoundOneWorldMapSection();
+      return renderRoundOnePlanningSection();
     }
 
     const playOrder = calculatePlayOrder(currentRound);

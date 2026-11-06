@@ -211,6 +211,18 @@ export const Dashboard = () => {
     }
   }, [gameState?.currentPhase]);
 
+  // Support programmatic navigation between tabs from child components
+  useEffect(() => {
+    const handleNavigateTab = (e: Event) => {
+      const customEvt = e as CustomEvent<string>;
+      if (customEvt.detail) {
+        setActiveTab(customEvt.detail);
+      }
+    };
+    window.addEventListener('navigate_tab', handleNavigateTab);
+    return () => window.removeEventListener('navigate_tab', handleNavigateTab);
+  }, []);
+
   const handleTabChange = (value: string) => {
     setActiveTab(value);
   };
@@ -815,7 +827,7 @@ export const Dashboard = () => {
 
           {/* Game Phase Tabs */}
           <TabsContent value="planning" className="space-y-4">
-            <PlanningPhase ref={planningPhaseRef} />
+            <PlanningPhase ref={planningPhaseRef} onViewWorldMap={() => setActiveTab('scoreboard')} />
           </TabsContent>
 
           <TabsContent value="production" className="space-y-4">
