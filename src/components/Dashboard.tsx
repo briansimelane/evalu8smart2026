@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { TeamSubmissionStatus } from './dashboard/TeamSubmissionStatus';
 import { CombinationsGuideModal } from './dashboard/CombinationsGuideModal';
 import { DirectivesClaimModal } from './dashboard/DirectivesClaimModal';
+import { TeamPerksModal } from './dashboard/TeamPerksModal';
 import { TeamPerksBanner } from './dashboard/TeamPerksBanner';
 import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation, Sliders, Map, GraduationCap } from 'lucide-react';
 import { SyndicateMarks } from './dashboard/SyndicateMarks';
@@ -651,6 +652,7 @@ export const Dashboard = () => {
                     
                     <CombinationsGuideModal triggerLabel="Combinations Guide" triggerVariant="outline" triggerClassName="text-xs h-8 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 font-bold whitespace-nowrap" />
                     <DirectivesClaimModal triggerClassName="text-xs h-8 border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 font-bold gap-1 whitespace-nowrap" />
+                    <TeamPerksModal triggerClassName="text-xs h-8 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 font-bold gap-1 whitespace-nowrap" />
                     <Dialog>
                       <DialogTrigger asChild>
                         <Button variant="outline" size="sm" className="text-xs h-8 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 font-bold gap-1 whitespace-nowrap" title="Rules Adjustments">
