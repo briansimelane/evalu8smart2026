@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode, useRef } from 'react';
 import { GameState, Team, RoundData, TeamRoundData, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, GamePhase, RuleAdjustmentsState, AdvancedRulesState, calculateTeamTotalScore, getInitialScore } from '@/types/game';
 import { REGIONS, TECHNOLOGIES, TEAM_COLORS, COMBINATIONS, Combination, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS, AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
@@ -396,15 +396,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [optimisticAdvancedState]);
 
-  const effectiveGameState = useMemo(() => {
-    if (!rawEffectiveGameState) return null;
-    if (!optimisticAdvancedState) return rawEffectiveGameState;
+  const mergeOptimisticAdvanced = useCallback((base: GameState | null, optimistic: AdvancedRulesState | null): GameState | null => {
+    if (!base) return null;
+    if (!optimistic) return base;
 
-    const baseAdvanced = rawEffectiveGameState.advancedState || {};
+    const baseAdvanced = base.advancedState || {};
     const mergedWildcards = { ...(baseAdvanced.wildcards || {}) };
 
-    if (optimisticAdvancedState.wildcards) {
-      for (const [tId, optWc] of Object.entries(optimisticAdvancedState.wildcards)) {
+    if (optimistic.wildcards) {
+      for (const [tId, optWc] of Object.entries(optimistic.wildcards)) {
         const baseWc = baseAdvanced.wildcards?.[tId] || {
           teamId: tId,
           totalTokens: optWc.totalTokens ?? 10,
@@ -426,65 +426,75 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const mergedSteve = optimisticAdvancedState.steve
+    const mergedSteve = optimistic.steve
       ? {
           ...(baseAdvanced.steve || { activeRegion: null }),
-          ...optimisticAdvancedState.steve,
+          ...optimistic.steve,
           wildcardsContributed: {
             ...(baseAdvanced.steve?.wildcardsContributed || {}),
-            ...(optimisticAdvancedState.steve.wildcardsContributed || {}),
+            ...(optimistic.steve.wildcardsContributed || {}),
           },
           wildcardsContributedByRound: {
             ...(baseAdvanced.steve?.wildcardsContributedByRound || {}),
-            ...(optimisticAdvancedState.steve.wildcardsContributedByRound || {}),
+            ...(optimistic.steve.wildcardsContributedByRound || {}),
           },
         }
       : baseAdvanced.steve;
 
     const mergedAdvanced: AdvancedRulesState = {
       ...baseAdvanced,
-      ...optimisticAdvancedState,
+      ...optimistic,
       wildcards: mergedWildcards,
       steve: mergedSteve,
     };
 
-    let mergedRounds = rawEffectiveGameState.rounds;
-    const currentRound = rawEffectiveGameState.currentRound;
-    const roundIndex = rawEffectiveGameState.rounds.findIndex(r => r.roundNumber === currentRound);
-    if (roundIndex !== -1 && rawEffectiveGameState.rounds[roundIndex]?.teamData) {
-      const roundData = rawEffectiveGameState.rounds[roundIndex];
-      let updatedTeamData = { ...roundData.teamData };
+    const roundsArray = Array.isArray(base.rounds) ? base.rounds : [];
+    let mergedRounds = roundsArray;
+    const currentRound = base.currentRound || 1;
+    const roundIndex = roundsArray.findIndex(r => r && r.roundNumber === currentRound);
+
+    if (roundIndex !== -1 && roundsArray[roundIndex]?.teamData) {
+      const roundData = roundsArray[roundIndex];
+      let updatedTeamData = { ...(roundData.teamData || {}) };
       let hasChanges = false;
 
-      if (optimisticAdvancedState.wildcards) {
-        for (const tId of Object.keys(optimisticAdvancedState.wildcards)) {
+      if (optimistic.wildcards) {
+        for (const tId of Object.keys(optimistic.wildcards)) {
           const existingTeamData = updatedTeamData[tId];
           if (existingTeamData && existingTeamData.combination && existingTeamData.position) {
-            const tempState = { ...rawEffectiveGameState, advancedState: mergedAdvanced };
-            const newStats = calculatePlanStats(
-              tempState,
-              tId,
-              existingTeamData.combination,
-              existingTeamData.position,
-              existingTeamData.cardUsages || {},
-              rawEffectiveGameState.combinationsData || COMBINATIONS
-            );
-            const targetProducts = Math.max(existingTeamData.productsProduced || 0, newStats.productsAvailable);
-            updatedTeamData[tId] = {
-              ...existingTeamData,
-              price: newStats.calculatedPrice,
-              productsProduced: targetProducts,
-              researchIcons: newStats.researchPoints,
-              logisticsIcons: newStats.logisticsPoints,
-              improvementCards: newStats.improvementPoints,
-            };
-            hasChanges = true;
+            try {
+              const tempState = {
+                ...base,
+                advancedState: mergedAdvanced,
+                improvementCards: base.improvementCards || [],
+              };
+              const newStats = calculatePlanStats(
+                tempState,
+                tId,
+                existingTeamData.combination,
+                existingTeamData.position,
+                existingTeamData.cardUsages || {},
+                base.combinationsData || COMBINATIONS
+              );
+              const targetProducts = Math.max(existingTeamData.productsProduced || 0, newStats.productsAvailable);
+              updatedTeamData[tId] = {
+                ...existingTeamData,
+                price: newStats.calculatedPrice,
+                productsProduced: targetProducts,
+                researchIcons: newStats.researchPoints,
+                logisticsIcons: newStats.logisticsPoints,
+                improvementCards: newStats.improvementPoints,
+              };
+              hasChanges = true;
+            } catch (err) {
+              console.warn('Failed to optimistically recompute plan stats for team', tId, err);
+            }
           }
         }
       }
 
       if (hasChanges) {
-        mergedRounds = [...rawEffectiveGameState.rounds];
+        mergedRounds = [...roundsArray];
         mergedRounds[roundIndex] = {
           ...roundData,
           teamData: updatedTeamData,
@@ -493,114 +503,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
 
     return {
-      ...rawEffectiveGameState,
+      ...base,
       advancedState: mergedAdvanced,
       rounds: mergedRounds,
     };
-  }, [rawEffectiveGameState, optimisticAdvancedState]);
+  }, []);
+
+  const effectiveGameState = useMemo(() => {
+    return mergeOptimisticAdvanced(rawEffectiveGameState, optimisticAdvancedState);
+  }, [rawEffectiveGameState, optimisticAdvancedState, mergeOptimisticAdvanced]);
 
   const activeGameState = useMemo(() => {
-    if (!rawActiveGameState) return null;
-    if (!optimisticAdvancedState) return rawActiveGameState;
-
-    const baseAdvanced = rawActiveGameState.advancedState || {};
-    const mergedWildcards = { ...(baseAdvanced.wildcards || {}) };
-
-    if (optimisticAdvancedState.wildcards) {
-      for (const [tId, optWc] of Object.entries(optimisticAdvancedState.wildcards)) {
-        const baseWc = baseAdvanced.wildcards?.[tId] || {
-          teamId: tId,
-          totalTokens: optWc.totalTokens ?? 10,
-          usedInRound: {},
-          conversionsByRound: {},
-        };
-        mergedWildcards[tId] = {
-          ...baseWc,
-          ...optWc,
-          conversionsByRound: {
-            ...(baseWc.conversionsByRound || {}),
-            ...(optWc.conversionsByRound || {}),
-          },
-          usedInRound: {
-            ...(baseWc.usedInRound || {}),
-            ...(optWc.usedInRound || {}),
-          },
-        };
-      }
-    }
-
-    const mergedSteve = optimisticAdvancedState.steve
-      ? {
-          ...(baseAdvanced.steve || { activeRegion: null }),
-          ...optimisticAdvancedState.steve,
-          wildcardsContributed: {
-            ...(baseAdvanced.steve?.wildcardsContributed || {}),
-            ...(optimisticAdvancedState.steve.wildcardsContributed || {}),
-          },
-          wildcardsContributedByRound: {
-            ...(baseAdvanced.steve?.wildcardsContributedByRound || {}),
-            ...(optimisticAdvancedState.steve.wildcardsContributedByRound || {}),
-          },
-        }
-      : baseAdvanced.steve;
-
-    const mergedAdvanced: AdvancedRulesState = {
-      ...baseAdvanced,
-      ...optimisticAdvancedState,
-      wildcards: mergedWildcards,
-      steve: mergedSteve,
-    };
-
-    let mergedRounds = rawActiveGameState.rounds;
-    const currentRound = rawActiveGameState.currentRound;
-    const roundIndex = rawActiveGameState.rounds.findIndex(r => r.roundNumber === currentRound);
-    if (roundIndex !== -1 && rawActiveGameState.rounds[roundIndex]?.teamData) {
-      const roundData = rawActiveGameState.rounds[roundIndex];
-      let updatedTeamData = { ...roundData.teamData };
-      let hasChanges = false;
-
-      if (optimisticAdvancedState.wildcards) {
-        for (const tId of Object.keys(optimisticAdvancedState.wildcards)) {
-          const existingTeamData = updatedTeamData[tId];
-          if (existingTeamData && existingTeamData.combination && existingTeamData.position) {
-            const tempState = { ...rawActiveGameState, advancedState: mergedAdvanced };
-            const newStats = calculatePlanStats(
-              tempState,
-              tId,
-              existingTeamData.combination,
-              existingTeamData.position,
-              existingTeamData.cardUsages || {},
-              rawActiveGameState.combinationsData || COMBINATIONS
-            );
-            const targetProducts = Math.max(existingTeamData.productsProduced || 0, newStats.productsAvailable);
-            updatedTeamData[tId] = {
-              ...existingTeamData,
-              price: newStats.calculatedPrice,
-              productsProduced: targetProducts,
-              researchIcons: newStats.researchPoints,
-              logisticsIcons: newStats.logisticsPoints,
-              improvementCards: newStats.improvementPoints,
-            };
-            hasChanges = true;
-          }
-        }
-      }
-
-      if (hasChanges) {
-        mergedRounds = [...rawActiveGameState.rounds];
-        mergedRounds[roundIndex] = {
-          ...roundData,
-          teamData: updatedTeamData,
-        };
-      }
-    }
-
-    return {
-      ...rawActiveGameState,
-      advancedState: mergedAdvanced,
-      rounds: mergedRounds,
-    };
-  }, [rawActiveGameState, optimisticAdvancedState]);
+    return mergeOptimisticAdvanced(rawActiveGameState, optimisticAdvancedState);
+  }, [rawActiveGameState, optimisticAdvancedState, mergeOptimisticAdvanced]);
   const activeIsLoaded = isDemo
     ? demoContext.isLoaded
     : isV2

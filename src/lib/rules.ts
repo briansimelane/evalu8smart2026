@@ -74,7 +74,7 @@ export function calculatePlanStats(
   let improvementResearchEffect = 0;
   let improvementLogisticsEffect = 0;
 
-  const allTeamCards = gameState.improvementCards.filter(card => card.availableForTeam === teamId);
+  const allTeamCards = (gameState.improvementCards || []).filter(card => card.availableForTeam === teamId);
   const getAllocatedRound = (card: any) => {
     return card.isInitial || card.allocatedInRound == null ? 0 : Number(card.allocatedInRound);
   };
