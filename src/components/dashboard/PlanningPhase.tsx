@@ -836,7 +836,12 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
         {/* Wildcards Token Conversion Widget */}
         {selectedTeam && isRuleActiveForTeam(gameState?.ruleAdjustments, 'wildcard_tokens_system', selectedTeam) && (
           <div className="pt-2">
-            <WildcardsWidget teamId={selectedTeam} />
+            <WildcardsWidget
+              teamId={selectedTeam}
+              planImprovementPoints={selectedComboData?.improve ?? (
+                existingRoundData ? currentCombinations.find(c => c.combination === existingRoundData.combination && c.position === existingRoundData.position)?.improve : 0
+              ) ?? 0}
+            />
           </div>
         )}
 

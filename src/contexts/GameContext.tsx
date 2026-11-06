@@ -2371,6 +2371,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     if (delta > 0 && totalUsed + delta > (tWildcard.totalTokens || 10)) return;
 
+    // Check if team's plan already includes an Improvement icon from combination
+    if (conversionType === 'improvement' && delta > 0) {
+      const roundData = effectiveGameState.rounds?.find(r => r.roundNumber === currentRound)?.teamData?.[teamId];
+      if (roundData) {
+        const combos = effectiveGameState.combinationsData && effectiveGameState.combinationsData.length > 0
+          ? effectiveGameState.combinationsData
+          : COMBINATIONS;
+        const combo = combos.find(c => c.combination === roundData.combination && c.position === roundData.position);
+        if ((combo?.improve || 0) >= 1) return;
+      }
+    }
+
     rConvs[conversionType] = newPhaseVal;
     convsByR[currentRound] = rConvs;
 
@@ -2432,6 +2444,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const pNewVal = prevVal + delta;
       if (pNewVal < 0 || pNewVal > maxForAction) return prev;
       if (delta > 0 && prevTotalUsed + delta > (prevTWc.totalTokens || 10)) return prev;
+
+      if (conversionType === 'improvement' && delta > 0) {
+        const roundData = prev.rounds?.find(r => r.roundNumber === currentRound)?.teamData?.[teamId];
+        if (roundData) {
+          const combos = prev.combinationsData && prev.combinationsData.length > 0 ? prev.combinationsData : COMBINATIONS;
+          const combo = combos.find(c => c.combination === roundData.combination && c.position === roundData.position);
+          if ((combo?.improve || 0) >= 1) return prev;
+        }
+      }
 
       prevRConvs[conversionType] = pNewVal;
       prevConvsByR[currentRound] = prevRConvs;

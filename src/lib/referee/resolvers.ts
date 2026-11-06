@@ -1206,6 +1206,21 @@ export function resolveWildcardAction(
     };
   }
 
+  if (improvementConv > 0) {
+    const roundData = prev.rounds?.find(r => r.roundNumber === currentRound)?.teamData?.[teamId];
+    if (roundData) {
+      const combos = prev.combinationsData && prev.combinationsData.length > 0 ? prev.combinationsData : COMBINATIONS;
+      const combo = combos.find(c => c.combination === roundData.combination && c.position === roundData.position);
+      if ((combo?.improve || 0) >= 1) {
+        return {
+          valid: false,
+          error: 'Your plan already includes 1 Improvement from plan sheets. Cannot allocate Improvement Wildcard.',
+          nextState: prev,
+        };
+      }
+    }
+  }
+
   const steveByRoundMap = { ...(steve.wildcardsContributedByRound || {}) };
   const roundSteveMap = { ...(steveByRoundMap[currentRound] || {}) };
   const prevSteveInRound = Number(roundSteveMap[teamId] || 0);
