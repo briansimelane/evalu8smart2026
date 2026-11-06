@@ -35,6 +35,7 @@ export const SalesPhase = () => {
   const [selectedCustomers, setSelectedCustomers] = useState<Record<string, string[]>>({});
   const [nfcSalesUnits, setNfcSalesUnits] = useState<number>(0);
   const [showPartialSalesConfirm, setShowPartialSalesConfirm] = useState<boolean>(false);
+  const [showZeroSalesConfirm, setShowZeroSalesConfirm] = useState<boolean>(false);
 
   useEffect(() => {
     if (currentRole === 'STUDENT' && currentTeamId) {
@@ -257,6 +258,12 @@ export const SalesPhase = () => {
     effectiveNfcSalesUnits,
   ]);
 
+  const totalEligibleOpportunities = useMemo(() => {
+    return totalProductsToSell + additionalEligibleOpportunities;
+  }, [totalProductsToSell, additionalEligibleOpportunities]);
+
+  const hasEligibleSales = productsAvailable > 0 && totalEligibleOpportunities > 0;
+
   const cannotMakeAnySale = Boolean(
     selectedTeamData &&
       !isSalesSubmitted &&
@@ -415,7 +422,13 @@ export const SalesPhase = () => {
     setNfcSalesUnits(0);
   };
 
-  const handleRecordZeroSales = () => {
+  const handleRecordZeroSalesClick = () => {
+    if (!selectedTeam || !selectedTeamData || isReadOnlyMode) return;
+    setShowZeroSalesConfirm(true);
+  };
+
+  const executeRecordZeroSales = () => {
+    setShowZeroSalesConfirm(false);
     if (!selectedTeam || !selectedTeamData || isReadOnlyMode) return;
 
     const updatedData = {
@@ -1076,7 +1089,7 @@ export const SalesPhase = () => {
                           <div className="flex flex-wrap gap-2 sticky bottom-0 z-30 bg-card/95 backdrop-blur p-3 -mx-6 -mb-6 border-t border-border shadow-2xl sm:static sm:p-0 sm:m-0 sm:shadow-none sm:border-0 sm:bg-transparent">
                             {cannotMakeAnySale ? (
                               <Button
-                                onClick={handleRecordZeroSales}
+                                onClick={handleRecordZeroSalesClick}
                                 className="flex-1 font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
                                 size="lg"
                                 disabled={isReadOnlyMode}
@@ -1108,7 +1121,7 @@ export const SalesPhase = () => {
                                   </Button>
                                 )}
                                 <Button
-                                  onClick={handleRecordZeroSales}
+                                  onClick={handleRecordZeroSalesClick}
                                   variant="outline"
                                   size="lg"
                                   disabled={isReadOnlyMode}
@@ -1180,6 +1193,69 @@ export const SalesPhase = () => {
                 className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
               >
                 Confirm & Submit {totalProductsToSell} {totalProductsToSell === 1 ? 'Sale' : 'Sales'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showZeroSalesConfirm} onOpenChange={setShowZeroSalesConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className={`flex items-center gap-2 ${hasEligibleSales ? 'text-destructive dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                <AlertTriangle className="h-5 w-5" />
+                {hasEligibleSales ? 'Warning: Eligible Sales Opportunities Available' : 'Confirm Zero Sales'}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-3 pt-2 text-sm text-foreground">
+                <span className="block">
+                  <strong>{teamName || 'Your team'}</strong> is about to record <strong>0 sales</strong> for Round {currentRound}.
+                </span>
+
+                {hasEligibleSales ? (
+                  <div className="p-3 rounded-lg border border-destructive/40 bg-destructive/10 text-destructive-foreground space-y-2">
+                    <div className="flex items-start gap-2 text-destructive dark:text-red-400 font-semibold text-xs sm:text-sm">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>Eligible sales options detected!</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-foreground/90">
+                      Your team produced <strong>{productsAvailable} {productsAvailable === 1 ? 'product' : 'products'}</strong> and has{' '}
+                      <strong className="text-destructive dark:text-red-400">
+                        {totalEligibleOpportunities} eligible sales {totalEligibleOpportunities === 1 ? 'opportunity' : 'opportunities'}
+                      </strong>{' '}
+                      matching your price (${selectedTeamData?.price}) or technology across your active regions and direct sales.
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">
+                      Recording zero sales will forfeit all potential customer sales and result in <strong>$0 revenue</strong> for Round {currentRound}. Are you sure this is not a mistake?
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs sm:text-sm space-y-1">
+                    <p>
+                      {productsAvailable === 0 ? (
+                        <>Your team produced <strong>0 products</strong> this round, so no products are available to sell.</>
+                      ) : (
+                        <>
+                          Your team produced <strong>{productsAvailable} {productsAvailable === 1 ? 'product' : 'products'}</strong>, but there are <strong>0 eligible sales options</strong> matching your product price (${selectedTeamData?.price}) or completed technologies.
+                        </>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Confirming will finalize your sales turn for Round {currentRound} with <strong>$0 revenue</strong>.
+                    </p>
+                  </div>
+                )}
+
+                <span className="block text-xs sm:text-sm text-muted-foreground">
+                  Are you sure you want to proceed with recording zero sales?
+                </span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Go Back & Review Sales</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={executeRecordZeroSales}
+                className={hasEligibleSales ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground font-semibold' : 'bg-amber-600 hover:bg-amber-700 text-white font-semibold'}
+              >
+                Confirm Zero Sales ($0 Revenue)
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
