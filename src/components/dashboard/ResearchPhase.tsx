@@ -9,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Microscope, Trophy, CheckCircle, AlertCircle, AlertTriangle, UserCheck } from 'lucide-react';
+import { Microscope, Trophy, CheckCircle, AlertCircle, AlertTriangle, UserCheck, RotateCcw } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -328,6 +328,16 @@ export const ResearchPhase = () => {
     ? activeTurnTeam?.id === currentTeamId
     : (!activeTurnTeam || activeTurnTeam.id === currentTeamId);
 
+  useEffect(() => {
+    if (currentRole !== 'STUDENT' && activeTurnTeam) {
+      const currentSelectedSpent = selectedTeam ? (allocatedThisRound[selectedTeam] || 0) : 0;
+      const currentSelectedIcons = selectedTeam ? (currentRoundData?.teamData[selectedTeam]?.researchIcons || 0) : 0;
+      if (!selectedTeam || currentSelectedSpent >= currentSelectedIcons) {
+        setSelectedTeam(activeTurnTeam.id);
+      }
+    }
+  }, [activeTurnTeam, currentRole, selectedTeam, allocatedThisRound, currentRoundData]);
+
   const myActionDoc = currentTeamId
     ? actionsMap?.[`${gameState.currentRound}_innovation_${currentTeamId}`]
     : undefined;
@@ -383,7 +393,7 @@ export const ResearchPhase = () => {
 
   return (
     <div className="space-y-4">
-      {!allTeamsAllocated && (
+      {(currentRole !== 'STUDENT' || !allTeamsAllocated) && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -394,6 +404,12 @@ export const ResearchPhase = () => {
                 </CardTitle>
                 <CardDescription>Round {gameState.currentRound} - Allocate research points to technologies</CardDescription>
               </div>
+              {allTeamsAllocated && (
+                <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs font-bold gap-1">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  All Teams Completed
+                </Badge>
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -554,15 +570,39 @@ export const ResearchPhase = () => {
                       </p>
                     </div>
                     {currentRole !== 'STUDENT' && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleEndTurn}
-                        className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5 shrink-0"
-                      >
-                        <UserCheck className="h-4 w-4" />
-                        End Team Turn
-                      </Button>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {availableThisTeam <= 0 && availableResearchIcons > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              await reopenTeamAction('innovation', selectedTeam);
+                              const updatedAllocations = { ...allocatedThisRound };
+                              delete updatedAllocations[selectedTeam];
+                              setAllocatedThisRound(updatedAllocations);
+                              toast({
+                                title: "Turn Reopened",
+                                description: `Reset research allocations for ${selectedTeamObj.name}.`,
+                              });
+                            }}
+                            className="border-sky-500/50 hover:bg-sky-500/10 text-sky-700 dark:text-sky-300 font-semibold gap-1 text-xs"
+                            title="Reset spent status for this team so they can allocate again"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Reopen Allocations
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleEndTurn}
+                          className="border-amber-500/50 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold gap-1.5 shrink-0"
+                        >
+                          <UserCheck className="h-4 w-4" />
+                          End Team Turn
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}

@@ -85,10 +85,47 @@ export function computeTurnOrder(state: GameState, targetPhase?: string): TurnSt
     });
   }
 
+  // Determine active turn index: skip teams that have already concluded this phase
+  let activeIndex = 0;
+  if (phase === 'improvement') {
+    const cards = state.improvementCards || [];
+    const firstUnclaimed = eligibleTeams.findIndex((team) => {
+      const isDone = cards.some(
+        (c) =>
+          (c.availableForTeam === team.id || c.usedBy === team.id) &&
+          c.allocatedInRound === round
+      );
+      return !isDone;
+    });
+    activeIndex = firstUnclaimed === -1 ? eligibleTeams.length : firstUnclaimed;
+  } else if (phase === 'innovation') {
+    const allocated = state.researchAllocatedByRound?.[round] || {};
+    const firstUnallocated = eligibleTeams.findIndex((team) => {
+      const icons = roundData?.teamData[team.id]?.researchIcons || 0;
+      const spent = allocated[team.id] || 0;
+      return spent < icons;
+    });
+    activeIndex = firstUnallocated === -1 ? eligibleTeams.length : firstUnallocated;
+  } else if (phase === 'expansion') {
+    const allocated = state.logisticsAllocatedByRound?.[round] || {};
+    const firstUnallocated = eligibleTeams.findIndex((team) => {
+      const icons = roundData?.teamData[team.id]?.logisticsIcons || 0;
+      const spent = allocated[team.id] || 0;
+      return spent < icons;
+    });
+    activeIndex = firstUnallocated === -1 ? eligibleTeams.length : firstUnallocated;
+  } else if (phase === 'sales') {
+    const firstUnsold = eligibleTeams.findIndex((team) => {
+      const td = roundData?.teamData[team.id];
+      return !td?.customersSold;
+    });
+    activeIndex = firstUnsold === -1 ? eligibleTeams.length : firstUnsold;
+  }
+
   return {
     round,
     phase,
     order: eligibleTeams.map((t) => t.id),
-    index: 0,
+    index: activeIndex,
   };
 }

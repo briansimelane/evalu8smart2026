@@ -183,11 +183,19 @@ export function resolvePlan(
   ];
   const minExpectedProducts = existingTeamData?.productsProduced ?? stats.productsAvailable;
 
+  const isWildcardActive = isRuleActiveForTeam(prev.ruleAdjustments, 'wildcard_tokens_system', teamId);
+  const researchMatches =
+    data.researchIcons === stats.researchPoints ||
+    (isWildcardActive && typeof data.researchIcons === 'number');
+  const logisticsMatches =
+    data.logisticsIcons === stats.logisticsPoints ||
+    (isWildcardActive && typeof data.logisticsIcons === 'number');
+
   if (
     data.price !== stats.calculatedPrice ||
     data.productsProduced < minExpectedProducts ||
-    data.researchIcons !== stats.researchPoints ||
-    data.logisticsIcons !== stats.logisticsPoints
+    !researchMatches ||
+    !logisticsMatches
   ) {
     return {
       valid: false,

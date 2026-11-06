@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, AlertTriangle, UserCheck } from 'lucide-react';
+import { Truck, MapPin, Users, Link2, CheckCircle, XCircle, Trophy, AlertTriangle, UserCheck, RotateCcw } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,6 +81,16 @@ export const LogisticsPhase = () => {
       return icons > 0 && spent < icons;
     });
   }, [isV2Turn, gameState.turn, gameState.teams, playOrder, currentRoundData, gameState.logisticsAllocatedByRound, currentRound]);
+
+  useEffect(() => {
+    if (currentRole !== 'STUDENT' && activeTurnTeam) {
+      const currentSelectedSpent = selectedTeam ? ((gameState.logisticsAllocatedByRound || {})[currentRound]?.[selectedTeam] || 0) : 0;
+      const currentSelectedIcons = selectedTeam ? (currentRoundData?.teamData[selectedTeam]?.logisticsIcons || 0) : 0;
+      if (!selectedTeam || currentSelectedSpent >= currentSelectedIcons) {
+        setSelectedTeam(activeTurnTeam.id);
+      }
+    }
+  }, [activeTurnTeam, currentRole, selectedTeam, gameState.logisticsAllocatedByRound, currentRound, currentRoundData]);
 
   const isMyTurn = currentRole !== 'STUDENT' || (!!currentTeamId && currentTeamId === activeTurnTeam?.id);
   const myActionStatus = currentTeamId ? actionsMap?.[`${currentRound}_expansion_${currentTeamId}`] : undefined;
@@ -481,7 +491,7 @@ export const LogisticsPhase = () => {
               const teamSpent = (gameState.logisticsAllocatedByRound || {})[currentRound]?.[team.id] || 0;
               const hasRemaining = teamSpent < icons;
               
-              if (!hasRemaining && teamSpent > 0 && team.id !== selectedTeam) return null;
+              if (currentRole === 'STUDENT' && !hasRemaining && teamSpent > 0 && team.id !== selectedTeam) return null;
               
               return (
                 <SelectItem key={team.id} value={team.id}>
@@ -522,19 +532,40 @@ export const LogisticsPhase = () => {
           </div>
 
           {/* Logistics Summary */}
-          <div className="grid grid-cols-3 gap-4 p-4 bg-secondary/20 rounded-lg">
-            <div>
-              <p className="text-xs text-muted-foreground">Available</p>
-              <p className="text-2xl font-bold">{teamLogisticsIcons}</p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-secondary/20 rounded-lg">
+            <div className="grid grid-cols-3 gap-4 flex-1">
+              <div>
+                <p className="text-xs text-muted-foreground">Available</p>
+                <p className="text-2xl font-bold">{teamLogisticsIcons}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Spent This Round</p>
+                <p className="text-2xl font-bold">{totalSpentThisRound}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Remaining</p>
+                <p className="text-2xl font-bold text-primary">{iconsRemaining}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Spent This Round</p>
-              <p className="text-2xl font-bold">{totalSpentThisRound}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Remaining</p>
-              <p className="text-2xl font-bold text-primary">{iconsRemaining}</p>
-            </div>
+            {currentRole !== 'STUDENT' && availableThisTeam <= 0 && teamLogisticsIcons > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  await reopenTeamAction('expansion', selectedTeam);
+                  toast({
+                    title: "Turn Reopened",
+                    description: `Reset logistics allocations for selected team.`,
+                  });
+                }}
+                className="border-sky-500/50 hover:bg-sky-500/10 text-sky-700 dark:text-sky-300 font-semibold gap-1 text-xs shrink-0"
+                title="Reset spent status for this team so they can allocate again"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reopen Allocations
+              </Button>
+            )}
           </div>
 
           {/* Available Regions Grid */}

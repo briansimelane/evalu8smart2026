@@ -79,9 +79,17 @@ export function useBotRunner() {
           !effectiveState.planSubmittedByRound?.[round]?.[t.id] &&
           isTeamBot(t.id)
       );
-    } else if (effectiveState.schemaVersion === 2 && effectiveState.turn) {
+    } else if (
+      effectiveState.schemaVersion === 2 &&
+      effectiveState.turn &&
+      effectiveState.turn.round === round &&
+      normalizePhaseName(effectiveState.turn.phase) === normalizePhaseName(phase)
+    ) {
       const activeId = effectiveState.turn.order[effectiveState.turn.index];
       activeTurnTeam = activeId ? (effectiveState.teams?.find(t => t.id === activeId) || null) : null;
+    } else if (effectiveState.schemaVersion === 2) {
+      // In v2 classes, turns are strictly governed by state/control.turn
+      activeTurnTeam = null;
     } else if (phase === 'improvement') {
       activeTurnTeam = playOrder.find(t => {
         const count = roundData?.teamData[t.id]?.improvementCards || 0;

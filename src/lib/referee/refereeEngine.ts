@@ -21,6 +21,8 @@ import {
   readV2StateInTransaction,
   writeV2StateInTransaction,
   mutateControl,
+  mutateWorld,
+  mutateRound,
 } from '@/lib/v2State';
 import { resolvePlan, resolveTeamAction } from './resolvers';
 
@@ -215,6 +217,30 @@ export async function revealPlanningAndAdvanceV2(
           new Date()
         );
         nextState.improvementCards = stepped.improvementCards;
+      } else if (target === 'innovation') {
+        // When jumping specifically to innovation, ensure human teams with unallocated icons are not blocked
+        const roundResMap = { ...(nextState.researchAllocatedByRound?.[currentRound] || {}) };
+        teams.forEach((t) => {
+          if (!t.isBot) {
+            delete roundResMap[t.id];
+          }
+        });
+        nextState.researchAllocatedByRound = {
+          ...nextState.researchAllocatedByRound,
+          [currentRound]: roundResMap,
+        };
+      } else if (target === 'expansion') {
+        // When jumping specifically to expansion, ensure human teams with unallocated icons are not blocked
+        const roundLogMap = { ...(nextState.logisticsAllocatedByRound?.[currentRound] || {}) };
+        teams.forEach((t) => {
+          if (!t.isBot) {
+            delete roundLogMap[t.id];
+          }
+        });
+        nextState.logisticsAllocatedByRound = {
+          ...nextState.logisticsAllocatedByRound,
+          [currentRound]: roundLogMap,
+        };
       }
     } else {
       nextState = advanceOnePhase(workingState, new Date(), { force: options?.force });
@@ -309,6 +335,45 @@ export async function reopenTeamActionV2(
   const normPhase = normalizePhaseName(phase);
   const actionId = `${round}_${normPhase}_${teamId}`;
   await deleteDoc(doc(db, 'classes', classId, 'actions', actionId)).catch(() => {});
+
+  if (normPhase === 'innovation') {
+    await mutateWorld(classId, (world) => {
+      const nextRes = { ...(world.researchAllocatedByRound || {}) };
+      const roundMap = { ...(nextRes[round] || {}) };
+      delete roundMap[teamId];
+      nextRes[round] = roundMap;
+      return {
+        ...world,
+        researchAllocatedByRound: nextRes,
+      };
+    }).catch(() => {});
+  } else if (normPhase === 'expansion') {
+    await mutateWorld(classId, (world) => {
+      const nextLog = { ...(world.logisticsAllocatedByRound || {}) };
+      const roundMap = { ...(nextLog[round] || {}) };
+      delete roundMap[teamId];
+      nextLog[round] = roundMap;
+      return {
+        ...world,
+        logisticsAllocatedByRound: nextLog,
+      };
+    }).catch(() => {});
+  } else if (normPhase === 'sales') {
+    await mutateRound(classId, round, (rData) => {
+      const tData = rData.teamData?.[teamId];
+      if (!tData) return rData;
+      const nextTeamData = { ...tData };
+      delete nextTeamData.customersSold;
+      delete nextTeamData.nfcSalesUnits;
+      return {
+        ...rData,
+        teamData: {
+          ...rData.teamData,
+          [teamId]: nextTeamData,
+        },
+      };
+    }).catch(() => {});
+  }
 
   await mutateControl(classId, (ctl) => {
     if (!ctl.turn || ctl.turn.round !== round || ctl.turn.phase !== normPhase) {
