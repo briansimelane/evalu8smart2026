@@ -6,6 +6,7 @@ import { decidePlanning, decideResearch, decideLogistics, decideSales, decideImp
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { toast } from 'sonner';
 import { calculatePlanStats, hasTech } from '@/lib/rules';
+import { normalizePhaseName } from '@/lib/turnOrder';
 
 export function useBotRunner() {
   const { 
