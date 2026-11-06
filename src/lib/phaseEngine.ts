@@ -83,6 +83,21 @@ export function advanceOnePhase(state: GameState, now: Date = new Date(), option
     snapped.gameEnded = true;
     snapped.currentPhase = 'scoring';
     snapped.updatedAt = now;
+    const finalRoundNum = state.currentRound || 5;
+    snapped.boardSnapshotsByRound = {
+      ...(state.boardSnapshotsByRound || {}),
+      [finalRoundNum]: {
+        roundNumber: finalRoundNum,
+        regionLogistics: JSON.parse(JSON.stringify(state.regionLogistics || {})),
+        teamLogisticsProgress: JSON.parse(JSON.stringify(state.teamLogisticsProgress || {})),
+        technologies: JSON.parse(JSON.stringify(state.technologies || {})),
+        teamResearchProgress: JSON.parse(JSON.stringify(state.teamResearchProgress || {})),
+        patents: JSON.parse(JSON.stringify(state.patents || {})),
+        improvementCards: JSON.parse(JSON.stringify(state.improvementCards || [])),
+        currentPhase: 'scoring',
+        capturedAt: now.toISOString(),
+      },
+    };
     return snapped;
   }
 
@@ -108,6 +123,23 @@ export function advanceOnePhase(state: GameState, now: Date = new Date(), option
   if (nextRound > state.currentRound) {
     // Capture round-close facts BEFORE any transition side effects.
     nextState.marksSnapshots = withMarksSnapshot(nextState, state.currentRound, now).marksSnapshots;
+
+    // Capture board snapshot for the closing round at the end of scoring
+    nextState.boardSnapshotsByRound = {
+      ...(state.boardSnapshotsByRound || {}),
+      [state.currentRound]: {
+        roundNumber: state.currentRound,
+        regionLogistics: JSON.parse(JSON.stringify(state.regionLogistics || {})),
+        teamLogisticsProgress: JSON.parse(JSON.stringify(state.teamLogisticsProgress || {})),
+        technologies: JSON.parse(JSON.stringify(state.technologies || {})),
+        teamResearchProgress: JSON.parse(JSON.stringify(state.teamResearchProgress || {})),
+        patents: JSON.parse(JSON.stringify(state.patents || {})),
+        improvementCards: JSON.parse(JSON.stringify(state.improvementCards || [])),
+        currentPhase: 'scoring',
+        capturedAt: now.toISOString(),
+      },
+    };
+
     nextState.currentRound = nextRound;
     nextState.currentPhase = 'planning';
 

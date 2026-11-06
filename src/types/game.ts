@@ -406,6 +406,22 @@ export interface GameState {
   planSubmittedByRound?: Record<number, Record<string, boolean>>;
   /** roundNumber (as string key) -> teamId -> snapshot. Written by advanceOnePhase / endGame. */
   marksSnapshots?: Record<string, Record<string, RoundMarksSnapshot>>;
+  /** Tracks the round number in which each patent was claimed (techName -> roundNumber). */
+  patentRounds?: Record<string, number>;
+  /** Complete board state snapshot captured at the end of each round (roundNumber -> snapshot). */
+  boardSnapshotsByRound?: Record<number, RoundBoardSnapshot>;
+}
+
+export interface RoundBoardSnapshot {
+  roundNumber: number;
+  regionLogistics: Record<string, RegionLogistics>;
+  teamLogisticsProgress: Record<string, TeamLogisticsProgress>;
+  technologies: Record<string, Technology>;
+  teamResearchProgress: Record<string, TeamResearchProgress>;
+  patents: Record<string, string>;
+  improvementCards: ImprovementCard[];
+  currentPhase: GamePhase;
+  capturedAt: string;
 }
 
 export const PATENT_POINTS: Record<string, number> = {

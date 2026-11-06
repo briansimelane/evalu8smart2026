@@ -1679,6 +1679,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
           }
         });
 
+        const teamRound = updatedTeamDataMap[teamId];
+        if (teamRound) {
+          const existingTechs = teamRound.technologiesResearched || [];
+          if (currentTPAll[teamId]?.completedTechnologies.includes(technology) && !existingTechs.includes(technology)) {
+            updatedTeamDataMap[teamId] = {
+              ...teamRound,
+              technologiesResearched: [...existingTechs, technology],
+            };
+            hasChanges = true;
+          }
+        }
+
         if (hasChanges) {
           updatedRounds = [...prev.rounds];
           updatedRounds[roundIndex] = {
@@ -1686,6 +1698,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
             teamData: updatedTeamDataMap
           };
         }
+      }
+
+      const newPatentRounds = { ...(prev.patentRounds || {}) };
+      if (finalPatents[technology] && !newPatentRounds[technology]) {
+        newPatentRounds[technology] = currentRound;
       }
 
       return {
@@ -1697,6 +1714,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           [technology]: updatedTech,
         },
         patents: finalPatents,
+        patentRounds: newPatentRounds,
         researchAllocatedByRound: newRoundAllocations,
         updatedAt: new Date(),
       };
@@ -1939,8 +1957,29 @@ export function GameProvider({ children }: { children: ReactNode }) {
         },
       };
 
+      let updatedRounds = prev.rounds;
+      if (hasPresence && !alreadyHasPresence) {
+        const rIdx = updatedRounds.findIndex((r) => r.roundNumber === currentRound);
+        if (rIdx !== -1 && updatedRounds[rIdx].teamData?.[teamId]) {
+          const existingExp = updatedRounds[rIdx].teamData[teamId].expansionLocations || [];
+          if (!existingExp.includes(regionName)) {
+            const rClone = { ...updatedRounds[rIdx] };
+            rClone.teamData = {
+              ...rClone.teamData,
+              [teamId]: {
+                ...rClone.teamData[teamId],
+                expansionLocations: [...existingExp, regionName],
+              },
+            };
+            updatedRounds = [...updatedRounds];
+            updatedRounds[rIdx] = rClone;
+          }
+        }
+      }
+
       return {
         ...prev,
+        rounds: updatedRounds,
         regionLogistics: {
           ...prev.regionLogistics,
           [regionName]: updatedRegion

@@ -604,6 +604,18 @@ export function resolveSingleResearchAllocation(
       }
     });
 
+    const teamRound = updatedTeamDataMap[teamId];
+    if (teamRound) {
+      const existingTechs = teamRound.technologiesResearched || [];
+      if (currentTPAll[teamId]?.completedTechnologies.includes(technology) && !existingTechs.includes(technology)) {
+        updatedTeamDataMap[teamId] = {
+          ...teamRound,
+          technologiesResearched: [...existingTechs, technology],
+        };
+        hasChanges = true;
+      }
+    }
+
     if (hasChanges) {
       updatedRounds = [...updatedRounds];
       updatedRounds[roundIndex] = {
@@ -611,6 +623,11 @@ export function resolveSingleResearchAllocation(
         teamData: updatedTeamDataMap,
       };
     }
+  }
+
+  const newPatentRounds = { ...(prev.patentRounds || {}) };
+  if (finalPatents[technology] && !newPatentRounds[technology]) {
+    newPatentRounds[technology] = currentRound;
   }
 
   return {
@@ -625,6 +642,7 @@ export function resolveSingleResearchAllocation(
         [technology]: updatedTech,
       },
       patents: finalPatents,
+      patentRounds: newPatentRounds,
       researchAllocatedByRound: newRoundAllocations,
       updatedAt: new Date(),
     },
@@ -844,10 +862,31 @@ export function resolveSingleLogisticsAllocation(
     },
   };
 
+  let updatedRounds = prev.rounds;
+  if (hasPresence && !alreadyHasPresence) {
+    const rIdx = updatedRounds.findIndex((r) => r.roundNumber === currentRound);
+    if (rIdx !== -1 && updatedRounds[rIdx].teamData?.[teamId]) {
+      const existingExp = updatedRounds[rIdx].teamData[teamId].expansionLocations || [];
+      if (!existingExp.includes(regionName)) {
+        const rClone = { ...updatedRounds[rIdx] };
+        rClone.teamData = {
+          ...rClone.teamData,
+          [teamId]: {
+            ...rClone.teamData[teamId],
+            expansionLocations: [...existingExp, regionName],
+          },
+        };
+        updatedRounds = [...updatedRounds];
+        updatedRounds[rIdx] = rClone;
+      }
+    }
+  }
+
   return {
     valid: true,
     nextState: {
       ...prev,
+      rounds: updatedRounds,
       regionLogistics: {
         ...prev.regionLogistics,
         [regionName]: updatedRegion,
