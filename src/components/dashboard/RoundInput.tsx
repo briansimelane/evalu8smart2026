@@ -11,15 +11,16 @@ import { REGIONS } from '@/data/combinations';
 import { ICON_EFFECTS } from '@/data/improvements';
 import { TeamRoundData } from '@/types/game';
 import { toast } from 'sonner';
-import { Save, AlertTriangle, Package } from 'lucide-react';
+import { Save, AlertTriangle, Package, Trophy, CheckCircle2 } from 'lucide-react';
 import { GameIcon } from './GameIcon';
+import { Badge } from '@/components/ui/badge';
 
 export interface RoundInputRef {
   loadTeamData: (roundNumber: number, teamId: string) => void;
 }
 
 export const RoundInput = forwardRef<RoundInputRef>((props, ref) => {
-  const { gameState, addRoundData, getCurrentRound, markImprovementCardUsed, getCombinations } = useGame();
+  const { gameState, addRoundData, getCurrentRound, markImprovementCardUsed, getCombinations, calculatePlayOrder } = useGame();
   const { currentRole } = useSession();
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedCombination, setSelectedCombination] = useState('');
@@ -193,56 +194,123 @@ export const RoundInput = forwardRef<RoundInputRef>((props, ref) => {
     return <PhaseLockCard phaseName="Production Phase" />;
   }
 
+  const playOrder = calculatePlayOrder(activeRound);
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Products Produced This Round</CardTitle>
-        {selectedTeam && teamName && (
-          <CardDescription>
-            Currently viewing: {teamName}
-          </CardDescription>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {teamsWithPlans.length > 0 && (
-          <Card className="bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5 border-primary/20">
-            <CardHeader>
-              <CardTitle className="text-base">Products Produced This Round</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-4 justify-center flex-wrap">
-                {teamsWithPlans.map(({ team, teamData }) => (
-                  <div 
-                    key={team!.id}
-                    className="flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 min-w-[120px]"
+    <div className="space-y-4">
+      {playOrder.length > 0 && allTeamsHavePlans && (
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                  <Trophy className="h-5 w-5 text-warning" />
+                  <span>Turn Order & Pricing Priority — Round {activeRound}</span>
+                </CardTitle>
+                <CardDescription>
+                  Revealed pricing and turn priority for all phases this round (lowest price sells & acts first).
+                </CardDescription>
+              </div>
+              <Badge variant="outline" className="text-xs font-semibold bg-muted/60 self-start sm:self-auto">
+                Price (Lowest First) & Wealth
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+              {playOrder.map((team, index) => {
+                const tData = roundData?.teamData[team.id];
+                return (
+                  <div
+                    key={team.id}
+                    className="p-3 rounded-lg border text-xs flex flex-col justify-between space-y-2 bg-card hover:bg-muted/20 border-border shadow-2xs transition-all"
                   >
-                    <div
-                      className="w-4 h-4 rounded-full mb-2"
-                      style={{ backgroundColor: team!.color }}
-                    />
-                    <div className="text-xs text-muted-foreground mb-2 text-center font-medium">
-                      {team!.name}
+                    <div className="flex items-center justify-between font-bold">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="text-muted-foreground font-mono text-[11px]">{index + 1}.</span>
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                        <span className="truncate">{team.name}</span>
+                      </div>
+                      <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0 font-extrabold">
+                        {index === 0 ? '1st' : `${index + 1}${index === 1 ? 'nd' : index === 2 ? 'rd' : 'th'}`}
+                      </Badge>
                     </div>
-                    <GameIcon type="production" size="xl" className="mb-2" />
-                    <div className="text-3xl font-bold text-foreground">
-                      {teamData.productsProduced}
+
+                    <div className="flex items-center justify-between text-xs pt-1.5 border-t border-border/50">
+                      <span className="text-muted-foreground font-medium">Price</span>
+                      <span className="font-extrabold text-success font-mono text-sm">
+                        ${tData?.price !== undefined ? tData.price.toFixed(2) : '—'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Production</span>
+                      <span className="font-bold text-foreground font-mono">
+                        {tData?.productsProduced ?? 0} units
+                      </span>
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        {!allTeamsHavePlans && (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Not all teams have submitted their plans yet. All teams must submit plans before production can be completed.
-            </AlertDescription>
-          </Alert>
-        )}
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      </CardContent>
-    </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Products Produced This Round</CardTitle>
+          {selectedTeam && teamName && (
+            <CardDescription>
+              Currently viewing: {teamName}
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {teamsWithPlans.map ? (
+            <Card className="bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5 border-primary/20">
+              <CardHeader>
+                <CardTitle className="text-base">Production Output by Team</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex gap-4 justify-center flex-wrap">
+                  {teamsWithPlans.map(({ team, teamData }) => (
+                    <div 
+                      key={team!.id}
+                      className="flex flex-col items-center justify-center p-4 rounded-lg bg-card/50 border border-border/50 min-w-[130px] shadow-2xs"
+                    >
+                      <div
+                        className="w-4 h-4 rounded-full mb-2"
+                        style={{ backgroundColor: team!.color }}
+                      />
+                      <div className="text-xs text-muted-foreground mb-1 text-center font-medium">
+                        {team!.name}
+                      </div>
+                      <div className="text-xs font-bold text-success font-mono mb-2">
+                        ${teamData.price?.toFixed(2) ?? '—'}
+                      </div>
+                      <GameIcon type="production" size="xl" className="mb-2" />
+                      <div className="text-3xl font-black text-foreground font-mono">
+                        {teamData.productsProduced}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold mt-1">units</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+          {!allTeamsHavePlans && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                Not all teams have submitted their plans yet. All teams must submit plans before production can be completed.
+              </AlertDescription>
+            </Alert>
+          )}
+
+        </CardContent>
+      </Card>
+    </div>
   );
 });

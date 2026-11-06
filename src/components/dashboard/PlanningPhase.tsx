@@ -7,11 +7,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useGame } from '@/contexts/GameContext';
 import { ICON_EFFECTS, AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { toast } from 'sonner';
-import { Save, TrendingUp, TrendingDown, Package, FlaskConical, Truck, Box, Wrench, Microscope, CirclePlus, CircleMinus, CheckCircle2, Trophy, Plus, Minus } from 'lucide-react';
+import { Save, TrendingUp, TrendingDown, Package, FlaskConical, Truck, Box, Wrench, Microscope, CirclePlus, CircleMinus, CheckCircle2, Trophy, Plus, Minus, Globe, Eye } from 'lucide-react';
 import { GameIcon } from './GameIcon';
 import { Badge } from '@/components/ui/badge';
 
 import { useSession } from '@/contexts/SessionContext';
+import { ViewerBoard } from '@/pages/Viewer/ViewerPage';
 import { CombinationsGuideModal } from './CombinationsGuideModal';
 import { calculatePlanStats, hasTech, isGpsBonusClaimed, getCarriedOverProductsForTeam } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
@@ -25,7 +26,7 @@ export interface PlanningPhaseRef {
 export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const { gameState, getCurrentRound, addRoundData, getCombinations, calculatePlayOrder } = useGame();
   const theme = useGameTheme();
-  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam } = useSession();
+  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam, activeClass } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'planning');
   const [selectedTeam, setSelectedTeam] = useState('');
@@ -36,6 +37,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const [animatingValues, setAnimatingValues] = useState<Record<string, boolean>>({});
   const previousValues = useRef<Record<string, number>>({});
   const [isEditingSubmittedPlan, setIsEditingSubmittedPlan] = useState(false);
+  const [showRoundOneMap, setShowRoundOneMap] = useState(true);
 
   const currentRound = gameState ? getCurrentRound() : 1;
   const currentCombinations = gameState ? getCombinations() : [];
@@ -329,7 +331,135 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
   const submittedPlan = currentRoundData?.teamData[selectedTeam];
   const isPlanSubmitted = !!submittedPlan;
 
+  const renderRoundOneWorldMapSection = () => {
+    const hasSubmittedPlan = (teamId: string) =>
+      Boolean(
+        currentRoundData?.teamData[teamId] ||
+          gameState.planSubmittedByRound?.[currentRound]?.[teamId]
+      );
+    const submittedCount = gameState.teams.filter(t => hasSubmittedPlan(t.id)).length;
+    const totalCount = gameState.teams.length;
+    const classData = activeClass || { id: 'demo', name: 'Simulation Game', code: 'DEMO', facilitatorCode: '' };
+
+    return (
+      <div className="space-y-3 mb-4 p-4 bg-card border border-border rounded-xl shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Globe className="h-5 w-5 text-purple-600 dark:text-purple-400 shrink-0" />
+              <h3 className="text-sm sm:text-base font-extrabold tracking-tight text-foreground">
+                World Map — Round 1 Market & Starting Offices
+              </h3>
+              <Badge variant="outline" className="text-[11px] font-bold border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300">
+                Live Reference Board
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Review market demand and starting offices to formulate your Round 1 strategy. Turn order, product prices, and production will be calculated and revealed in the Production phase after all team plans are submitted.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge
+              variant="outline"
+              className={`text-xs font-bold gap-1.5 px-2.5 py-1 ${
+                submittedCount === totalCount
+                  ? 'bg-success/15 text-success border-success/30'
+                  : 'bg-primary/10 text-primary border-primary/20'
+              }`}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>Plans Submitted: {submittedCount} / {totalCount}</span>
+            </Badge>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowRoundOneMap(prev => !prev)}
+              className="h-8 text-xs font-semibold gap-1"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              {showRoundOneMap ? 'Collapse Map' : 'View Map'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Interactive World Map Canvas */}
+        {showRoundOneMap && (
+          <div className="w-full h-[62vh] min-h-[440px] max-h-[780px] rounded-xl overflow-hidden border border-border shadow-lg bg-slate-900 relative transition-all">
+            <ViewerBoard classData={classData} gameState={gameState} />
+          </div>
+        )}
+
+        {/* Team Submissions Tracker Bar */}
+        <div className="pt-2 border-t border-border/50">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center justify-between">
+            <span>Teams & Plan Status</span>
+            <span className="text-[10px] lowercase font-normal italic">
+              {currentRole === 'STUDENT' ? 'Your team plan is sealed until Production' : 'Click team to inspect/edit plan'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            {gameState.teams.map((team, index) => {
+              const liveTeamDoc = currentClassTeams[team.id];
+              const ceoName = liveTeamDoc?.ceoName || team.ceoName || null;
+              const isSubmitted = hasSubmittedPlan(team.id);
+              const isSelected = team.id === selectedTeam;
+
+              return (
+                <div
+                  key={team.id}
+                  onClick={() => currentRole !== 'STUDENT' && setSelectedTeam(team.id)}
+                  className={`p-2 rounded-lg border text-xs flex flex-col justify-between space-y-1 transition-all ${
+                    isSelected
+                      ? 'ring-2 ring-primary bg-primary/5 shadow-sm border-primary/50'
+                      : 'bg-card hover:bg-muted/30 border-border'
+                  } ${currentRole !== 'STUDENT' ? 'cursor-pointer' : ''}`}
+                >
+                  <div className="flex items-center justify-between font-bold">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="text-muted-foreground font-mono text-[11px]">{index + 1}.</span>
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                      <span className="truncate flex items-center gap-1">
+                        {team.name}
+                        {team.isBot && <span className="scale-90 text-[10px]">🤖</span>}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-muted-foreground">
+                    <span className="truncate max-w-[90px]">
+                      {ceoName ? <strong>{ceoName}</strong> : <span className="italic">Team</span>}
+                    </span>
+                    {isSubmitted ? (
+                      <Badge variant="outline" className="text-[10px] py-0 px-1 font-bold bg-success/10 text-success border-success/20">
+                        Submitted ✓
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] py-0 px-1 font-semibold bg-warning/10 text-warning dark:text-warning border-warning/20">
+                        Pending...
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderPlayOrderSection = () => {
+    const isPlanningPhase = (gameState.currentPhase || 'planning').toLowerCase() === 'planning';
+
+    // In Round 1 Planning Phase: show the World Map with starting offices,
+    // and wait for Production phase to update and show pricing, turn order, and production.
+    if (currentRound === 1 && isPlanningPhase) {
+      return renderRoundOneWorldMapSection();
+    }
+
     const playOrder = calculatePlayOrder(currentRound);
     const hasSubmittedPlan = (teamId: string) =>
       Boolean(
@@ -338,7 +468,6 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef>((props, ref) => {
       );
     const allTeamsSubmitted =
       gameState.teams.length > 0 && gameState.teams.every(t => hasSubmittedPlan(t.id));
-    const isPlanningPhase = (gameState.currentPhase || 'planning').toLowerCase() === 'planning';
     const arePricesRevealed = allTeamsSubmitted && !isPlanningPhase;
     const activeTurnTeam = playOrder.find(t => !hasSubmittedPlan(t.id));
 
