@@ -34,6 +34,7 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
   const isWildcardsActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'wildcard_tokens_system', actingTeamId);
   const isDirectivesActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'directives_bonus_points', actingTeamId);
   const isTechPerksActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', actingTeamId);
+  const isSteveActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'steve_event_blocker', actingTeamId);
 
   // 1. Patents held by this team
   const patentsObj = gameState.patents || {};
@@ -68,7 +69,20 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
   const isGamingDone = hasTech(gameState, actingTeamId, 'GAMING');
   const isWifiDone = hasTech(gameState, actingTeamId, 'WIFI');
   const isNfcDone = hasTech(gameState, actingTeamId, 'NFC');
+  const is4GDone = hasTech(gameState, actingTeamId, '4G');
   const carriedOver = getCarriedOverProductsForTeam(gameState, actingTeamId);
+
+  const hasAnyTechPerk = isGpsDone || isBatteryDone || isGamingDone || isWifiDone || isNfcDone || is4GDone;
+  const showDirectives = isDirectivesActive;
+  const showPerksEvents = isTechPerksActive || (isSteveActive && steveBlocked);
+
+  const visibleCardCount = 1 + (showDirectives ? 1 : 0) + (showPerksEvents ? 1 : 0);
+  const gridColsClass =
+    visibleCardCount === 3
+      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+      : visibleCardCount === 2
+      ? 'grid-cols-1 sm:grid-cols-2'
+      : 'grid-cols-1';
 
   return (
     <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-3.5 shadow-sm rounded-xl space-y-2.5">
@@ -101,20 +115,16 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
         </div>
 
         {/* Wildcard Counter Badge */}
-        {isWildcardsActive ? (
+        {isWildcardsActive && (
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="border-indigo-200 dark:border-indigo-500/40 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 font-mono text-xs px-2.5 py-1">
               Wildcard Tokens: <span className="font-extrabold text-indigo-900 dark:text-white">{remainingWildcards} / 10 Left</span>
             </Badge>
           </div>
-        ) : (
-          <Badge variant="outline" className="border-slate-200 dark:border-slate-800 text-slate-400 text-xs px-2 py-0.5">
-            Wildcard Tokens (Disabled)
-          </Badge>
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+      <div className={`grid ${gridColsClass} gap-2.5 text-xs`}>
         {/* Patents Section */}
         <div className="p-3 rounded-lg bg-amber-50/60 dark:bg-slate-950/60 border border-amber-200/80 dark:border-slate-800 space-y-1.5">
           <div className="flex items-center justify-between font-bold text-amber-800 dark:text-amber-400">
@@ -140,7 +150,7 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
         </div>
 
         {/* Directives Section */}
-        {isDirectivesActive ? (
+        {showDirectives && (
           <div className="p-3 rounded-lg bg-emerald-50/60 dark:bg-slate-950/60 border border-emerald-200/80 dark:border-slate-800 space-y-1.5">
             <div className="flex items-center justify-between font-bold text-emerald-800 dark:text-emerald-400">
               <span className="flex items-center gap-1.5">
@@ -166,65 +176,65 @@ export const TeamPerksBanner: React.FC<TeamPerksBannerProps> = ({ teamId: propTe
               <span className="text-slate-500 dark:text-slate-400 text-[11px]">No directives allocated yet.</span>
             )}
           </div>
-        ) : (
-          <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-1 text-slate-400">
-            <span className="font-bold flex items-center gap-1.5 text-xs text-slate-500">
-              <Award className="h-4 w-4" /> Directives Disabled
-            </span>
-            <p className="text-[11px]">Directives rule is OFF for this team.</p>
-          </div>
         )}
 
-        {/* Active Perks & Steve Alert Section */}
-        <div className="p-3 rounded-lg bg-indigo-50/60 dark:bg-slate-950/60 border border-indigo-200/80 dark:border-slate-800 space-y-1.5 sm:col-span-2 lg:col-span-1">
-          <div className="flex items-center gap-1.5 font-bold text-indigo-800 dark:text-indigo-400">
-            <Zap className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-            Active Perks & Events
-          </div>
-          <div className="flex items-center gap-1.5 flex-wrap text-[11px] pt-0.5">
-            {steveBlocked && activeSteveRegion && (
-              <Badge className="bg-red-600 text-white font-bold text-[10px] shadow-sm animate-pulse">
-                <SteveIcon size={12} /> Steve Blocking {regionLabel(theme, activeSteveRegion)}
-              </Badge>
-            )}
+        {/* Active Perks & Steve Alert Section - Only appears if associated rule is ON */}
+        {showPerksEvents && (
+          <div className="p-3 rounded-lg bg-indigo-50/60 dark:bg-slate-950/60 border border-indigo-200/80 dark:border-slate-800 space-y-1.5">
+            <div className="flex items-center gap-1.5 font-bold text-indigo-800 dark:text-indigo-400">
+              <Zap className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              Active Perks & Events
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap text-[11px] pt-0.5">
+              {steveBlocked && activeSteveRegion && (
+                <Badge className="bg-red-600 text-white font-bold text-[10px] shadow-sm animate-pulse">
+                  <SteveIcon size={12} /> Steve Blocking {regionLabel(theme, activeSteveRegion)}
+                </Badge>
+              )}
 
-            {isTechPerksActive ? (
-              <>
-                {isGpsDone && (
-                  <Badge variant="outline" className="border-purple-300 dark:border-purple-500/40 bg-purple-50 dark:bg-purple-500/10 text-purple-800 dark:text-purple-300 text-[10px] font-semibold">
-                    ⚡ {techLabel(theme, 'GPS')} {isGpsClaimed ? '(+5 Bonus Claimed)' : '(+5 One-Time Bonus Ready)'}
-                  </Badge>
-                )}
-                {isBatteryDone && (
-                  <Badge variant="outline" className="border-rose-300 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 text-rose-800 dark:text-rose-300 text-[10px] font-semibold">
-                    ⚡ {techLabel(theme, 'Battery')} ({theme.id === 'evalu8' ? theme.techs.BATTERY.perkText : '+1 Logistics when Price > $5'})
-                  </Badge>
-                )}
-                {isGamingDone && (
-                  <Badge variant="outline" className="border-indigo-300 dark:border-indigo-500/40 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-800 dark:text-indigo-300 text-[10px] font-semibold">
-                    ⚡ {techLabel(theme, 'Gaming')} ({theme.id === 'evalu8' ? theme.techs.GAMING.perkText : '-$1 Tech Cost'})
-                  </Badge>
-                )}
-                {isWifiDone && carriedOver > 0 && (
-                  <Badge variant="outline" className="border-cyan-300 dark:border-cyan-500/40 bg-cyan-50 dark:bg-cyan-500/10 text-cyan-800 dark:text-cyan-300 text-[10px] font-semibold">
-                    ⚡ {techLabel(theme, 'Wifi')} (+{carriedOver} {theme.id === 'evalu8' ? 'Carried Over Vehicles' : 'Carried Over Products'})
-                  </Badge>
-                )}
-                {isNfcDone && (
-                  <Badge variant="outline" className="border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-[10px] font-semibold">
-                    ⚡ {techLabel(theme, 'NFC')} ({theme.id === 'evalu8' ? theme.techs.NFC.perkText : 'Sell up to 3 direct products without region placement'})
-                  </Badge>
-                )}
-              </>
-            ) : (
-              <span className="text-slate-400 dark:text-slate-500 text-[11px]">Tech Perks rule disabled.</span>
-            )}
+              {isTechPerksActive && (
+                <>
+                  {isGpsDone && (
+                    <Badge variant="outline" className="border-purple-300 dark:border-purple-500/40 bg-purple-50 dark:bg-purple-500/10 text-purple-800 dark:text-purple-300 text-[10px] font-semibold">
+                      ⚡ {techLabel(theme, 'GPS')} {isGpsClaimed ? '(+5 Bonus Claimed)' : '(+5 One-Time Bonus Ready)'}
+                    </Badge>
+                  )}
+                  {isBatteryDone && (
+                    <Badge variant="outline" className="border-rose-300 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 text-rose-800 dark:text-rose-300 text-[10px] font-semibold">
+                      ⚡ {techLabel(theme, 'Battery')} ({theme.id === 'evalu8' ? theme.techs.BATTERY.perkText : '+1 Logistics when Price > $5'})
+                    </Badge>
+                  )}
+                  {isGamingDone && (
+                    <Badge variant="outline" className="border-indigo-300 dark:border-indigo-500/40 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-800 dark:text-indigo-300 text-[10px] font-semibold">
+                      ⚡ {techLabel(theme, 'Gaming')} ({theme.id === 'evalu8' ? theme.techs.GAMING.perkText : '-$1 Tech Cost'})
+                    </Badge>
+                  )}
+                  {isWifiDone && (
+                    <Badge variant="outline" className="border-cyan-300 dark:border-cyan-500/40 bg-cyan-50 dark:bg-cyan-500/10 text-cyan-800 dark:text-cyan-300 text-[10px] font-semibold">
+                      ⚡ {techLabel(theme, 'Wifi')} ({theme.id === 'evalu8' ? theme.techs.WIFI.perkText : 'Unsold products carry over'}{carriedOver > 0 ? `: +${carriedOver} carried over` : ' — Active'})
+                    </Badge>
+                  )}
+                  {isNfcDone && (
+                    <Badge variant="outline" className="border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-[10px] font-semibold">
+                      ⚡ {techLabel(theme, 'NFC')} ({theme.id === 'evalu8' ? theme.techs.NFC.perkText : 'Sell up to 3 direct products without region placement'})
+                    </Badge>
+                  )}
+                  {is4GDone && (
+                    <Badge variant="outline" className="border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 text-[10px] font-semibold">
+                      ⚡ {techLabel(theme, '4G')} ({theme.id === 'evalu8' ? theme.techs['4G'].perkText : 'Remote sales: 1 sale per region without an office'})
+                    </Badge>
+                  )}
+                </>
+              )}
 
-            {!steveBlocked && (!isTechPerksActive || (!isGpsDone && !isBatteryDone && !isGamingDone && !isNfcDone && (!isWifiDone || carriedOver === 0))) && (
-              <span className="text-slate-500 dark:text-slate-400 text-[11px]">No active events or tech perks.</span>
-            )}
+              {!steveBlocked && isTechPerksActive && !hasAnyTechPerk && (
+                <span className="text-slate-500 dark:text-slate-400 text-[11px]">
+                  No tech perks unlocked yet. Research technologies to unlock permanent benefits.
+                </span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </Card>
   );

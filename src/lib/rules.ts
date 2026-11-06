@@ -7,7 +7,25 @@ export function hasTech(gameState: GameState | null | undefined, teamId: string,
   if (!gameState || !teamId || !techKey) return false;
   const completedTechs = gameState.teamResearchProgress?.[teamId]?.completedTechnologies || [];
   const targetUpper = techKey.toUpperCase();
-  return completedTechs.some(t => String(t).toUpperCase().includes(targetUpper));
+
+  const matchesTech = (t: string) => {
+    const s = String(t).toUpperCase();
+    if (s.includes(targetUpper)) return true;
+    if (targetUpper.includes('GPS') && s.includes('GIGACASTING')) return true;
+    if (targetUpper.includes('WIFI') && (s.includes('CHARGE') || s.includes('GRID'))) return true;
+    if (targetUpper.includes('GAMING') && s.includes('PLATFORM')) return true;
+    if (targetUpper.includes('NFC') && s.includes('RAPID')) return true;
+    if (targetUpper.includes('4G') && s.includes('SELF')) return true;
+    return false;
+  };
+
+  if (completedTechs.some(matchesTech)) return true;
+
+  // A team holding the patent for a technology has completed it
+  const patents = gameState.patents || {};
+  return Object.entries(patents).some(([patentTech, holderId]) => {
+    return holderId === teamId && matchesTech(patentTech);
+  });
 }
 
 export function isSteveBlocking(gameState: GameState | null | undefined, regionName: string, teamId?: string): boolean {
@@ -157,8 +175,7 @@ export function isGpsBonusClaimed(gameState: GameState | null | undefined, teamI
   const isTechPerksActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'tech_permanent_benefits', teamId);
   if (!isTechPerksActive) return false;
 
-  const completedTechs = gameState.teamResearchProgress?.[teamId]?.completedTechnologies || [];
-  const hasGPS = completedTechs.some(t => String(t).toUpperCase().includes('GPS'));
+  const hasGPS = hasTech(gameState, teamId, 'GPS');
   if (!hasGPS) return false;
 
   const isFlagged = Boolean(gameState.advancedState?.gpsBonusClaimed?.[teamId]);

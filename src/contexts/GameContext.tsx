@@ -637,7 +637,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         };
         const invested = tp.technologyInvestments[techName] || 0;
         const cost = newPatents[techName] && newPatents[techName] !== t.id ? Math.max(0, baseCost - 1) : baseCost;
-        if (invested >= cost && !tp.completedTechnologies.includes(techName)) {
+        if ((t.id === teamId || invested >= cost) && !tp.completedTechnologies.includes(techName)) {
           tp.completedTechnologies = [...tp.completedTechnologies, techName];
         }
         updatedTeamResearchProgress[t.id] = tp;
