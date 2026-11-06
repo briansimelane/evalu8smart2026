@@ -25,6 +25,7 @@ import { CombinationsGuideModal } from './dashboard/CombinationsGuideModal';
 import { DirectivesClaimModal } from './dashboard/DirectivesClaimModal';
 import { TeamPerksModal } from './dashboard/TeamPerksModal';
 import { TeamPerksBanner } from './dashboard/TeamPerksBanner';
+import { PhaseController } from './dashboard/PhaseController';
 import { LayoutDashboard, FileInput, BarChart3, Award, RotateCcw, Wrench, Microscope, Truck, Store, CheckSquare, ClipboardList, Package, FileText, BarChart2, LogOut, Globe, Menu, SlidersHorizontal, ChevronRight, Trophy, Presentation, Sliders, Map, GraduationCap } from 'lucide-react';
 import { SyndicateMarks } from './dashboard/SyndicateMarks';
 import { Badge } from '@/components/ui/badge';
@@ -488,30 +489,14 @@ export const Dashboard = () => {
               {currentRole !== 'STUDENT' ? (
                 <>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-muted-foreground font-semibold whitespace-nowrap">Active Phase:</span>
-                    <Select
-                      value={gameState.currentPhase || 'planning'}
-                      onValueChange={(val) => {
-                        setActiveTab(val);
-                        updatePhase(val as GamePhase);
+                    <PhaseController
+                      currentPhase={gameState.currentPhase || 'planning'}
+                      currentRound={gameState.currentRound || 1}
+                      onPhaseChange={(newPhase) => {
+                        setActiveTab(newPhase);
+                        updatePhase(newPhase);
                       }}
-                    >
-                      <SelectTrigger className="w-[140px] h-8 bg-background border-border text-foreground text-xs font-semibold">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="planning">Planning</SelectItem>
-                        <SelectItem value="production">Production</SelectItem>
-                        <SelectItem value="improvement" disabled={gameState.currentRound >= 5}>
-                          Improvement {gameState.currentRound >= 5 ? '(Skipped)' : ''}
-                        </SelectItem>
-                        <SelectItem value="innovation">Research</SelectItem>
-                        <SelectItem value="expansion">Logistics</SelectItem>
-                        <SelectItem value="sales">Sales</SelectItem>
-                        <SelectItem value="control">Control</SelectItem>
-                        <SelectItem value="scoring">Scoring</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    />
 
                     {gameState.teams.some(t => t.isBot) && (
                       <span className="text-xs text-muted-foreground italic flex items-center gap-1 px-1.5">
