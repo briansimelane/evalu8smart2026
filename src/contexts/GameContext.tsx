@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
-import { GameState, Team, RoundData, TeamRoundData, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, GamePhase, RuleAdjustmentsState, calculateTeamTotalScore, getInitialScore } from '@/types/game';
+import { GameState, Team, RoundData, TeamRoundData, TeamResearchProgress, RegionLogistics, TeamLogisticsProgress, GamePhase, RuleAdjustmentsState, AdvancedRulesState, calculateTeamTotalScore, getInitialScore } from '@/types/game';
 import { REGIONS, TECHNOLOGIES, TEAM_COLORS, COMBINATIONS, Combination, getTeamColorName } from '@/data/combinations';
 import { INITIAL_IMPROVEMENT_CARDS, AVAILABLE_IMPROVEMENT_CARDS, ImprovementCardData } from '@/data/improvements';
 import { REGION_CONFIGS, INITIAL_TEAM_REGIONS } from '@/data/regions';
@@ -321,18 +321,286 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [currentClassId, currentRole, isDemo, isV2, isAuthReady, authUid]);
 
+  const [optimisticAdvancedState, setOptimisticAdvancedState] = useState<AdvancedRulesState | null>(null);
+
+  useEffect(() => {
+    setOptimisticAdvancedState(null);
+  }, [currentClassId]);
+
   const legacyMatchedState = loadedClassId === currentClassId ? gameState : null;
 
-  const effectiveGameState = isDemo
+  const rawEffectiveGameState = isDemo
     ? demoContext.demoGameState
     : isV2
     ? v2Assembled.gameState
     : legacyMatchedState;
-  const activeGameState = isDemo
+  const rawActiveGameState = isDemo
     ? (demoContext.maskedDemoState || demoContext.demoGameState)
     : isV2
     ? v2Assembled.gameState
     : legacyMatchedState;
+
+  // Clear optimistic state when raw incoming server state catches up with optimistic values
+  useEffect(() => {
+    if (!optimisticAdvancedState || !rawEffectiveGameState?.advancedState) return;
+
+    let allCaughtUp = true;
+    const serverAdvanced = rawEffectiveGameState.advancedState;
+
+    if (optimisticAdvancedState.wildcards) {
+      for (const [tId, optWc] of Object.entries(optimisticAdvancedState.wildcards)) {
+        const sWc = serverAdvanced.wildcards?.[tId];
+        if (!sWc) {
+          allCaughtUp = false;
+          break;
+        }
+        for (const [rNum, optConvs] of Object.entries(optWc.conversionsByRound || {})) {
+          const sConvs = sWc.conversionsByRound?.[Number(rNum)] || {};
+          for (const [type, val] of Object.entries(optConvs || {})) {
+            if ((sConvs as any)[type] !== val) {
+              allCaughtUp = false;
+              break;
+            }
+          }
+          if (!allCaughtUp) break;
+        }
+        if (!allCaughtUp) break;
+      }
+    }
+
+    if (optimisticAdvancedState.steve) {
+      const sSteve = serverAdvanced.steve;
+      for (const [rNum, tMap] of Object.entries(optimisticAdvancedState.steve.wildcardsContributedByRound || {})) {
+        const sMap = sSteve?.wildcardsContributedByRound?.[Number(rNum)] || {};
+        for (const [tId, val] of Object.entries(tMap || {})) {
+          if ((sMap as any)[tId] !== val) {
+            allCaughtUp = false;
+            break;
+          }
+        }
+        if (!allCaughtUp) break;
+      }
+    }
+
+    if (allCaughtUp) {
+      setOptimisticAdvancedState(null);
+    }
+  }, [rawEffectiveGameState, optimisticAdvancedState]);
+
+  // Safety fallback timeout to clear stale optimistic state after 6s
+  useEffect(() => {
+    if (!optimisticAdvancedState) return;
+    const timer = setTimeout(() => {
+      setOptimisticAdvancedState(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [optimisticAdvancedState]);
+
+  const effectiveGameState = useMemo(() => {
+    if (!rawEffectiveGameState) return null;
+    if (!optimisticAdvancedState) return rawEffectiveGameState;
+
+    const baseAdvanced = rawEffectiveGameState.advancedState || {};
+    const mergedWildcards = { ...(baseAdvanced.wildcards || {}) };
+
+    if (optimisticAdvancedState.wildcards) {
+      for (const [tId, optWc] of Object.entries(optimisticAdvancedState.wildcards)) {
+        const baseWc = baseAdvanced.wildcards?.[tId] || {
+          teamId: tId,
+          totalTokens: optWc.totalTokens ?? 10,
+          usedInRound: {},
+          conversionsByRound: {},
+        };
+        mergedWildcards[tId] = {
+          ...baseWc,
+          ...optWc,
+          conversionsByRound: {
+            ...(baseWc.conversionsByRound || {}),
+            ...(optWc.conversionsByRound || {}),
+          },
+          usedInRound: {
+            ...(baseWc.usedInRound || {}),
+            ...(optWc.usedInRound || {}),
+          },
+        };
+      }
+    }
+
+    const mergedSteve = optimisticAdvancedState.steve
+      ? {
+          ...(baseAdvanced.steve || { activeRegion: null }),
+          ...optimisticAdvancedState.steve,
+          wildcardsContributed: {
+            ...(baseAdvanced.steve?.wildcardsContributed || {}),
+            ...(optimisticAdvancedState.steve.wildcardsContributed || {}),
+          },
+          wildcardsContributedByRound: {
+            ...(baseAdvanced.steve?.wildcardsContributedByRound || {}),
+            ...(optimisticAdvancedState.steve.wildcardsContributedByRound || {}),
+          },
+        }
+      : baseAdvanced.steve;
+
+    const mergedAdvanced: AdvancedRulesState = {
+      ...baseAdvanced,
+      ...optimisticAdvancedState,
+      wildcards: mergedWildcards,
+      steve: mergedSteve,
+    };
+
+    let mergedRounds = rawEffectiveGameState.rounds;
+    const currentRound = rawEffectiveGameState.currentRound;
+    const roundIndex = rawEffectiveGameState.rounds.findIndex(r => r.roundNumber === currentRound);
+    if (roundIndex !== -1 && rawEffectiveGameState.rounds[roundIndex]?.teamData) {
+      const roundData = rawEffectiveGameState.rounds[roundIndex];
+      let updatedTeamData = { ...roundData.teamData };
+      let hasChanges = false;
+
+      if (optimisticAdvancedState.wildcards) {
+        for (const tId of Object.keys(optimisticAdvancedState.wildcards)) {
+          const existingTeamData = updatedTeamData[tId];
+          if (existingTeamData && existingTeamData.combination && existingTeamData.position) {
+            const tempState = { ...rawEffectiveGameState, advancedState: mergedAdvanced };
+            const newStats = calculatePlanStats(
+              tempState,
+              tId,
+              existingTeamData.combination,
+              existingTeamData.position,
+              existingTeamData.cardUsages || {},
+              rawEffectiveGameState.combinationsData || COMBINATIONS
+            );
+            const targetProducts = Math.max(existingTeamData.productsProduced || 0, newStats.productsAvailable);
+            updatedTeamData[tId] = {
+              ...existingTeamData,
+              price: newStats.calculatedPrice,
+              productsProduced: targetProducts,
+              researchIcons: newStats.researchPoints,
+              logisticsIcons: newStats.logisticsPoints,
+              improvementCards: newStats.improvementPoints,
+            };
+            hasChanges = true;
+          }
+        }
+      }
+
+      if (hasChanges) {
+        mergedRounds = [...rawEffectiveGameState.rounds];
+        mergedRounds[roundIndex] = {
+          ...roundData,
+          teamData: updatedTeamData,
+        };
+      }
+    }
+
+    return {
+      ...rawEffectiveGameState,
+      advancedState: mergedAdvanced,
+      rounds: mergedRounds,
+    };
+  }, [rawEffectiveGameState, optimisticAdvancedState]);
+
+  const activeGameState = useMemo(() => {
+    if (!rawActiveGameState) return null;
+    if (!optimisticAdvancedState) return rawActiveGameState;
+
+    const baseAdvanced = rawActiveGameState.advancedState || {};
+    const mergedWildcards = { ...(baseAdvanced.wildcards || {}) };
+
+    if (optimisticAdvancedState.wildcards) {
+      for (const [tId, optWc] of Object.entries(optimisticAdvancedState.wildcards)) {
+        const baseWc = baseAdvanced.wildcards?.[tId] || {
+          teamId: tId,
+          totalTokens: optWc.totalTokens ?? 10,
+          usedInRound: {},
+          conversionsByRound: {},
+        };
+        mergedWildcards[tId] = {
+          ...baseWc,
+          ...optWc,
+          conversionsByRound: {
+            ...(baseWc.conversionsByRound || {}),
+            ...(optWc.conversionsByRound || {}),
+          },
+          usedInRound: {
+            ...(baseWc.usedInRound || {}),
+            ...(optWc.usedInRound || {}),
+          },
+        };
+      }
+    }
+
+    const mergedSteve = optimisticAdvancedState.steve
+      ? {
+          ...(baseAdvanced.steve || { activeRegion: null }),
+          ...optimisticAdvancedState.steve,
+          wildcardsContributed: {
+            ...(baseAdvanced.steve?.wildcardsContributed || {}),
+            ...(optimisticAdvancedState.steve.wildcardsContributed || {}),
+          },
+          wildcardsContributedByRound: {
+            ...(baseAdvanced.steve?.wildcardsContributedByRound || {}),
+            ...(optimisticAdvancedState.steve.wildcardsContributedByRound || {}),
+          },
+        }
+      : baseAdvanced.steve;
+
+    const mergedAdvanced: AdvancedRulesState = {
+      ...baseAdvanced,
+      ...optimisticAdvancedState,
+      wildcards: mergedWildcards,
+      steve: mergedSteve,
+    };
+
+    let mergedRounds = rawActiveGameState.rounds;
+    const currentRound = rawActiveGameState.currentRound;
+    const roundIndex = rawActiveGameState.rounds.findIndex(r => r.roundNumber === currentRound);
+    if (roundIndex !== -1 && rawActiveGameState.rounds[roundIndex]?.teamData) {
+      const roundData = rawActiveGameState.rounds[roundIndex];
+      let updatedTeamData = { ...roundData.teamData };
+      let hasChanges = false;
+
+      if (optimisticAdvancedState.wildcards) {
+        for (const tId of Object.keys(optimisticAdvancedState.wildcards)) {
+          const existingTeamData = updatedTeamData[tId];
+          if (existingTeamData && existingTeamData.combination && existingTeamData.position) {
+            const tempState = { ...rawActiveGameState, advancedState: mergedAdvanced };
+            const newStats = calculatePlanStats(
+              tempState,
+              tId,
+              existingTeamData.combination,
+              existingTeamData.position,
+              existingTeamData.cardUsages || {},
+              rawActiveGameState.combinationsData || COMBINATIONS
+            );
+            const targetProducts = Math.max(existingTeamData.productsProduced || 0, newStats.productsAvailable);
+            updatedTeamData[tId] = {
+              ...existingTeamData,
+              price: newStats.calculatedPrice,
+              productsProduced: targetProducts,
+              researchIcons: newStats.researchPoints,
+              logisticsIcons: newStats.logisticsPoints,
+              improvementCards: newStats.improvementPoints,
+            };
+            hasChanges = true;
+          }
+        }
+      }
+
+      if (hasChanges) {
+        mergedRounds = [...rawActiveGameState.rounds];
+        mergedRounds[roundIndex] = {
+          ...roundData,
+          teamData: updatedTeamData,
+        };
+      }
+    }
+
+    return {
+      ...rawActiveGameState,
+      advancedState: mergedAdvanced,
+      rounds: mergedRounds,
+    };
+  }, [rawActiveGameState, optimisticAdvancedState]);
   const activeIsLoaded = isDemo
     ? demoContext.isLoaded
     : isV2
@@ -1965,85 +2233,140 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const contributeWildcardsToSteve = useCallback((teamId: string, delta: number = 1) => {
     if (!effectiveGameState) return;
+    if (!isRuleActiveForTeam(effectiveGameState.ruleAdjustments, 'wildcard_tokens_system', teamId)) return;
 
+    const currentRound = effectiveGameState.currentRound || 1;
+    const currentAdvanced = effectiveGameState.advancedState || {};
+    const steve = currentAdvanced.steve || { activeRegion: null, wildcardsContributed: {}, wildcardsContributedByRound: {} };
+    const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
+    const tWildcard = wildcardsMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
+
+    const usedInR = { ...(tWildcard.usedInRound || {}) };
+    const totalUsed = Object.values(usedInR).reduce((a, b) => Number(a) + Number(b), 0);
+    const remaining = Math.max(0, (tWildcard.totalTokens || 10) - totalUsed);
+
+    const steveContribs = { ...(steve.wildcardsContributed || {}) };
+    const currentTotalSteve = Object.values(steveContribs).reduce((a, b) => Number(a) + Number(b), 0);
+    const newTotalSteve = currentTotalSteve + delta;
+
+    // Joint total unblocking cap across all teams is 5
+    if (newTotalSteve < 0 || newTotalSteve > 5) return;
+
+    const currentTeamSteve = steveContribs[teamId] || 0;
+    const newTeamSteve = currentTeamSteve + delta;
+    if (newTeamSteve < 0) return;
+    if (delta > 0 && remaining < delta) return;
+
+    const convsByR = { ...(tWildcard.conversionsByRound || {}) };
+    const rConvs = { ...(convsByR[currentRound] || {}) };
+    const roundConvsTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
+
+    const steveByRoundMap = { ...(steve.wildcardsContributedByRound || {}) };
+    const roundSteveMap = { ...(steveByRoundMap[currentRound] || {}) };
+    const currentSteveInRound = roundSteveMap[teamId] || 0;
+    const newSteveInRound = currentSteveInRound + delta;
+    if (newSteveInRound < 0) return;
+
+    steveContribs[teamId] = newTeamSteve;
+    roundSteveMap[teamId] = newSteveInRound;
+    steveByRoundMap[currentRound] = roundSteveMap;
+
+    const roundUsedTotal = roundConvsTotal + newSteveInRound;
+    usedInR[currentRound] = roundUsedTotal;
+    const newTeamWildcard = { ...tWildcard, usedInRound: usedInR };
+
+    const newSteve = {
+      ...steve,
+      activeRegion: steve.activeRegion,
+      wildcardsContributed: steveContribs,
+      wildcardsContributedByRound: steveByRoundMap,
+    };
+
+    // 1. Instant optimistic local update
+    setOptimisticAdvancedState(prevOpt => {
+      const baseAdv = prevOpt || currentAdvanced;
+      return {
+        ...baseAdv,
+        wildcards: {
+          ...(baseAdv.wildcards || {}),
+          [teamId]: newTeamWildcard,
+        },
+        steve: newSteve,
+      };
+    });
+
+    // 2. Dispatch to backend
     if (isV2 && currentClassId && currentRole === 'STUDENT') {
-      const currentRound = effectiveGameState.currentRound || 1;
-      const currentSteveInRound =
-        effectiveGameState.advancedState?.steve?.wildcardsContributedByRound?.[currentRound]?.[teamId] || 0;
-      const nextSteveInRound = Math.max(0, currentSteveInRound + delta);
-      const currentConvs =
-        effectiveGameState.advancedState?.wildcards?.[teamId]?.conversionsByRound?.[currentRound] || {};
-      const convSum = Object.values(currentConvs).reduce((a, b) => Number(a) + Number(b || 0), 0);
       submitStudentActionV2(
         currentClassId,
         currentRound,
         'wildcard',
         teamId,
-        { wildcardConversions: currentConvs, steveContribution: nextSteveInRound },
-        convSum + nextSteveInRound
-      ).catch((err) => console.error('Failed to submit student wildcard steve action v2:', err));
+        { wildcardConversions: rConvs, steveContribution: newSteveInRound },
+        roundUsedTotal
+      ).catch((err) => {
+        console.error('Failed to submit student wildcard steve action v2:', err);
+        setOptimisticAdvancedState(null);
+      });
       return;
     }
 
     mutateGameState(prev => {
       if (!prev) return prev;
       if (!isRuleActiveForTeam(prev.ruleAdjustments, 'wildcard_tokens_system', teamId)) return prev;
-      const currentAdvanced = prev.advancedState || {};
-      const steve = currentAdvanced.steve || { activeRegion: null, wildcardsContributed: {}, wildcardsContributedByRound: {} };
-      const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
-      const tWildcard = wildcardsMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
+      const prevAdv = prev.advancedState || {};
+      const prevSteve = prevAdv.steve || { activeRegion: null, wildcardsContributed: {}, wildcardsContributedByRound: {} };
+      const prevWcMap = { ...(prevAdv.wildcards || {}) };
+      const prevTWc = prevWcMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
 
-      const currentRound = prev.currentRound;
-      const usedInR = { ...(tWildcard.usedInRound || {}) };
-      const totalUsed = Object.values(usedInR).reduce((a, b) => Number(a) + Number(b), 0);
-      const remaining = Math.max(0, (tWildcard.totalTokens || 10) - totalUsed);
+      const prevUsedInR = { ...(prevTWc.usedInRound || {}) };
+      const prevTotalUsed = Object.values(prevUsedInR).reduce((a, b) => Number(a) + Number(b), 0);
+      const prevRem = Math.max(0, (prevTWc.totalTokens || 10) - prevTotalUsed);
 
-      const steveContribs = { ...(steve.wildcardsContributed || {}) };
-      const currentTotalSteve = Object.values(steveContribs).reduce((a, b) => Number(a) + Number(b), 0);
-      const newTotalSteve = currentTotalSteve + delta;
+      const prevSteveContribs = { ...(prevSteve.wildcardsContributed || {}) };
+      const prevCurrTot = Object.values(prevSteveContribs).reduce((a, b) => Number(a) + Number(b), 0);
+      const prevNewTot = prevCurrTot + delta;
+      if (prevNewTot < 0 || prevNewTot > 5) return prev;
 
-      // Joint total unblocking cap across all teams is 5
-      if (newTotalSteve < 0 || newTotalSteve > 5) return prev;
+      const prevTeamSt = prevSteveContribs[teamId] || 0;
+      const prevNewTeamSt = prevTeamSt + delta;
+      if (prevNewTeamSt < 0) return prev;
+      if (delta > 0 && prevRem < delta) return prev;
 
-      const currentTeamSteve = steveContribs[teamId] || 0;
-      const newTeamSteve = currentTeamSteve + delta;
-      if (newTeamSteve < 0) return prev;
-      if (delta > 0 && remaining < delta) return prev;
+      const prevConvsByR = { ...(prevTWc.conversionsByRound || {}) };
+      const prevRConvs = { ...(prevConvsByR[currentRound] || {}) };
+      const prevRoundConvsTotal = Object.values(prevRConvs).reduce((a, b) => Number(a) + Number(b), 0);
 
-      const convsByR = { ...(tWildcard.conversionsByRound || {}) };
-      const rConvs = { ...(convsByR[currentRound] || {}) };
-      const roundConvsTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
+      const prevSteveByRoundMap = { ...(prevSteve.wildcardsContributedByRound || {}) };
+      const prevRoundSteveMap = { ...(prevSteveByRoundMap[currentRound] || {}) };
+      const prevCurrSteveInR = prevRoundSteveMap[teamId] || 0;
+      const prevNewSteveInR = prevCurrSteveInR + delta;
+      if (prevNewSteveInR < 0) return prev;
 
-      const steveByRoundMap = { ...(steve.wildcardsContributedByRound || {}) };
-      const roundSteveMap = { ...(steveByRoundMap[currentRound] || {}) };
-      const currentSteveInRound = roundSteveMap[teamId] || 0;
-      const newSteveInRound = currentSteveInRound + delta;
-      if (newSteveInRound < 0) return prev;
+      prevSteveContribs[teamId] = prevNewTeamSt;
+      prevRoundSteveMap[teamId] = prevNewSteveInR;
+      prevSteveByRoundMap[currentRound] = prevRoundSteveMap;
 
-      steveContribs[teamId] = newTeamSteve;
-      roundSteveMap[teamId] = newSteveInRound;
-      steveByRoundMap[currentRound] = roundSteveMap;
-
-      const roundUsedTotal = roundConvsTotal + newSteveInRound;
-      usedInR[currentRound] = roundUsedTotal;
-      wildcardsMap[teamId] = { ...tWildcard, usedInRound: usedInR };
+      const prevRoundUsedTotal = prevRoundConvsTotal + prevNewSteveInR;
+      prevUsedInR[currentRound] = prevRoundUsedTotal;
+      prevWcMap[teamId] = { ...prevTWc, usedInRound: prevUsedInR };
 
       return {
         ...prev,
         advancedState: {
-          ...currentAdvanced,
-          wildcards: wildcardsMap,
+          ...prevAdv,
+          wildcards: prevWcMap,
           steve: {
-            ...steve,
-            activeRegion: steve.activeRegion,
-            wildcardsContributed: steveContribs,
-            wildcardsContributedByRound: steveByRoundMap,
+            ...prevSteve,
+            activeRegion: prevSteve.activeRegion,
+            wildcardsContributed: prevSteveContribs,
+            wildcardsContributedByRound: prevSteveByRoundMap,
           },
         },
         updatedAt: new Date(),
       };
     });
-  }, [effectiveGameState]);
+  }, [effectiveGameState, isV2, currentClassId, currentRole, mutateGameState]);
 
   const adjustTeamWildcardTotal = useCallback((teamId: string, delta: number) => {
     if (!effectiveGameState || !teamId) return;
@@ -2112,68 +2435,105 @@ export function GameProvider({ children }: { children: ReactNode }) {
     delta: number = 1
   ) => {
     if (!effectiveGameState) return;
+    if (!isRuleActiveForTeam(effectiveGameState.ruleAdjustments, 'wildcard_tokens_system', teamId)) return;
 
-    if (isV2 && currentClassId && currentRole === 'STUDENT') {
-      const currentRound = effectiveGameState.currentRound || 1;
-      const currentConvs = {
-        ...(effectiveGameState.advancedState?.wildcards?.[teamId]?.conversionsByRound?.[currentRound] || {}),
+    const currentRound = effectiveGameState.currentRound || 1;
+    const currentAdvanced = effectiveGameState.advancedState || {};
+    const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
+    const tWildcard = wildcardsMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
+
+    const usedInR = { ...(tWildcard.usedInRound || {}) };
+    const totalUsed = Object.values(usedInR).reduce((a, b) => Number(a) + Number(b), 0);
+
+    const convsByR = { ...(tWildcard.conversionsByRound || {}) };
+    const rConvs = { ...(convsByR[currentRound] || {}) };
+    const currentPhaseVal = rConvs[conversionType] || 0;
+
+    // Per-action cap: up to 2 for product/research/logistics, up to 1 for improvement
+    const maxForAction = conversionType === 'improvement' ? 1 : 2;
+    const newPhaseVal = currentPhaseVal + delta;
+    if (newPhaseVal < 0 || newPhaseVal > maxForAction) return;
+
+    if (delta > 0 && totalUsed + delta > (tWildcard.totalTokens || 10)) return;
+
+    rConvs[conversionType] = newPhaseVal;
+    convsByR[currentRound] = rConvs;
+
+    const roundConvsTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
+    const steveInRound = (effectiveGameState.advancedState?.steve?.wildcardsContributedByRound?.[currentRound]?.[teamId]) || 0;
+    const roundUsedTotal = roundConvsTotal + steveInRound;
+
+    usedInR[currentRound] = roundUsedTotal;
+
+    const newTeamWildcard = {
+      ...tWildcard,
+      usedInRound: usedInR,
+      conversionsByRound: convsByR,
+    };
+
+    // 1. Instant optimistic local update: updates React state in 0ms!
+    setOptimisticAdvancedState(prevOpt => {
+      const baseAdv = prevOpt || currentAdvanced;
+      const nextWildcards = {
+        ...(baseAdv.wildcards || {}),
+        [teamId]: newTeamWildcard,
       };
-      const nextVal = Math.max(0, (currentConvs[conversionType] || 0) + delta);
-      currentConvs[conversionType] = nextVal;
-      const currentSteveInRound =
-        effectiveGameState.advancedState?.steve?.wildcardsContributedByRound?.[currentRound]?.[teamId] || 0;
-      const convSum = Object.values(currentConvs).reduce((a, b) => Number(a) + Number(b || 0), 0);
+      return {
+        ...baseAdv,
+        wildcards: nextWildcards,
+      };
+    });
+
+    // 2. Dispatch to backend
+    if (isV2 && currentClassId && currentRole === 'STUDENT') {
       submitStudentActionV2(
         currentClassId,
         currentRound,
         'wildcard',
         teamId,
-        { wildcardConversions: currentConvs, steveContribution: currentSteveInRound },
-        convSum + currentSteveInRound
-      ).catch((err) => console.error('Failed to submit student wildcard convert action v2:', err));
+        { wildcardConversions: rConvs, steveContribution: steveInRound },
+        roundUsedTotal
+      ).catch((err) => {
+        console.error('Failed to submit student wildcard convert action v2:', err);
+        setOptimisticAdvancedState(null);
+      });
       return;
     }
 
     mutateGameState(prev => {
       if (!prev) return prev;
       if (!isRuleActiveForTeam(prev.ruleAdjustments, 'wildcard_tokens_system', teamId)) return prev;
-      const currentAdvanced = prev.advancedState || {};
-      const wildcardsMap = { ...(currentAdvanced.wildcards || {}) };
-      const tWildcard = wildcardsMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
+      const prevAdv = prev.advancedState || {};
+      const prevWcMap = { ...(prevAdv.wildcards || {}) };
+      const prevTWc = prevWcMap[teamId] || { teamId, totalTokens: 10, usedInRound: {}, conversionsByRound: {} };
 
-      const currentRound = prev.currentRound;
-      const usedInR = { ...(tWildcard.usedInRound || {}) };
-      const totalUsed = Object.values(usedInR).reduce((a, b) => Number(a) + Number(b), 0);
+      const prevUsedInR = { ...(prevTWc.usedInRound || {}) };
+      const prevTotalUsed = Object.values(prevUsedInR).reduce((a, b) => Number(a) + Number(b), 0);
 
-      const convsByR = { ...(tWildcard.conversionsByRound || {}) };
-      const rConvs = { ...(convsByR[currentRound] || {}) };
-      const currentPhaseVal = rConvs[conversionType] || 0;
+      const prevConvsByR = { ...(prevTWc.conversionsByRound || {}) };
+      const prevRConvs = { ...(prevConvsByR[currentRound] || {}) };
+      const prevVal = prevRConvs[conversionType] || 0;
 
-      // Per-action cap: up to 2 for product/research/logistics, up to 1 for improvement
-      const maxForAction = conversionType === 'improvement' ? 1 : 2;
-      const newPhaseVal = currentPhaseVal + delta;
-      if (newPhaseVal < 0 || newPhaseVal > maxForAction) return prev;
+      const pNewVal = prevVal + delta;
+      if (pNewVal < 0 || pNewVal > maxForAction) return prev;
+      if (delta > 0 && prevTotalUsed + delta > (prevTWc.totalTokens || 10)) return prev;
 
-      if (delta > 0 && totalUsed + delta > (tWildcard.totalTokens || 10)) return prev;
+      prevRConvs[conversionType] = pNewVal;
+      prevConvsByR[currentRound] = prevRConvs;
 
-      rConvs[conversionType] = newPhaseVal;
-      convsByR[currentRound] = rConvs;
+      const pConvsTotal = Object.values(prevRConvs).reduce((a, b) => Number(a) + Number(b), 0);
+      const pSteveInR = (prevAdv.steve?.wildcardsContributedByRound?.[currentRound]?.[teamId]) || 0;
+      prevUsedInR[currentRound] = pConvsTotal + pSteveInR;
 
-      const roundConvsTotal = Object.values(rConvs).reduce((a, b) => Number(a) + Number(b), 0);
-      const steveInRound = (prev.advancedState?.steve?.wildcardsContributedByRound?.[currentRound]?.[teamId]) || 0;
-      const roundUsedTotal = roundConvsTotal + steveInRound;
-
-      usedInR[currentRound] = roundUsedTotal;
-
-      wildcardsMap[teamId] = {
-        ...tWildcard,
-        usedInRound: usedInR,
-        conversionsByRound: convsByR,
+      prevWcMap[teamId] = {
+        ...prevTWc,
+        usedInRound: prevUsedInR,
+        conversionsByRound: prevConvsByR,
       };
 
       const updatedAdvanced = {
-        ...currentAdvanced,
-        wildcards: wildcardsMap,
+        ...prevAdv,
+        wildcards: prevWcMap,
       };
 
       let updatedRounds = prev.rounds;
@@ -2219,7 +2579,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         updatedAt: new Date(),
       };
     });
-  }, [effectiveGameState]);
+  }, [effectiveGameState, isV2, currentClassId, currentRole, mutateGameState]);
 
   const recalculateControlPoints = useCallback(() => {
     if (!effectiveGameState) return;
