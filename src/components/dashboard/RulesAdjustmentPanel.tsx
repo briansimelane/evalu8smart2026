@@ -18,8 +18,13 @@ import { DirectivesClaimModal } from './DirectivesClaimModal';
 import { FacilitatorWildcardConsole } from './FacilitatorWildcardConsole';
 import { useGameTheme } from '@/lib/gameTheme';
 
-interface RulesAdjustmentPanelProps {
+export interface RulesAdjustmentPanelProps {
   onClose?: () => void;
+  gameState?: GameState | null;
+  worldLabel?: string;
+  onUpdateRuleAdjustments?: (updated: RuleAdjustmentsState | null) => void | Promise<void>;
+  onAllocateDirective?: (teamId: string, directiveId: string) => void | Promise<void>;
+  onRevokeDirective?: (directiveId: string) => void | Promise<void>;
 }
 
 const CATEGORIES: Array<'All' | RuleCategory> = [
@@ -39,8 +44,18 @@ const ADVANCED_RULE_IDS = [
   'steve_event_blocker',
 ];
 
-export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onClose }) => {
-  const { gameState, getRuleAdjustments, updateRuleAdjustments } = useGame();
+export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({
+  onClose,
+  gameState: propGameState,
+  worldLabel,
+  onUpdateRuleAdjustments,
+  onAllocateDirective,
+  onRevokeDirective,
+}) => {
+  const gameContext = useGame();
+  const gameState = propGameState !== undefined ? propGameState : gameContext.gameState;
+  const updateRuleAdjustments = onUpdateRuleAdjustments || gameContext.updateRuleAdjustments;
+  const getRuleAdjustments = () => gameState?.ruleAdjustments || (propGameState !== undefined ? getDefaultRuleAdjustments() : gameContext.getRuleAdjustments());
   const theme = useGameTheme();
   const [rulesState, setRulesState] = useState<RuleAdjustmentsState>(() => getRuleAdjustments());
   const [selectedCategory, setSelectedCategory] = useState<'All' | RuleCategory>('All');
@@ -508,7 +523,13 @@ export const RulesAdjustmentPanel: React.FC<RulesAdjustmentPanelProps> = ({ onCl
           <span className="font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
             <Zap className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" /> Directives
           </span>
-          <DirectivesClaimModal triggerClassName="h-6 text-[10px] px-2 bg-amber-600 hover:bg-amber-500 text-white font-bold flex-shrink-0 shadow-sm" />
+          <DirectivesClaimModal
+            gameState={gameState}
+            worldLabel={worldLabel}
+            onAllocateDirective={onAllocateDirective}
+            onRevokeDirective={onRevokeDirective}
+            triggerClassName="h-6 text-[10px] px-2 bg-amber-600 hover:bg-amber-500 text-white font-bold flex-shrink-0 shadow-sm"
+          />
         </div>
       </div>
       {/* Steve Live Control Console */}

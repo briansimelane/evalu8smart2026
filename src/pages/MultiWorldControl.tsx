@@ -4,7 +4,7 @@ import { useMultiWorldSession, WorldSubState } from '@/hooks/useMultiWorldSessio
 import { useMultiWorldBotRunners } from '@/hooks/useMultiWorldBotRunners';
 import { useSession } from '@/contexts/SessionContext';
 import { WorldKey } from '@/types/multiworld';
-import { GamePhase, GameState, calculateTeamTotalScore } from '@/types/game';
+import { GamePhase, GameState, calculateTeamTotalScore, RuleAdjustmentsState } from '@/types/game';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { RulesAdjustmentPanel } from '@/components/dashboard/RulesAdjustmentPanel';
+import { DirectivesClaimModal } from '@/components/dashboard/DirectivesClaimModal';
+import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 import { ActionMatrix } from '@/components/multiworld/ActionMatrix';
 import { CombinedLeaderboard } from '@/components/multiworld/CombinedLeaderboard';
 import { mutateWorldState } from '@/lib/multiworld/worldWrite';
@@ -45,6 +47,7 @@ import {
   Zap,
   Trophy,
   User,
+  Award,
   DollarSign,
   Package,
   Wrench,
@@ -291,6 +294,92 @@ export const MultiWorldControl: React.FC = () => {
       toast.error(`Failed to advance ${worldLabel}: ${err.message}`);
     } finally {
       setIsAdvancing(false);
+    }
+  };
+
+  const handleAllocateDirectiveForWorld = async (classId: string, teamId: string, directiveId: string) => {
+    try {
+      await mutateWorldState(classId, (fresh) => {
+        if (!isRuleActiveForTeam(fresh.ruleAdjustments, 'directives_bonus_points', teamId)) {
+          return fresh;
+        }
+        const pointsVal = Number(getRuleValueForTeam(fresh.ruleAdjustments, 'directives_bonus_points', teamId, 12));
+        const currentAdvanced = fresh.advancedState || {};
+        const claimedList = currentAdvanced.directives || [];
+
+        if (claimedList.some((d) => d.id === directiveId)) return fresh;
+        if (claimedList.some((d) => d.teamId === teamId && d.roundNumber === (fresh.currentRound || 1))) return fresh;
+
+        const newClaim = {
+          id: directiveId,
+          teamId,
+          roundNumber: fresh.currentRound || 1,
+          points: pointsVal,
+          claimedAt: new Date().toISOString(),
+        };
+
+        return {
+          ...fresh,
+          advancedState: {
+            ...currentAdvanced,
+            directives: [...claimedList, newClaim],
+          },
+          updatedAt: new Date(),
+        };
+      });
+    } catch (err: any) {
+      console.error('Failed to allocate directive for world:', err);
+      toast.error('Failed to allocate directive: ' + err.message);
+    }
+  };
+
+  const handleRevokeDirectiveForWorld = async (classId: string, directiveId: string) => {
+    try {
+      await mutateWorldState(classId, (fresh) => {
+        const currentAdvanced = fresh.advancedState || {};
+        const claimedList = currentAdvanced.directives || [];
+        return {
+          ...fresh,
+          advancedState: {
+            ...currentAdvanced,
+            directives: claimedList.filter((d) => d.id !== directiveId),
+          },
+          updatedAt: new Date(),
+        };
+      });
+    } catch (err: any) {
+      console.error('Failed to revoke directive for world:', err);
+      toast.error('Failed to revoke directive: ' + err.message);
+    }
+  };
+
+  const handleUpdateRuleAdjustmentsForWorld = async (classId: string, rulesState: RuleAdjustmentsState | null) => {
+    try {
+      await mutateWorldState(classId, (fresh) => {
+        const newState = { ...fresh };
+        if (rulesState) {
+          newState.ruleAdjustments = {
+            ...rulesState,
+            lastUpdated: new Date().toISOString(),
+          };
+          const isSteveActive = isRuleActiveForTeam(newState.ruleAdjustments, 'steve_event_blocker');
+          if (!isSteveActive && newState.advancedState?.steve?.activeRegion) {
+            newState.advancedState = {
+              ...newState.advancedState,
+              steve: {
+                ...newState.advancedState.steve,
+                activeRegion: null,
+              },
+            };
+          }
+        } else {
+          delete newState.ruleAdjustments;
+        }
+        return newState;
+      });
+    } catch (err: any) {
+      console.error('Failed to update rules for world:', err);
+      toast.error('Failed to update rules: ' + err.message);
     }
   };
 
@@ -555,6 +644,9 @@ export const MultiWorldControl: React.FC = () => {
                     navigate(`/class/${w.classId}`);
                   }}
                   badgeColor={idx % 2 === 0 ? 'purple' : 'blue'}
+                  onAllocateDirective={handleAllocateDirectiveForWorld}
+                  onRevokeDirective={handleRevokeDirectiveForWorld}
+                  onUpdateRuleAdjustments={handleUpdateRuleAdjustmentsForWorld}
                 />
               );
             })}
@@ -583,6 +675,9 @@ interface WorldCardProps {
   isAdvancing: boolean;
   onOpenStandalone: () => void;
   badgeColor: 'purple' | 'blue';
+  onAllocateDirective: (classId: string, teamId: string, directiveId: string) => Promise<void>;
+  onRevokeDirective: (classId: string, directiveId: string) => Promise<void>;
+  onUpdateRuleAdjustments: (classId: string, rulesState: RuleAdjustmentsState | null) => Promise<void>;
 }
 
 const SHORT_PHASE_LABELS: Record<string, string> = {
@@ -608,7 +703,10 @@ const WorldCard: React.FC<WorldCardProps> = ({
   onForceAdvance,
   isAdvancing,
   onOpenStandalone,
-  badgeColor
+  badgeColor,
+  onAllocateDirective,
+  onRevokeDirective,
+  onUpdateRuleAdjustments,
 }) => {
   if (!gameState) {
     return (
@@ -623,6 +721,18 @@ const WorldCard: React.FC<WorldCardProps> = ({
   const normPhase = normalizePhaseName(currentPhase);
   const teams = gameState.teams || [];
   const currentRoundData = gameState.rounds?.find(r => r.roundNumber === currentRound);
+
+  // Directives and Rules state for this World
+  const claimedDirectivesList = gameState.advancedState?.directives || [];
+  const claimedDirectivesCount = claimedDirectivesList.length;
+  const isDirectivesRuleActive = isRuleActiveForTeam(gameState.ruleAdjustments, 'directives_bonus_points');
+  const hasCustomRules = Boolean(
+    gameState.ruleAdjustments &&
+    gameState.ruleAdjustments.rules &&
+    Object.values(gameState.ruleAdjustments.rules).some(
+      (r: any) => r.enabled || (r.teamOverrides && Object.keys(r.teamOverrides).length > 0)
+    )
+  );
 
   // Compute next phase info
   const { nextPhase, nextRound, isGameEnd } = getNextPhase(gameState);
@@ -1065,22 +1175,93 @@ const WorldCard: React.FC<WorldCardProps> = ({
   return (
     <Card className="bg-card border-border shadow-sm flex flex-col">
       <CardHeader className="border-b border-border pb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`w-3 h-3 rounded-full ${badgeColor === 'purple' ? 'bg-purple-600' : 'bg-blue-600'}`} />
             <CardTitle className="text-xl font-bold text-foreground">World {worldKey}: {label}</CardTitle>
             <Badge variant="outline" className="text-xs border-border text-muted-foreground">
               {teams.length} Teams
             </Badge>
           </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onOpenStandalone}
-            className="text-xs text-purple-700 hover:text-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/40 gap-1 font-medium"
-          >
-            Standalone Control <ExternalLink className="h-3 w-3" />
-          </Button>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* World Directives Modal Trigger */}
+            <DirectivesClaimModal
+              gameState={gameState}
+              worldLabel={`World ${worldKey}: ${label}`}
+              onAllocateDirective={(tId, dId) => onAllocateDirective(classId, tId, dId)}
+              onRevokeDirective={(dId) => onRevokeDirective(classId, dId)}
+              onUpdateRuleAdjustments={(updated) => onUpdateRuleAdjustments(classId, updated)}
+              triggerNode={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={cn(
+                    "text-xs h-7.5 px-2.5 gap-1.5 font-semibold border shadow-2xs transition-colors",
+                    claimedDirectivesCount > 0
+                      ? "border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20"
+                      : "border-border text-foreground/80 hover:text-foreground hover:bg-muted"
+                  )}
+                  title={`View & Allocate Directives for World ${worldKey}`}
+                >
+                  <Award className="h-3.5 w-3.5 text-amber-500" />
+                  <span>Directives</span>
+                  {claimedDirectivesCount > 0 && (
+                    <Badge className="ml-0.5 px-1.5 py-0 text-[10px] bg-amber-500 text-white font-bold h-4">
+                      {claimedDirectivesCount}
+                    </Badge>
+                  )}
+                </Button>
+              }
+            />
+
+            {/* World Rules Modal Trigger */}
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={cn(
+                    "text-xs h-7.5 px-2.5 gap-1.5 font-semibold border shadow-2xs transition-colors",
+                    hasCustomRules
+                      ? "border-indigo-500/40 text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20"
+                      : "border-border text-foreground/80 hover:text-foreground hover:bg-muted"
+                  )}
+                  title={`Configure Rules for World ${worldKey}`}
+                >
+                  <Sliders className="h-3.5 w-3.5 text-indigo-500" />
+                  <span>Rules</span>
+                  {hasCustomRules && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  )}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Sliders className="h-5 w-5 text-indigo-600" />
+                    <span>Rules Engine — World {worldKey}: {label}</span>
+                  </DialogTitle>
+                </DialogHeader>
+                <RulesAdjustmentPanel
+                  gameState={gameState}
+                  worldLabel={`World ${worldKey}: ${label}`}
+                  onUpdateRuleAdjustments={(updated) => onUpdateRuleAdjustments(classId, updated)}
+                  onAllocateDirective={(tId, dId) => onAllocateDirective(classId, tId, dId)}
+                  onRevokeDirective={(dId) => onRevokeDirective(classId, dId)}
+                />
+              </DialogContent>
+            </Dialog>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onOpenStandalone}
+              className="text-xs h-7.5 px-2 text-purple-700 hover:text-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/40 gap-1 font-medium"
+            >
+              Standalone <ExternalLink className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
         <CardDescription className="text-muted-foreground text-xs mt-1">
           Class: {simulationClass?.name || classId}
@@ -1208,6 +1389,7 @@ const WorldCard: React.FC<WorldCardProps> = ({
               const tData = currentRoundData?.teamData?.[team.id];
               const isThinking = !isSubmitted && Boolean(gameState.botThinking?.[team.id]);
               const ceoName = team.ceoName || null;
+              const teamClaimedDirectives = claimedDirectivesList.filter((d: any) => d.teamId === team.id);
 
               return (
                 <div
@@ -1255,6 +1437,24 @@ const WorldCard: React.FC<WorldCardProps> = ({
                           {ceoName ? ceoName : <span className="italic text-muted-foreground">Vacant</span>}
                         </span>
                       </span>
+
+                      {/* Directives Badges */}
+                      {teamClaimedDirectives.length > 0 && (
+                        <div className="flex items-center gap-1 pl-1 border-l border-border/60 flex-wrap">
+                          {teamClaimedDirectives.map((d: any) => (
+                            <Badge
+                              key={d.id}
+                              variant="outline"
+                              className="text-[10px] py-0 px-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 font-bold flex items-center gap-0.5"
+                              title={`Claimed Directive ${d.id.replace('directive_', '#')} in Round ${d.roundNumber} (+${d.points || 12} VPs)`}
+                            >
+                              <Award className="h-2.5 w-2.5 text-amber-500" />
+                              <span>{d.id.replace('directive_', '#')}</span>
+                              <span className="text-[9px] font-normal text-amber-600 dark:text-amber-400">+{d.points || 12}</span>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">

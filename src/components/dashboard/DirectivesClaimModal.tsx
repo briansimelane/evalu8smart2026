@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { useSession } from '@/contexts/SessionContext';
-import { ClaimedDirective, Team } from '@/types/game';
+import { ClaimedDirective, Team, RuleAdjustmentsState } from '@/types/game';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -12,8 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Award, CheckCircle2, AlertCircle, Lock, ShieldCheck } from 'lucide-react';
-import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
+import { Award, CheckCircle2, AlertCircle, Lock, ShieldCheck, Zap } from 'lucide-react';
+import { isRuleActiveForTeam, getRuleValueForTeam, getDefaultRuleAdjustments } from '@/lib/defaultRules';
 import { getCarriedOverProductsForTeam, hasTech } from '@/lib/rules';
 import { useGameTheme, techLabel } from '@/lib/gameTheme';
 import { toast } from 'sonner';
@@ -64,18 +64,43 @@ export const DIRECTIVES_LIST: DirectiveDefinition[] = [
   },
 ];
 
-interface DirectivesClaimModalProps {
+export interface DirectivesClaimModalProps {
   teamId?: string;
   triggerClassName?: string;
+  gameState?: GameState | null;
+  worldLabel?: string;
+  onAllocateDirective?: (teamId: string, directiveId: string) => void | Promise<void>;
+  onRevokeDirective?: (directiveId: string) => void | Promise<void>;
+  onUpdateRuleAdjustments?: (updated: RuleAdjustmentsState | null) => void | Promise<void>;
+  triggerNode?: React.ReactNode;
 }
 
-export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ teamId, triggerClassName }) => {
-  const { gameState, allocateDirective, revokeDirective } = useGame();
+export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({
+  teamId,
+  triggerClassName,
+  gameState: propGameState,
+  worldLabel,
+  onAllocateDirective,
+  onRevokeDirective,
+  onUpdateRuleAdjustments,
+  triggerNode,
+}) => {
+  const gameContext = useGame();
+  const gameState = propGameState !== undefined ? propGameState : gameContext.gameState;
+  const allocateDirective = onAllocateDirective || gameContext.allocateDirective;
+  const revokeDirective = onRevokeDirective || gameContext.revokeDirective;
+  const updateRuleAdjustments = onUpdateRuleAdjustments || gameContext.updateRuleAdjustments;
   const theme = useGameTheme();
   const { currentRole } = useSession();
   const isFacilitator = currentRole === 'FACILITATOR' || currentRole === 'ADMIN';
 
   const [selectedTeamId, setSelectedTeamId] = useState<string>(teamId || gameState?.teams[0]?.id || '');
+
+  React.useEffect(() => {
+    if (!selectedTeamId && gameState?.teams?.[0]?.id) {
+      setSelectedTeamId(gameState.teams[0].id);
+    }
+  }, [gameState, selectedTeamId]);
 
   const currentRound = gameState?.currentRound || 1;
   const teams = gameState?.teams || [];
@@ -175,32 +200,74 @@ export const DirectivesClaimModal: React.FC<DirectivesClaimModalProps> = ({ team
 
   return (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className={triggerClassName || "border-amber-500/40 text-amber-600 dark:text-amber-300 hover:bg-amber-500/10 font-bold gap-1.5 text-xs"}
-        >
-          <Award className="h-4 w-4 text-amber-500" />
-          Directives (+{directivePointsVal} VPs)
-        </Button>
-      </DialogTrigger>
+      {triggerNode ? (
+        <DialogTrigger asChild>{triggerNode}</DialogTrigger>
+      ) : (
+        <DialogTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className={triggerClassName || "border-amber-500/40 text-amber-600 dark:text-amber-300 hover:bg-amber-500/10 font-bold gap-1.5 text-xs"}
+          >
+            <Award className="h-4 w-4 text-amber-500" />
+            Directives (+{directivePointsVal} VPs)
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto bg-card text-foreground">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg font-bold">
             <Award className="h-5 w-5 text-amber-500" />
-            Special Directives (+{directivePointsVal} VPs Each at Game End)
+            {worldLabel ? `Special Directives — ${worldLabel}` : `Special Directives (+${directivePointsVal} VPs Each at Game End)`}
           </DialogTitle>
           <CardDescription className="text-xs text-muted-foreground">
-            Each directive can only be claimed by ONE team globally. Once claimed, it is gone. Facilitator allocates directives on behalf of teams. {directivePointsVal} VPs awarded at final scoring.
+            {worldLabel
+              ? `Directives allocated for ${worldLabel}. Each directive can only be claimed by ONE team globally in this world. Facilitator allocates directives on behalf of teams. ${directivePointsVal} VPs awarded at final scoring.`
+              : `Each directive can only be claimed by ONE team globally. Once claimed, it is gone. Facilitator allocates directives on behalf of teams. ${directivePointsVal} VPs awarded at final scoring.`}
           </CardDescription>
         </DialogHeader>
 
         {/* Disabled Rule Alert Banner */}
         {!isDirectivesRuleActive && (
-          <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-500/40 rounded-lg flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300 font-bold">
-            <AlertCircle className="h-4 w-4 flex-shrink-0" />
-            <span>Directives Bonus Points (Advanced Rule 4) is currently switched OFF by the facilitator. Directives cannot be allocated.</span>
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-500/40 rounded-lg flex items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-300 font-bold flex-wrap">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>Directives Bonus Points (Advanced Rule 4) is currently switched OFF{worldLabel ? ` for ${worldLabel}` : ''}.</span>
+            </div>
+            {isFacilitator && (
+              <Button
+                size="sm"
+                variant="default"
+                onClick={() => {
+                  const currentRules = gameState?.ruleAdjustments || getDefaultRuleAdjustments();
+                  const updated: RuleAdjustmentsState = {
+                    ...currentRules,
+                    rules: {
+                      ...currentRules.rules,
+                      directives_bonus_points: {
+                        ...(currentRules.rules?.directives_bonus_points || {
+                          id: 'directives_bonus_points',
+                          name: 'Advanced Rule 4: Directives for Additional Points',
+                          description: 'Adds 6 directive challenges worth 12 VPs each (#2, #5, #6, #7, #21, #22). Teams can claim at most 1 directive per round.',
+                          category: 'Sales',
+                          globalValue: 12,
+                          defaultValue: 12,
+                          valueType: 'number',
+                          teamOverrides: {},
+                        }),
+                        enabled: true,
+                      },
+                    },
+                  };
+                  updateRuleAdjustments(updated);
+                  toast.success(`Directives Bonus Points rule turned ON${worldLabel ? ` for ${worldLabel}` : ''}!`);
+                }}
+                className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold h-7 px-2.5 shrink-0 flex items-center gap-1"
+              >
+                <Zap className="h-3 w-3" />
+                Enable Directives Rule
+              </Button>
+            )}
           </div>
         )}
 
