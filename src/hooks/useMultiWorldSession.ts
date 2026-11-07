@@ -62,16 +62,36 @@ export function useMultiWorldSession(sessionIdOrCode: string) {
       if (!parts || !parts.classData) return;
 
       const rawTeams = parts.classData.teams || parts.classData.teamRegistry || [];
-      const teams: Team[] = rawTeams.map((t, idx) => ({
-        id: t.id || `team_${idx + 1}`,
-        name: t.name,
-        color: t.color,
-        ceoName: parts.seats?.[t.id || `team_${idx + 1}`]?.ceoName || t.ceoName,
-        isBot: !!t.isBot,
-        botProfile: t.botProfile,
-        botDifficulty: t.botDifficulty,
-        teamNumber: t.teamNumber ?? idx + 1,
-      }));
+      const regMap = new Map((parts.classData.teamRegistry || []).map((t: any) => [t.id, t]));
+      const worldTeamsMap = new Map(((parts.world as any)?.teams || []).map((t: any) => [t.id, t]));
+
+      const teams: Team[] = rawTeams.map((t, idx) => {
+        const id = t.id || `team_${idx + 1}`;
+        const regT = regMap.get(id);
+        const worldT = worldTeamsMap.get(id);
+        const isBot = !!(
+          t.isBot ||
+          regT?.isBot ||
+          worldT?.isBot ||
+          (t as any).accessCode === 'BOT' ||
+          (regT as any)?.accessCode === 'BOT' ||
+          (t as any).code === 'BOT' ||
+          (regT as any)?.code === 'BOT' ||
+          t.name?.toLowerCase().includes('bot') ||
+          regT?.name?.toLowerCase().includes('bot')
+        );
+
+        return {
+          id,
+          name: t.name,
+          color: t.color,
+          ceoName: parts.seats?.[id]?.ceoName || t.ceoName,
+          isBot,
+          botProfile: t.botProfile || regT?.botProfile || worldT?.botProfile,
+          botDifficulty: t.botDifficulty || regT?.botDifficulty || worldT?.botDifficulty,
+          teamNumber: t.teamNumber ?? idx + 1,
+        };
+      });
 
       const assembled = assembleGameState({
         classId,

@@ -74,12 +74,17 @@ function getPhaseAbsoluteStep(gameState: GameState | null): number {
 }
 
 const ChildWorldReferee: React.FC<{ world: WorldSubState }> = ({ world }) => {
-  const isV2 = world.gameState?.schemaVersion === 2;
+  const isV2 = world.classData?.schemaVersion === 2 || world.gameState?.schemaVersion === 2;
+  const teams = (world.gameState?.teams && world.gameState.teams.length > 0)
+    ? world.gameState.teams
+    : (world.classData?.teams || (world.classData as any)?.teamRegistry || []);
+  const themeId = world.gameState?.themeId || world.classData?.themeId;
+
   useReferee({
     classId: world.classId || null,
-    enabled: Boolean(isV2),
-    teams: world.gameState?.teams || [],
-    themeId: world.gameState?.themeId,
+    enabled: Boolean(world.classId && isV2),
+    teams,
+    themeId,
   });
   return null;
 };
@@ -115,6 +120,9 @@ export const MultiWorldControl: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center gap-4">
+        {worlds.map((w) => (
+          <ChildWorldReferee key={w.classId || w.key} world={w} />
+        ))}
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600" />
         <p className="text-purple-700 font-semibold animate-pulse">Loading Multi-World Control Surface...</p>
       </div>
@@ -196,10 +204,13 @@ export const MultiWorldControl: React.FC = () => {
           if (!w.classId) return { key: w.key, success: false, reason: 'Missing classId' };
           try {
             if (
-              w.gameState?.schemaVersion === 2 &&
-              (w.gameState.currentPhase || 'planning').toLowerCase() === 'planning'
+              (w.gameState?.schemaVersion === 2 || w.classData?.schemaVersion === 2) &&
+              (w.gameState?.currentPhase || 'planning').toLowerCase() === 'planning'
             ) {
-              await revealPlanningAndAdvanceV2(w.classId, w.gameState.teams, w.gameState.themeId, {
+              const teams = (w.gameState?.teams && w.gameState.teams.length > 0)
+                ? w.gameState.teams
+                : (w.classData?.teams || (w.classData as any)?.teamRegistry || []);
+              await revealPlanningAndAdvanceV2(w.classId, teams, w.gameState?.themeId || w.classData?.themeId, {
                 force,
               });
             } else {
@@ -257,13 +268,16 @@ export const MultiWorldControl: React.FC = () => {
     try {
       const targetWorld = worlds.find((w) => w.classId === classId);
       if (
-        targetWorld?.gameState?.schemaVersion === 2 &&
-        (targetWorld.gameState.currentPhase || 'planning').toLowerCase() === 'planning'
+        (targetWorld?.gameState?.schemaVersion === 2 || targetWorld?.classData?.schemaVersion === 2) &&
+        (targetWorld?.gameState?.currentPhase || 'planning').toLowerCase() === 'planning'
       ) {
+        const teams = (targetWorld.gameState?.teams && targetWorld.gameState.teams.length > 0)
+          ? targetWorld.gameState.teams
+          : (targetWorld.classData?.teams || (targetWorld.classData as any)?.teamRegistry || []);
         await revealPlanningAndAdvanceV2(
           classId,
-          targetWorld.gameState.teams,
-          targetWorld.gameState.themeId,
+          teams,
+          targetWorld.gameState?.themeId || targetWorld.classData?.themeId,
           { force }
         );
       } else {
