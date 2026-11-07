@@ -21,6 +21,7 @@ import {
 import { submitStudentPlanV2 } from '@/lib/referee/refereeEngine';
 import { WorldSubState } from './useMultiWorldSession';
 import { mutateWorldState } from '@/lib/multiworld/worldWrite';
+import { mutateControl } from '@/lib/v2State';
 
 /**
  * MultiWorld Bot Runners Hook.
@@ -64,6 +65,41 @@ export function useMultiWorldBotRunners(worlds: WorldSubState[], options?: { pau
           regTeam?.name?.toLowerCase().includes('bot')
         );
       };
+
+      // Auto-clear stale botThinking flags for teams that have already submitted
+      if (gameState.botThinking && Object.keys(gameState.botThinking).length > 0) {
+        const staleThinkingIds = Object.keys(gameState.botThinking).filter((tid) => {
+          if (!gameState.botThinking?.[tid]) return false;
+          if (normPhase === 'planning') {
+            return (
+              Boolean(roundData?.teamData?.[tid]?.price) ||
+              Boolean(gameState.planSubmittedByRound?.[round]?.[tid])
+            );
+          }
+          if (['improvement', 'innovation', 'expansion', 'sales'].includes(normPhase)) {
+            const turn = gameState.turn;
+            if (turn && Array.isArray(turn.order)) {
+              const idx = turn.order.indexOf(tid);
+              return idx !== -1 && idx < turn.index;
+            }
+          }
+          return false;
+        });
+
+        if (staleThinkingIds.length > 0) {
+          mutateControl(classId, (ctl) => {
+            let changed = false;
+            const updated = { ...(ctl.botThinking || {}) };
+            staleThinkingIds.forEach((tid) => {
+              if (updated[tid]) {
+                delete updated[tid];
+                changed = true;
+              }
+            });
+            return changed ? { ...ctl, botThinking: updated } : null;
+          }).catch(() => {});
+        }
+      }
 
       // 1. Planning Phase: Schedule all pending bots in parallel with staggered delays
       if (normPhase === 'planning') {
@@ -121,6 +157,12 @@ export function useMultiWorldBotRunners(worlds: WorldSubState[], options?: { pau
 
               if (world.classData?.schemaVersion === 2 || gameState.schemaVersion === 2) {
                 await submitStudentPlanV2(classId, round, teamId, planPayload);
+                mutateControl(classId, (ctl) => {
+                  if (!ctl.botThinking?.[teamId]) return null;
+                  const updated = { ...(ctl.botThinking || {}) };
+                  delete updated[teamId];
+                  return { ...ctl, botThinking: updated };
+                }).catch(() => {});
               } else {
                 await mutateWorldState(classId, (fresh) => {
                   const res = resolvePlan(fresh, round, teamId, planPayload);
@@ -314,6 +356,13 @@ export function useMultiWorldBotRunners(worlds: WorldSubState[], options?: { pau
                       working = resSales.nextState;
                     }
                   }
+                }
+
+                // Clear thinking flag for this bot
+                if (working.botThinking?.[teamId]) {
+                  const updated = { ...(working.botThinking || {}) };
+                  delete updated[teamId];
+                  working.botThinking = updated;
                 }
 
                 // Advance turn.index so the next team in the turn sequence takes their action

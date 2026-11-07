@@ -1206,7 +1206,7 @@ const WorldCard: React.FC<WorldCardProps> = ({
               const isBot = team.isBot || (team as any).accessCode === 'BOT' || team.name?.toLowerCase().includes('bot');
               const { isSubmitted, isActiveTurn, hasAllowance } = getTeamStatus(team, tIdx);
               const tData = currentRoundData?.teamData?.[team.id];
-              const isThinking = Boolean(gameState.botThinking?.[team.id]);
+              const isThinking = !isSubmitted && Boolean(gameState.botThinking?.[team.id]);
               const ceoName = team.ceoName || null;
 
               return (
@@ -1259,7 +1259,12 @@ const WorldCard: React.FC<WorldCardProps> = ({
 
                     <div className="flex items-center gap-2 shrink-0">
                       {/* Submission / Turn Status */}
-                      {isThinking ? (
+                      {isSubmitted ? (
+                        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-semibold text-[10px] py-0.5 px-1.5 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                          {normPhase === 'planning' ? 'Submitted' : 'Done'}
+                        </Badge>
+                      ) : isThinking ? (
                         <Badge className="bg-amber-500 text-white border-amber-600 font-bold text-[10px] py-0.5 px-2 flex items-center gap-1 animate-pulse">
                           <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
                           Thinking...
@@ -1268,11 +1273,6 @@ const WorldCard: React.FC<WorldCardProps> = ({
                         <Badge className="bg-amber-500 text-white border-amber-600 font-extrabold text-[10px] py-0.5 px-2.5 flex items-center gap-1.5 animate-pulse shadow-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0 animate-ping" />
                           Active Turn
-                        </Badge>
-                      ) : isSubmitted ? (
-                        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-semibold text-[10px] py-0.5 px-1.5 flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
-                          {normPhase === 'planning' ? 'Submitted' : 'Done'}
                         </Badge>
                       ) : !hasAllowance ? (
                         <Badge variant="outline" className="text-muted-foreground text-[10px] py-0 px-1.5 opacity-60">
