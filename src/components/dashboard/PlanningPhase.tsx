@@ -12,6 +12,7 @@ import { GameIcon } from './GameIcon';
 import { Badge } from '@/components/ui/badge';
 
 import { useSession } from '@/contexts/SessionContext';
+import { ViewerBoard } from '@/pages/Viewer/ViewerPage';
 import { CombinationsGuideModal } from './CombinationsGuideModal';
 import { calculatePlanStats, hasTech, isGpsBonusClaimed, getCarriedOverProductsForTeam } from '@/lib/rules';
 import { isRuleActiveForTeam } from '@/lib/defaultRules';
@@ -29,7 +30,7 @@ export interface PlanningPhaseRef {
 export const PlanningPhase = forwardRef<PlanningPhaseRef, PlanningPhaseProps>((props, ref) => {
   const { gameState, getCurrentRound, addRoundData, getCombinations, calculatePlayOrder } = useGame();
   const theme = useGameTheme();
-  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam } = useSession();
+  const { currentRole, currentTeamId, currentClassTeams, isReadOnly, selectTeam, activeClass } = useSession();
   const activePhase = gameState?.currentPhase || 'planning';
   const isReadOnlyMode = isReadOnly || (currentRole === 'STUDENT' && activePhase !== 'planning');
   const [selectedTeam, setSelectedTeam] = useState('');
@@ -40,6 +41,7 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef, PlanningPhaseProps>((p
   const [animatingValues, setAnimatingValues] = useState<Record<string, boolean>>({});
   const previousValues = useRef<Record<string, number>>({});
   const [isEditingSubmittedPlan, setIsEditingSubmittedPlan] = useState(false);
+  const [showInlineMap, setShowInlineMap] = useState(false);
 
   const currentRound = gameState ? getCurrentRound() : 1;
   const currentCombinations = gameState ? getCombinations() : [];
@@ -341,12 +343,13 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef, PlanningPhaseProps>((p
       );
     const submittedCount = gameState.teams.filter(t => hasSubmittedPlan(t.id)).length;
     const totalCount = gameState.teams.length;
+    const classData = activeClass || { id: 'demo', name: 'Simulation Game', code: 'DEMO', facilitatorCode: '' };
 
     const handleOpenMap = () => {
       if (props.onViewWorldMap) {
         props.onViewWorldMap();
       } else {
-        window.dispatchEvent(new CustomEvent('navigate_tab', { detail: 'scoreboard' }));
+        window.dispatchEvent(new CustomEvent('navigate_tab', { detail: 'world-map' }));
       }
     };
 
@@ -364,20 +367,31 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef, PlanningPhaseProps>((p
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-              Turn order, product prices, and production will update and be revealed in the <strong>Production phase</strong> once all team plans are submitted. Use the <strong>World Map page</strong> to inspect your starting offices and regional demand.
+              Turn order, product prices, and production will update and be revealed in the <strong>Production phase</strong> once all team plans are submitted. Starting offices and regional demand can be viewed below or on the <strong>World Map tab</strong>.
             </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <Button
               type="button"
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={handleOpenMap}
-              className="h-8 text-xs font-bold gap-1.5 border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 shadow-sm"
+              className="h-8 text-xs font-bold gap-1.5 bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
             >
-              <Globe className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-              <span>Open World Map</span>
+              <Globe className="h-3.5 w-3.5" />
+              <span>World Map Tab</span>
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowInlineMap(prev => !prev)}
+              className="h-8 text-xs font-semibold gap-1.5"
+            >
+              <Eye className="h-3.5 w-3.5 text-purple-600" />
+              <span>{showInlineMap ? 'Hide Map' : 'Show Map Here'}</span>
             </Button>
 
             <Badge
@@ -393,6 +407,13 @@ export const PlanningPhase = forwardRef<PlanningPhaseRef, PlanningPhaseProps>((p
             </Badge>
           </div>
         </div>
+
+        {/* Optional Collapsible World Map Inline Reference */}
+        {showInlineMap && (
+          <div className="w-full h-[62vh] min-h-[440px] max-h-[780px] rounded-xl overflow-hidden border border-border shadow-lg bg-slate-900 relative transition-all my-2">
+            <ViewerBoard classData={classData} gameState={gameState} />
+          </div>
+        )}
 
         {/* Team Submissions Tracker Bar */}
         <div className="pt-2 border-t border-border/50">

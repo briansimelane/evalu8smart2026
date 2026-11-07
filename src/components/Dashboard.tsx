@@ -767,27 +767,27 @@ export const Dashboard = () => {
             })()}
 
             {/* Bottom Row - Data Views */}
-            <TabsList className={`grid ${isFacilitatorView ? 'grid-cols-4 sm:grid-cols-7' : 'grid-cols-3 sm:grid-cols-6'} gap-1 min-h-[44px] h-auto w-full border border-border p-1 rounded-xl bg-muted/60 text-muted-foreground shadow-sm`}>
+            <TabsList className={`grid ${isFacilitatorView ? 'grid-cols-4 sm:grid-cols-8' : 'grid-cols-3 sm:grid-cols-6'} gap-1 min-h-[44px] h-auto w-full border border-border p-1 rounded-xl bg-muted/60 text-muted-foreground shadow-sm`}>
               <TabsTrigger value="state" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                 <LayoutDashboard className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">Current State</span>
               </TabsTrigger>
+              <TabsTrigger value="world-map" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
+                <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+                <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">World Map</span>
+              </TabsTrigger>
               <TabsTrigger value="summary-map" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
-                <Globe className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">
                   {currentRole === 'STUDENT' ? 'Summary View' : 'Summary Map'}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="scoreboard" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
-                {currentRole === 'STUDENT' ? (
-                  <Map className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                ) : (
+              {isFacilitatorView && (
+                <TabsTrigger value="scoreboard" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                   <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                )}
-                <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">
-                  {currentRole === 'STUDENT' ? 'World Map' : 'Scoreboard'}
-                </span>
-              </TabsTrigger>
+                  <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">Scoreboard</span>
+                </TabsTrigger>
+              )}
               <TabsTrigger value="analytics" className="flex-col lg:flex-row gap-1 lg:gap-1.5 px-1.5 py-1.5 lg:px-2.5 lg:py-2 text-center items-center justify-center min-h-[36px]">
                 <BarChart3 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 <span className="text-[11px] lg:text-xs leading-none whitespace-nowrap">Analytics</span>
@@ -926,17 +926,19 @@ export const Dashboard = () => {
                   )}
                 </TabsContent>
 
+                <TabsContent value="world-map" className="space-y-4">
+                  <ParticipantWorldMap />
+                </TabsContent>
+
                 <TabsContent value="scoreboard" className="space-y-4">
-                  {isPlaceholderMode ? (
-                    renderPhasePlaceholder(currentRole === 'STUDENT' ? 'World Map' : 'Scoreboard')
+                  {currentRole === 'STUDENT' ? (
+                    <ParticipantWorldMap />
+                  ) : isPlaceholderMode ? (
+                    renderPhasePlaceholder("Scoreboard")
                   ) : (
                     <GameContext.Provider value={restrictedGameContextValue}>
-                      <TeamSubmissionStatus tabName={currentRole === 'STUDENT' ? 'World Map' : 'Scoreboard'} isCompact realRound={realActiveRound} />
-                      {currentRole === 'STUDENT' ? (
-                        <ParticipantWorldMap />
-                      ) : (
-                        <Scoreboard onEditTeamData={handleEditTeamData} />
-                      )}
+                      <TeamSubmissionStatus tabName="Scoreboard" isCompact realRound={realActiveRound} />
+                      <Scoreboard onEditTeamData={handleEditTeamData} />
                     </GameContext.Provider>
                   )}
                 </TabsContent>
