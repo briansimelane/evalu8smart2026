@@ -32,6 +32,7 @@ interface V2Parts {
   world: ClassWorldState | null;
   rounds: Record<number, RoundData>;
   plans: Record<string, TeamPlanDoc>;
+  seats?: Record<string, { ceoName?: string }>;
 }
 
 export function useMultiWorldSession(sessionIdOrCode: string) {
@@ -65,6 +66,7 @@ export function useMultiWorldSession(sessionIdOrCode: string) {
         id: t.id || `team_${idx + 1}`,
         name: t.name,
         color: t.color,
+        ceoName: parts.seats?.[t.id || `team_${idx + 1}`]?.ceoName || t.ceoName,
         isBot: !!t.isBot,
         botProfile: t.botProfile,
         botDifficulty: t.botDifficulty,
@@ -237,6 +239,22 @@ export function useMultiWorldSession(sessionIdOrCode: string) {
                           }
                         );
                       }
+                      if (!unsubscribes.current[`seat_${classId}`]) {
+                        unsubscribes.current[`seat_${classId}`] = onSnapshot(
+                          collection(db, 'classes', classId, 'seats'),
+                          (seatSnap) => {
+                            if (v2PartsRef.current[classId]) {
+                              const sMap: Record<string, { ceoName?: string }> = {};
+                              seatSnap.forEach((d) => {
+                                sMap[d.id] = d.data() as { ceoName?: string };
+                              });
+                              v2PartsRef.current[classId].seats = sMap;
+                              rebuildV2WorldState(classId);
+                            }
+                          },
+                          () => {}
+                        );
+                      }
                     } else {
                       setWorldStates((prev) => ({
                         ...prev,
@@ -255,6 +273,13 @@ export function useMultiWorldSession(sessionIdOrCode: string) {
                               gState.updatedAt = toValidDate(gState.updatedAt);
                               if (!gState.currentPhase) {
                                 gState.currentPhase = 'planning';
+                              }
+                              if (classData?.teams) {
+                                const ceoMap = new Map(classData.teams.map((t: any) => [t.id, t.ceoName]));
+                                gState.teams = (gState.teams || []).map((t) => ({
+                                  ...t,
+                                  ceoName: t.ceoName || ceoMap.get(t.id),
+                                }));
                               }
                               gameState = gState;
                             }
