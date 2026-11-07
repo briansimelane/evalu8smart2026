@@ -5,6 +5,9 @@ import { ViewerScaler } from './ViewerScaler';
 import { Globe, Trophy } from 'lucide-react';
 import { calculateTeamTotalScore } from '@/types/game';
 import { GameIcon } from '@/components/dashboard/GameIcon';
+import { SteveIcon } from '@/components/dashboard/SteveIcon';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
+import { getGameTheme, regionLabel } from '@/lib/gameTheme';
 import { cn } from '@/lib/utils';
 
 import { WorldTag, WorldMarker } from './overlay/WorldMarker';
@@ -64,6 +67,19 @@ function SingleBoardContent({ session, gameStateA, gameStateB }: { session: Mult
 
   const isPlanningPhase = (gameStateA.currentPhase || 'planning') === 'planning' && (gameStateB.currentPhase || 'planning') === 'planning';
 
+  const theme = getGameTheme(gameStateA.themeId ?? gameStateB.themeId);
+  const steveA = gameStateA.advancedState?.steve;
+  const steveB = gameStateB.advancedState?.steve;
+  const isSteveActiveA = Boolean(steveA?.activeRegion && isRuleActiveForTeam(gameStateA.ruleAdjustments, 'steve_event_blocker'));
+  const isSteveActiveB = Boolean(steveB?.activeRegion && isRuleActiveForTeam(gameStateB.ruleAdjustments, 'steve_event_blocker'));
+  const stevePaidA = isSteveActiveA
+    ? Object.values(steveA?.wildcardsContributed || {}).reduce((a, b) => a + Number(b), 0)
+    : 0;
+  const stevePaidB = isSteveActiveB
+    ? Object.values(steveB?.wildcardsContributed || {}).reduce((a, b) => a + Number(b), 0)
+    : 0;
+  const hasSteveActive = isSteveActiveA || isSteveActiveB;
+
   return (
     <ViewerScaler>
       <div
@@ -100,59 +116,94 @@ function SingleBoardContent({ session, gameStateA, gameStateB }: { session: Mult
             </div>
           </div>
 
-          {/* Turn Order Header Bar for Current Round (Hidden during Planning) */}
-          {!isPlanningPhase ? (
-            <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200 shadow-xs text-xs">
-              <div className="flex items-center gap-1 font-black text-slate-800 uppercase tracking-wider pr-1">
-                <span className="text-purple-600">⚡</span>
-                <span>Turn Order (Rd {currentRound}):</span>
+          {/* Right Header Section: Steve Blocker Pill & Turn Order */}
+          <div className="flex items-center gap-3">
+            {/* Steve Active Status Banner */}
+            {hasSteveActive && (
+              <div className="flex items-center gap-2 bg-red-50/95 border border-red-300 px-3 py-1.5 rounded-xl shadow-xs text-xs">
+                <div className="flex items-center gap-1 text-red-700 font-black uppercase tracking-wider pr-1">
+                  <SteveIcon size={18} />
+                  <span>Steve Blocker:</span>
+                </div>
+                {isSteveActiveA && (
+                  <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-lg border border-purple-200 shadow-2xs">
+                    <WorldTag world="A" label="A" className="text-[8px] px-1 py-0 h-4 bg-purple-700 text-white" />
+                    <span className="font-extrabold text-red-700">
+                      {regionLabel(theme, steveA?.activeRegion || '')}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono font-bold">
+                      ({stevePaidA}/5 paid)
+                    </span>
+                  </div>
+                )}
+                {isSteveActiveB && (
+                  <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-lg border border-slate-300 shadow-2xs">
+                    <WorldTag world="B" label="B" className="text-[8px] px-1 py-0 h-4 bg-slate-700 text-white" />
+                    <span className="font-extrabold text-red-700">
+                      {regionLabel(theme, steveB?.activeRegion || '')}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono font-bold">
+                      ({stevePaidB}/5 paid)
+                    </span>
+                  </div>
+                )}
               </div>
+            )}
 
-              {/* World A Turn Order */}
-              <div className="flex items-center gap-1.5 bg-purple-50/90 px-2.5 py-1 rounded-lg border border-purple-200">
-                <WorldTag world="A" label="A" className="text-[8px] px-1 py-0 h-4" />
-                <div className="flex items-center gap-1">
-                  {turnOrderA.length === 0 ? (
-                    <span className="text-[10px] text-purple-400 font-bold italic">Planning in Progress</span>
-                  ) : (
-                    turnOrderA.map((t, idx) => (
-                      <div key={`turn-A-${t.team.id}`} className="flex items-center gap-1">
-                        {idx > 0 && <span className="text-slate-400 font-bold text-[10px]">→</span>}
-                        <WorldMarker world="A" teamColor={t.team.color} size="xs" title={`${t.team.name}: $${t.price}`}>
-                          {getTeamBubbleText(t.team)}
-                        </WorldMarker>
-                        <span className="font-mono text-[10px] font-extrabold text-slate-800">${t.price}</span>
-                      </div>
-                    ))
-                  )}
+            {/* Turn Order Header Bar for Current Round (Hidden during Planning) */}
+            {!isPlanningPhase ? (
+              <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200 shadow-xs text-xs">
+                <div className="flex items-center gap-1 font-black text-slate-800 uppercase tracking-wider pr-1">
+                  <span className="text-purple-600">⚡</span>
+                  <span>Turn Order (Rd {currentRound}):</span>
+                </div>
+
+                {/* World A Turn Order */}
+                <div className="flex items-center gap-1.5 bg-purple-50/90 px-2.5 py-1 rounded-lg border border-purple-200">
+                  <WorldTag world="A" label="A" className="text-[8px] px-1 py-0 h-4" />
+                  <div className="flex items-center gap-1">
+                    {turnOrderA.length === 0 ? (
+                      <span className="text-[10px] text-purple-400 font-bold italic">Planning in Progress</span>
+                    ) : (
+                      turnOrderA.map((t, idx) => (
+                        <div key={`turn-A-${t.team.id}`} className="flex items-center gap-1">
+                          {idx > 0 && <span className="text-slate-400 font-bold text-[10px]">→</span>}
+                          <WorldMarker world="A" teamColor={t.team.color} size="xs" title={`${t.team.name}: $${t.price}`}>
+                            {getTeamBubbleText(t.team)}
+                          </WorldMarker>
+                          <span className="font-mono text-[10px] font-extrabold text-slate-800">${t.price}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* World B Turn Order */}
+                <div className="flex items-center gap-1.5 bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200">
+                  <WorldTag world="B" label="B" className="text-[8px] px-1 py-0 h-4" />
+                  <div className="flex items-center gap-1">
+                    {turnOrderB.length === 0 ? (
+                      <span className="text-[10px] text-slate-400 font-bold italic">Planning in Progress</span>
+                    ) : (
+                      turnOrderB.map((t, idx) => (
+                        <div key={`turn-B-${t.team.id}`} className="flex items-center gap-1">
+                          {idx > 0 && <span className="text-slate-400 font-bold text-[10px]">→</span>}
+                          <WorldMarker world="B" teamColor={t.team.color} size="xs" title={`${t.team.name}: $${t.price}`}>
+                            {getTeamBubbleText(t.team)}
+                          </WorldMarker>
+                          <span className="font-mono text-[10px] font-extrabold text-slate-800">${t.price}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
-
-              {/* World B Turn Order */}
-              <div className="flex items-center gap-1.5 bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200">
-                <WorldTag world="B" label="B" className="text-[8px] px-1 py-0 h-4" />
-                <div className="flex items-center gap-1">
-                  {turnOrderB.length === 0 ? (
-                    <span className="text-[10px] text-slate-400 font-bold italic">Planning in Progress</span>
-                  ) : (
-                    turnOrderB.map((t, idx) => (
-                      <div key={`turn-B-${t.team.id}`} className="flex items-center gap-1">
-                        {idx > 0 && <span className="text-slate-400 font-bold text-[10px]">→</span>}
-                        <WorldMarker world="B" teamColor={t.team.color} size="xs" title={`${t.team.name}: $${t.price}`}>
-                          {getTeamBubbleText(t.team)}
-                        </WorldMarker>
-                        <span className="font-mono text-[10px] font-extrabold text-slate-800">${t.price}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
+            ) : (
+              <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 italic shadow-2xs">
+                <span>📋 Planning Phase Active — Turn Order & Pricing Hidden</span>
               </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 italic shadow-2xs">
-              <span>📋 Planning Phase Active — Turn Order & Pricing Hidden</span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Units Produced & Unsold Inventory Floating Bar for World A & World B (Hidden during Planning) */}

@@ -10,8 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Globe, Trophy, Maximize2, AlertCircle, Monitor, Layers, Columns, MonitorCheck, ChevronDown, ChevronUp, LayoutGrid, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useGameTheme, useApplyGameThemeAttribute, techLabel } from '@/lib/gameTheme';
+import { useGameTheme, useApplyGameThemeAttribute, techLabel, regionLabel } from '@/lib/gameTheme';
 import { getNextPhase, PHASE_LABELS } from '@/lib/phaseEngine';
+import { SteveIcon } from '@/components/dashboard/SteveIcon';
+import { isRuleActiveForTeam } from '@/lib/defaultRules';
 import './viewer.css';
 
 interface ScoredTeam {
@@ -119,6 +121,26 @@ export function CombinedViewerContent() {
     return loaded.some(w => w.gameState?.currentRound !== firstRound || w.gameState?.currentPhase !== firstPhase);
   }, [worlds]);
 
+  const activeSteveWorlds = useMemo(() => {
+    return worlds
+      .map(w => {
+        const gState = w.gameState;
+        if (!gState) return null;
+        const s = gState.advancedState?.steve;
+        if (s?.activeRegion && isRuleActiveForTeam(gState.ruleAdjustments, 'steve_event_blocker')) {
+          const paid = Object.values(s.wildcardsContributed || {}).reduce((a, b) => a + Number(b), 0);
+          return {
+            worldKey: w.key,
+            worldLabel: w.label,
+            region: s.activeRegion,
+            paid
+          };
+        }
+        return null;
+      })
+      .filter(Boolean) as Array<{ worldKey: WorldKey; worldLabel: string; region: string; paid: number }>;
+  }, [worlds]);
+
   if (sessionLoading) {
     return (
       <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col items-center justify-center gap-4">
@@ -217,6 +239,21 @@ export function CombinedViewerContent() {
         </div>
 
         <div className="flex items-center gap-3">
+          {activeSteveWorlds.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-red-50 border border-red-300 px-2.5 py-1 rounded-lg text-xs shadow-2xs">
+              <SteveIcon size={16} />
+              <span className="font-black text-red-700">Steve Blocker:</span>
+              <div className="flex items-center gap-1">
+                {activeSteveWorlds.map(sw => (
+                  <span key={sw.worldKey} className="bg-white border border-red-200 text-red-800 font-bold px-1.5 py-0.5 rounded text-[11px] flex items-center gap-1 shadow-2xs">
+                    <span className="font-extrabold text-purple-700">W{sw.worldKey}:</span>
+                    <span>{regionLabel(theme, sw.region)} ({sw.paid}/5)</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {isProvisional && (
             <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs flex items-center gap-1">
               <AlertCircle className="h-3 w-3" />
@@ -283,6 +320,19 @@ export function CombinedViewerContent() {
                           Next: {isGameEnd ? 'End' : nextRound > (w.gameState.currentRound || 1) ? `R${nextRound} ${PHASE_LABELS[nextPhase]}` : PHASE_LABELS[nextPhase]}
                         </span>
                       );
+                    })()}
+                    {w.gameState && (() => {
+                      const s = w.gameState.advancedState?.steve;
+                      if (s?.activeRegion && isRuleActiveForTeam(w.gameState.ruleAdjustments, 'steve_event_blocker')) {
+                        const paid = Object.values(s.wildcardsContributed || {}).reduce((a, b) => a + Number(b), 0);
+                        return (
+                          <span className="text-[11px] font-bold text-red-700 bg-red-100 border border-red-300 px-2 py-0.5 rounded flex items-center gap-1 shadow-2xs">
+                            <SteveIcon size={13} />
+                            <span>Steve: {regionLabel(theme, s.activeRegion)} ({paid}/5)</span>
+                          </span>
+                        );
+                      }
+                      return null;
                     })()}
                   </div>
                 </div>

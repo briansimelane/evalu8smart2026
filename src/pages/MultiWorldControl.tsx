@@ -14,6 +14,9 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { RulesAdjustmentPanel } from '@/components/dashboard/RulesAdjustmentPanel';
 import { DirectivesClaimModal } from '@/components/dashboard/DirectivesClaimModal';
+import { SteveIcon } from '@/components/dashboard/SteveIcon';
+import { MultiWorldSingleBoard } from '@/pages/Viewer/MultiWorldSingleBoard';
+import '@/pages/Viewer/viewer.css';
 import { isRuleActiveForTeam, getRuleValueForTeam } from '@/lib/defaultRules';
 import { ActionMatrix } from '@/components/multiworld/ActionMatrix';
 import { CombinedLeaderboard } from '@/components/multiworld/CombinedLeaderboard';
@@ -48,6 +51,7 @@ import {
   Trophy,
   User,
   Award,
+  Map as MapIcon,
   DollarSign,
   Package,
   Wrench,
@@ -171,10 +175,13 @@ export const MultiWorldControl: React.FC = () => {
     }
   }
 
-  // Determine readiness across target worlds
+  // Target worlds for lockstep / bulk advance
   const targetWorlds = selectedWorldKeys.length > 0
     ? worlds.filter(w => selectedWorldKeys.includes(w.key))
     : worlds;
+
+  const worldA = worlds.find(w => w.key === 'A');
+  const worldB = worlds.find(w => w.key === 'B');
 
   const blockedWorlds = targetWorlds.filter(w => {
     if (!w.gameState) return true;
@@ -585,6 +592,10 @@ export const MultiWorldControl: React.FC = () => {
               <LayoutGrid className="h-4 w-4" />
               World Cards ({worlds.length})
             </TabsTrigger>
+            <TabsTrigger value="map" className="gap-1.5 text-xs font-bold">
+              <MapIcon className="h-4 w-4 text-purple-600" />
+              World Map
+            </TabsTrigger>
             <TabsTrigger value="leaderboard" className="gap-1.5 text-xs font-bold">
               <Trophy className="h-4 w-4 text-amber-500" />
               Combined Leaderboard
@@ -653,7 +664,47 @@ export const MultiWorldControl: React.FC = () => {
           </div>
         </TabsContent>
 
-        {/* Tab 3: Combined Multi-World Leaderboard */}
+        {/* Tab 3: World Map (Combined Board) */}
+        <TabsContent value="map" className="mt-0">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between bg-card p-3 rounded-lg border border-border flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <MapIcon className="h-4 w-4 text-purple-600" />
+                <span className="text-sm font-bold text-foreground">Combined World Map</span>
+                <Badge variant="outline" className="text-xs">
+                  {worlds.length === 2 ? 'World A & World B Overlay' : `${worlds.length} Worlds`}
+                </Badge>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(`/viewer/multi/${session.sessionCode}`, '_blank')}
+                className="text-xs gap-1.5 text-purple-700 border-purple-300 hover:bg-purple-50"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open Fullscreen Combined Viewer
+              </Button>
+            </div>
+            {worlds.length === 2 && worldA?.gameState && worldB?.gameState ? (
+              <div className="w-full flex justify-center py-2 bg-slate-100 rounded-xl overflow-hidden border border-slate-300 shadow-inner">
+                <MultiWorldSingleBoard
+                  session={session}
+                  gameStateA={worldA.gameState}
+                  gameStateB={worldB.gameState}
+                  classDataA={worldA.classData}
+                  classDataB={worldB.classData}
+                />
+              </div>
+            ) : (
+              <div className="p-8 text-center text-muted-foreground bg-card rounded-lg border border-border">
+                <p className="text-sm font-semibold">Single Board Overlay is optimized for 2 worlds.</p>
+                <p className="text-xs mt-1">Use "Open Fullscreen Combined Viewer" above to view all {worlds.length} worlds in responsive grid.</p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Tab 4: Combined Multi-World Leaderboard */}
         <TabsContent value="leaderboard" className="mt-0">
           <CombinedLeaderboard worlds={worlds} labelMode={labelMode} />
         </TabsContent>
@@ -733,6 +784,14 @@ const WorldCard: React.FC<WorldCardProps> = ({
       (r: any) => r.enabled || (r.teamOverrides && Object.keys(r.teamOverrides).length > 0)
     )
   );
+
+  // Steve event blocker state for this World
+  const steve = gameState.advancedState?.steve;
+  const isSteveActive = Boolean(steve?.activeRegion && isRuleActiveForTeam(gameState.ruleAdjustments, 'steve_event_blocker'));
+  const activeSteveRegion = isSteveActive ? steve?.activeRegion : null;
+  const stevePaidCount = isSteveActive
+    ? Object.values(steve?.wildcardsContributed || {}).reduce((a, b) => a + Number(b), 0)
+    : 0;
 
   // Compute next phase info
   const { nextPhase, nextRound, isGameEnd } = getNextPhase(gameState);
@@ -1253,6 +1312,19 @@ const WorldCard: React.FC<WorldCardProps> = ({
               </DialogContent>
             </Dialog>
 
+            {/* Steve Blocker Active Indicator */}
+            {isSteveActive && activeSteveRegion && (
+              <Badge
+                variant="outline"
+                className="text-xs h-7.5 px-2.5 gap-1.5 font-bold border-red-500/40 text-red-700 dark:text-red-300 bg-red-500/10 shadow-2xs"
+                title={`Steve is blocking ${activeSteveRegion} (${stevePaidCount}/5 Wildcards Paid)`}
+              >
+                <SteveIcon size={14} />
+                <span>Steve: {activeSteveRegion}</span>
+                <span className="text-[10px] opacity-75 font-mono font-normal">({stevePaidCount}/5)</span>
+              </Badge>
+            )}
+
             <Button
               size="sm"
               variant="ghost"
@@ -1358,6 +1430,19 @@ const WorldCard: React.FC<WorldCardProps> = ({
           <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
             <span>{readiness.reason}</span>
+          </div>
+        )}
+
+        {/* Steve Blocker Alert Banner */}
+        {isSteveActive && activeSteveRegion && (
+          <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-300 flex items-center justify-between text-xs font-semibold gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <SteveIcon size={16} />
+              <span>Steve Blocker Active: <strong>{activeSteveRegion}</strong> ({stevePaidCount}/5 Wildcards Paid)</span>
+            </div>
+            <Badge variant="outline" className="border-red-500/30 text-red-700 dark:text-red-300 text-[10px] font-bold">
+              Expansion & Sales Disabled
+            </Badge>
           </div>
         )}
 

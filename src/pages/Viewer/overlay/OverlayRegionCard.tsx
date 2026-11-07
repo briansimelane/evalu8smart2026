@@ -3,6 +3,7 @@ import { GameState, Team } from '@/types/game';
 import { REGION_CUSTOMERS } from '@/data/customers';
 import { getControlPointsForRegion } from '@/data/control';
 import { GameIcon } from '@/components/dashboard/GameIcon';
+import { SteveIcon } from '@/components/dashboard/SteveIcon';
 import { WorldMarker, WorldTag } from './WorldMarker';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,19 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
   const logisticsCost = regA?.logisticsCost || regB?.logisticsCost || 2;
   const maxTeamsA = regA?.maxTeams || 3;
   const maxTeamsB = regB?.maxTeams || 3;
+
+  // Steve event blocker state for World A & World B
+  const isSteveBlockingA = isSteveBlockingRule(gameStateA, regionName);
+  const isSteveBlockingB = isSteveBlockingRule(gameStateB, regionName);
+  const steveA = gameStateA.advancedState?.steve;
+  const steveB = gameStateB.advancedState?.steve;
+  const stevePaidA = isSteveBlockingA
+    ? Object.values(steveA?.wildcardsContributed || {}).reduce((a, b) => a + Number(b), 0)
+    : 0;
+  const stevePaidB = isSteveBlockingB
+    ? Object.values(steveB?.wildcardsContributed || {}).reduce((a, b) => a + Number(b), 0)
+    : 0;
+  const isSteveActiveOnCard = isSteveBlockingA || isSteveBlockingB;
 
   const customerData = useMemo(() => {
     return REGION_CUSTOMERS.find(c => c.region === regionName)?.customers || [];
@@ -165,9 +179,18 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
     const occupiedCount = presentOfficeList.length + inProgressTeams.length;
     const emptyCount = Math.max(0, maxTeams - occupiedCount);
 
+    const isWorldBlocked = world === 'A' ? isSteveBlockingA : isSteveBlockingB;
+
     return (
       <div className="flex items-center gap-1">
-        <WorldTag world={world} label={world} className="text-[8px] px-1 py-0 h-4" />
+        <div className="flex items-center gap-0.5">
+          <WorldTag world={world} label={world} className="text-[8px] px-1 py-0 h-4" />
+          {isWorldBlocked && (
+            <span className="shrink-0 flex items-center text-red-600 animate-pulse" title={`Steve is blocking World ${world} expansion into ${displayRegionName}!`}>
+              <SteveIcon size={12} />
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           {/* Present teams & offices */}
           {presentOfficeList.map(({ team, officeIndex }) => (
@@ -250,9 +273,11 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
       style={{ width: `${cardWidth}px` }}
       className={cn(
         "absolute h-[180px] bg-white rounded-xl p-2.5 flex flex-col justify-between backdrop-blur-sm group hover:border-slate-500 hover:shadow-xl transition-all duration-300 text-slate-900 z-10 select-none mo-dimmable",
-        cardChanged 
-          ? "border-2 border-amber-500 ring-4 ring-amber-400/90 ring-offset-2 shadow-2xl scale-105 z-30 font-bold" 
-          : "border border-slate-300 shadow-md",
+        isSteveActiveOnCard
+          ? "border-2 border-red-600 shadow-2xl z-30 font-bold"
+          : cardChanged 
+            ? "border-2 border-amber-500 ring-4 ring-amber-400/90 ring-offset-2 shadow-2xl scale-105 z-30 font-bold" 
+            : "border border-slate-300 shadow-md",
         m && getMotionClass(m, controlKey, 'lg')
       )}
       data-changed={cardChanged ? '1' : undefined}
@@ -328,6 +353,53 @@ export function OverlayRegionCard({ regionName, gameStateA, gameStateB }: Overla
           {renderOfficeTrack('B', gameStateB, regB, maxTeamsB)}
         </div>
       </div>
+
+      {/* Horizontal Steve Blocker Banner for Combined Overlay Board */}
+      {isSteveActiveOnCard && (
+        <div className="absolute inset-x-2 top-[46px] h-7 bg-red-600/95 text-white rounded-lg shadow-lg px-2 flex items-center justify-between z-30 border border-white backdrop-blur-xs [animation:pulse_1s_cubic-bezier(0.4,0,0.6,1)_3]">
+          <div className="flex items-center gap-1.5 truncate">
+            <SteveIcon size={16} />
+            {isSteveBlockingA && isSteveBlockingB ? (
+              <>
+                <div className="flex items-center gap-0.5">
+                  <WorldTag world="A" label="A" className="text-[8px] px-1 py-0 h-3.5 bg-purple-700 text-white border-white/60" />
+                  <WorldTag world="B" label="B" className="text-[8px] px-1 py-0 h-3.5 bg-slate-700 text-white border-white/60" />
+                </div>
+                <span className="font-extrabold text-[11px] uppercase tracking-wider truncate">
+                  STEVE BLOCKED (WORLDS A & B)
+                </span>
+              </>
+            ) : isSteveBlockingA ? (
+              <>
+                <WorldTag world="A" label="A" className="text-[8px] px-1 py-0 h-3.5 bg-purple-700 text-white border-white/60" />
+                <span className="font-extrabold text-[11px] uppercase tracking-wider truncate">
+                  STEVE BLOCKED (WORLD A)
+                </span>
+              </>
+            ) : (
+              <>
+                <WorldTag world="B" label="B" className="text-[8px] px-1 py-0 h-3.5 bg-slate-700 text-white border-white/60" />
+                <span className="font-extrabold text-[11px] uppercase tracking-wider truncate">
+                  STEVE BLOCKED (WORLD B)
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 text-[9px] text-red-100 font-mono font-bold bg-red-800/90 px-1.5 py-0.5 rounded whitespace-nowrap">
+            {isSteveBlockingA && isSteveBlockingB ? (
+              <>
+                <span>A: {stevePaidA}/5</span>
+                <span>•</span>
+                <span>B: {stevePaidB}/5</span>
+              </>
+            ) : isSteveBlockingA ? (
+              <span>{stevePaidA}/5 Paid</span>
+            ) : (
+              <span>{stevePaidB}/5 Paid</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Customer Demand Slots Row with Top (A) and Bottom (B) Buyer Chips */}
       <div className="flex items-center gap-1.5 py-1.5 justify-start flex-nowrap overflow-visible">
